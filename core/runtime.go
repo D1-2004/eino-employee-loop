@@ -36,7 +36,7 @@ type Config struct {
 	Tenant, Scene string
 	Case          CaseData
 	JobDelay      time.Duration
-	// Models injects the decision and ack chat models (see local.New / providers).
+	// Models injects the decision and ack chat models (wired by an assembly).
 	Models      ModelProvider
 	Registry    bool // registry + memory store injected and tool-backed (treatment); false = control
 	Ack         bool
@@ -170,7 +170,7 @@ func NewRuntime(ctx context.Context, cfg Config, ts TaskStore, ms MemoryStore, k
 	r := &Runtime{cfg: cfg, ts: timedTasks{ts, st}, ms: timedMem{ms, st}, kv: timedKV{kv, st}, conv: conv, stats: st, t0: time.Now(),
 		ack: map[int64]string{}, jobCancel: map[string]context.CancelFunc{}, counters: map[string]int{}, labels: map[string]string{}}
 	if cfg.Models == nil {
-		return nil, fmt.Errorf("core: Config.Models is required (see providers/llm)")
+		return nil, fmt.Errorf("core: Config.Models is required (wire a ModelProvider from an assembly)")
 	}
 	var err error
 	if r.cmodel, err = cfg.Models.Decision(ctx); err != nil {
@@ -243,23 +243,26 @@ func (r *Runtime) UserMessage(ctx context.Context, speaker, text string, atMs in
 	return m
 }
 
-// ReactionFeedback wakes the loop for a negative emoji reaction (❌ / 打叉).
-// Kind=reaction Trigger; Host synthesizes a correction utterance from the target message.
+// ReactionFeedback wakes the loop for a correction Trigger (Kind=reaction).
+// Adapters decide which channel signals map here; Core only sees a generic correction wake.
 func (r *Runtime) ReactionFeedback(ctx context.Context, in Inbound) Msg {
 	if in.AtMs > 0 {
 		r.setVirtual(in.AtMs)
 	}
 	preview := r.previewTarget(ctx, in.TargetMsgID)
-	emoji := in.Reaction
-	if emoji == "" {
-		emoji = "❌"
+	signal := in.Reaction
+	if signal == "" {
+		signal = "correction"
 	}
 	who := in.Speaker
 	if who == "" {
 		who = "用户"
 	}
-	text := fmt.Sprintf("【纠正信号】%s 对一条消息打了「%s」。请据此修正上一回复或相关任务：不要重复同样的错误；若任务在跑可 stop 后按新理解重派；若只是措辞问题用 reply 给正确版本。\n被打叉的消息摘要：%s",
-		who, emoji, truncRunes(preview, 240))
+	text := in.Text
+	if strings.TrimSpace(text) == "" {
+		text = fmt.Sprintf("【纠正信号】%s 对一条此前消息表达了否定（%s）。请据此修正上一回复或相关任务：不要重复同样的错误；若任务在跑可 stop 后按新理解重派；若只是措辞问题用 reply 给正确版本。\n相关消息摘要：%s",
+			who, signal, truncRunes(preview, 240))
+	}
 	ref := in.MsgID
 	if ref == "" {
 		ref = "react:" + in.TargetMsgID
@@ -269,10 +272,10 @@ func (r *Runtime) ReactionFeedback(ctx context.Context, in Inbound) Msg {
 		SourceRef: ref, AtMs: r.vnow(),
 	})
 	r.mu.Lock()
-	r.out = append(r.out, OutEv{TMs: r.now(), Kind: "reaction_in", Text: emoji + " → " + truncRunes(preview, 80)})
+	r.out = append(r.out, OutEv{TMs: r.now(), Kind: "reaction_in", Text: signal + " → " + truncRunes(preview, 80)})
 	r.mu.Unlock()
 	r.count("reaction_correction")
-	r.emitProcess(EvProgress, "", "", "reaction:"+emoji)
+	r.emitProcess(EvProgress, "", "", "reaction:"+signal)
 	var opts []adk.PushOption[Item, *schema.Message]
 	if atomic.LoadInt32(&r.activeTurn) == 1 {
 		opts = append(opts, adk.WithPreempt[Item, *schema.Message](adk.AnySafePoint))

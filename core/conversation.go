@@ -13,7 +13,7 @@ type Msg struct {
 	AtMs      int64  `json:"at_ms"`
 }
 
-// Conversation is the Host dialogue log. Implementations live under providers/store.
+// Conversation is the Host dialogue log. Implementations live in assemblies (e.g. local/).
 type Conversation interface {
 	Append(ctx context.Context, tenant, scene string, m Msg) (Msg, error)
 	Recent(ctx context.Context, tenant, scene string, beforeSeq int64, n int) ([]Msg, error)

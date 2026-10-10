@@ -1,4 +1,6 @@
-// Package local is the all-in-one local stack for eino-employee-loop:
+// Package local is one assembly form for eino-employee-loop.
+//
+// It wires Core ports with concrete backends suitable for a single machine:
 //
 //   - SQLite TaskStore + MemoryStore + Conversation + Checkpoint (KV)
 //   - MemKV / RedisKV
@@ -7,6 +9,6 @@
 //   - OpenCode Session + JobExecutor
 //   - Mock JobExecutor
 //
-// Core never imports this package. Commands wire Stack / OpenSQLite into core.Runtime.
-// Cloud and DingTalk adapters live under providers/dws (and future providers/*).
+// Core never imports this package. Commands assemble Stack into core.Runtime.
+// Channel adapters (e.g. DingTalk) live under adapters/.
 package local

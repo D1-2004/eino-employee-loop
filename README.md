@@ -1,96 +1,75 @@
 # Eino Employee Loop
 
-Grok Bot–style **employee decision loop** on [CloudWeGo Eino](https://github.com/cloudwego/eino) v0.9.21.
+Employee decision loop on [CloudWeGo Eino](https://github.com/cloudwego/eino) — ack early, decide once, Host owns tasks and memory.
 
-> **Repo:** [dingtalk-fde/eino-employee-loop](https://github.com/dingtalk-fde/eino-employee-loop). Intended org home is `D1-2004` once an admin creates/transfers the public repo.
+> **Repo:** [dingtalk-fde/eino-employee-loop](https://github.com/dingtalk-fde/eino-employee-loop)
 
-## Layout (keep Core clean & simple)
+## Layout
 
 ```
-core/                 Ports + runtime orchestration only
-                      Field · Actor · Trigger · ProcessEvent · ToolSpec/Timeout
-                      TaskStore · MemoryStore · KV · Conversation · IMProvider
-                      Session · JobExecutor · ModelProvider · EventSink
-                      NO DWS / DingTalk / SQLite / OpenCode imports
+core/                 Ports + runtime only
+                      Field · Actor · Trigger · ProcessEvent
+                      TaskStore · MemoryStore · KV · Conversation
+                      IMProvider · Session · JobExecutor · ModelProvider · EventSink
+                      ToolSpec + timeout budgets (injected)
+                      NO SQLite / LLM / IM / OpenCode imports
 
-local/                All-in-one local stack implementing Core ports
-                      SQLite store + checkpoint · MemKV · stdin IM
-                      LLM (DeepSeek/DashScope/OpenAI) · OpenCode · MockExecutor
+local/                One assembly form
+                      Wires Core ports → SQLite · checkpoint · LLM · OpenCode/mock · stdin IM
                       Stack.Open / WireRuntime
 
-providers/dws/        DingTalk Workspace IM adapter (poll + send + mark-read)
+adapters/dws/         DingTalk Workspace IM adapter
+                      Subscribe / Send / history / read-marker
 
-cmd/demo/             Local runnable demo
-cmd/dws-consumer/     Long-running DWS conversation consumer
-cloud/                PG DDL · Redis key notes
-docs/                 Architecture & Multica mapping notes
+cmd/demo/             Assembles local/ for a runnable demo
+cmd/dws-consumer/     Assembles local/ + adapters/dws for a live conversation
+
+cloud/                PG / Redis notes for cloud parity
+docs/                 Design notes (optional reading)
 ```
 
-Core never imports `local` or `providers/*`. Commands wire them in.
+**Rule:** `core/` never imports `local/` or `adapters/*`. Commands (and future assemblies) wire them in.
 
-## Quick start (local)
+```
+Trigger on Field
+  └─► core.Runtime  (Eino TurnLoop + ChatModelAgent)
+        ├─ tools via Host (timeouts from ToolSpec)
+        ├─ dispatch_task → TaskStore + JobExecutor + ProcessEvent
+        └─ reply → OnOutbound → IM.Send
+```
+
+## Quick start (local assembly)
 
 ```bash
 export LLM_API_KEY=...          # or DEEPSEEK_API_KEY / DASHSCOPE_API_KEY
 # optional: LLM_PROVIDER=dashscope LLM_MODEL=deepseek-v4.1-flash
 
-go test ./local/
+go test ./local/ ./core/ ./adapters/...
 go run ./cmd/demo -script
-go run ./cmd/demo               # interactive; /tasks /memory /stats /checkpoint /quit
+go run ./cmd/demo               # interactive; /tasks /memory /stats /quit
 ```
 
-## DWS consumer (Mac / dxxh)
+## Live IM (local + DWS adapter)
 
 ```bash
 export LLM_PROVIDER=dashscope LLM_API_KEY=...
-export DWS_PROFILE='corpId:userId'   # optional
-
 go run ./cmd/dws-consumer \
-  --cid 'cid...' \
+  --cid '...' \
   --kind group \
-  --db ~/.local/share/eino-employee-loop/employee.db \
-  --executor opencode \
-  --opencode-dir ~/eino-employee-loop-workspace
+  --db ./data/employee.db \
+  --executor opencode
 ```
 
-## How the loop works
+## Abstractions
 
-```
-Trigger (user_message | task_result | …) on Field
-  └─► core.Runtime
-        ├─► optional ack (AckMode=auto skips greetings/status lookups)
-        └─► Eino TurnLoop + ChatModelAgent
-              ├─ tools via Host (timeout budget per call)
-              ├─ dispatch_task → TaskStore + JobExecutor + ProcessEvent(accepted)
-              └─ reply / ask → OnOutbound → IM.Send
-        └─► job done → ProcessEvent(done|failed) → Push task_result
-```
-
-## Multica lessons we ported
-
-| Multica (`dt-fde-multica` employeeloop) | Eino Employee Loop |
+| Core type | Meaning |
 | --- | --- |
-| `scene.Ref` + Identity never from model text | `core.Field` + `Actor` / `Trigger` |
-| Host owns effects + receipts | TaskStore receipts; `EventSink` for accepted/progress/done/failed |
-| Context: system persona → memory → tasks → history → window | `genInput` sections + token budgets |
-| Terminal tools + dispatch.reply in one shot | Terminal map + `dispatch_task.reply` |
-| Max 3 model calls / wake | `MaxModelRoundsPerTurn=4` + Host auto-dispatch fallback when budget exhausted |
-| Tool registry from Host | `ToolSpec` + per-call timeout budgets |
+| `Field` | Work locus — not bound to a chat or enterprise |
+| `Actor` / `Trigger` | Who woke the loop and why (`user_message`, `reaction`, `task_result`, …) |
+| `ProcessEvent` | Host lifecycle: accepted / progress / done / failed |
+| `ToolSpec` | Tools are injected; each call has a timeout budget |
+| `IMProvider` | Channel port — any adapter that can Subscribe + Send |
 
-## Dialogue defaults
+## License
 
-- Chinese colleague system instruction (`core.DefaultColleagueInstruction`)
-- Markdown send, no AI badge, mark-read after inbound
-- AckMode=auto: skip Hi/谢谢 and 「有哪些任务/记忆/进度」 — no more 「我看下…」 spam
-- Prefer one accept line via `dispatch_task.reply`; Host events for lifecycle
-
-## Turn budget & ❌ reactions
-
-- Per-turn model rounds capped at **4** (`MaxModelRoundsPerTurn`). Overall wakes stay open.
-- Budget exhausted without `reply` / `dispatch_task` / … → Host **auto-dispatches** the current window (no stall).
-- DWS consumer uses **`dws event +listen-im`** (Stream) for messages **and** reactions. ❌ / `打叉` → `Trigger.Kind=reaction` correction wake.
-
-## Task storage (local)
-
-SQLite `tasks` + `task_events` in the same DB as memory/conversation/checkpoints. See [docs/architecture_local.md](docs/architecture_local.md).
-
+MIT

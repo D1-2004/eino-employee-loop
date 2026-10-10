@@ -1,10 +1,9 @@
 # Multica employee_loop → Eino mapping
 
-Source studied (Mac Studio):
+Source studied (`dt-fde-multica` employee_loop):
 
-- `/Users/yuanzhan/d1/dt-fde-multica/server/internal/service/employeeloop/`
-  - `SOURCE_MAP.md`, `types.go`, `loop.go`, `prompt_builder.go`, `history_presentation.go`, `tools.go`, `service.go`
-- `/Users/yuanzhan/d1/dt-fde-multica/server/internal/scene/scene.go` — Field abstraction (group/dm/enterprise)
+- `server/internal/service/employeeloop/` — loop, prompt builder, tools, service
+- `server/internal/scene/scene.go` — Field abstraction (group/dm/enterprise)
 
 ## Context composition (Multica `buildContext`)
 
@@ -27,7 +26,6 @@ Eino port: `core.Runtime.genInput` builds analogous sections with ConvTokens/Mem
 
 ## Gaps still open
 
-- MaxModelRoundsPerTurn=4 + BudgetFallbackDispatch (Host auto-dispatch when exhausted)
 - Structured `conversation_turns_v1` history presentation (we use free-text nearby/window)
 - Full ToolProvider injection replacing Case.Tools hardcoding in DemoCase
 - Field kinds beyond conversation (enterprise / ticket) need adapters

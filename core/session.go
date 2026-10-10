@@ -3,7 +3,7 @@ package core
 import "context"
 
 // Session is an optional durable coding/agent session backend (e.g. local OpenCode).
-// Core never shells out; providers/session/opencode implements this.
+// Core never shells out; assemblies (e.g. local OpenCode) implement this.
 type Session interface {
 	// Ensure returns (or creates) a session id for the given scene key.
 	Ensure(ctx context.Context, scene, title string) (sessionID string, err error)

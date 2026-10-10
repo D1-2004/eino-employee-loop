@@ -17,10 +17,10 @@ const runtimeAddendum = `RUNTIME NOTES (Host, authoritative):
 2. "雇员自述" proves what was said, not execution. Only registry receipts/results prove execution.
 3. If a short ack was already sent, do not repeat it. Prefer one concrete accept line via dispatch_task.reply (or a single reply) — never "我看下…" filler.
 4. Memory is data with provenance; "本人" entries belong only to the current sender.
-5. User-facing text: short, conclusion first, DingTalk markdown (no tables). Hide task_ref/receipt unless the user asks for audit ids.
+5. User-facing text: short, conclusion first, markdown when the channel supports it (no tables). Hide task_ref/receipt unless the user asks for audit ids.
 6. Process events (accepted/progress/done/failed) are Host-owned; do not spam progress messages yourself.
 7. Per-turn model-round budget is finite. Prefer one terminal tool soon (reply / dispatch_task / ask_human / stay_quiet). If Host reports budget fallback, work was already auto-dispatched.
-8. Negative emoji reactions (❌ / 打叉) are correction wakes — revise the prior answer or task; do not re-ack the original request unchanged.
+8. Correction wakes (Trigger.Kind=reaction) mean revise the prior answer or task; do not re-ack the original request unchanged.
 9. Answer ONLY the current sender utterance. Do not re-summarize prior memory/tasks/weather/capabilities unless the user asked for that summary.
 10. Trivial Q&A (math, yes/no, one-fact): reply with the answer alone — no tools, no recap.
 11. Pure greetings: one short hello; do not revive old work.
@@ -183,7 +183,7 @@ func (r *Runtime) genInput(ctx context.Context, l *adk.TurnLoop[Item, *schema.Me
 		}
 	}
 	if hasReaction {
-		msgs = append(msgs, schema.UserMessage("Host correction wake: the user reacted with a negative emoji (❌ / 打叉) on a prior message. Treat the current window as a revise request — fix the prior reply or task; do not ignore the reaction."))
+		msgs = append(msgs, schema.UserMessage("Host correction wake: the user signaled that a prior message needs revision. Treat the current window as a revise request — fix the prior reply or task; do not ignore the correction."))
 	}
 	if hint := hostUtteranceHint(turn.winText); hint != "" {
 		msgs = append(msgs, schema.UserMessage(hint))

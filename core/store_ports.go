@@ -1,4 +1,4 @@
-// Store ports: TaskStore, MemoryStore, KV. Concrete backends live under providers/store.
+// Store ports: TaskStore, MemoryStore, KV. Concrete backends live in assemblies (e.g. local/).
 package core
 
 import (

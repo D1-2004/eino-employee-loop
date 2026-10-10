@@ -27,7 +27,7 @@ type Trigger struct {
 	Actor Actor
 	AtMs  int64
 	Text  string // human-visible utterance when Kind=user_message; correction brief when reaction
-	// Reaction is set when Kind=reaction (emoji name, e.g. "打叉").
+	// Reaction is set when Kind=reaction (opaque signal name from the adapter).
 	Reaction    string
 	TargetMsgID string
 }

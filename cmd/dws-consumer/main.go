@@ -14,7 +14,7 @@ import (
 
 	"github.com/dingtalk-fde/eino-employee-loop/core"
 	"github.com/dingtalk-fde/eino-employee-loop/local"
-	"github.com/dingtalk-fde/eino-employee-loop/providers/dws"
+	"github.com/dingtalk-fde/eino-employee-loop/adapters/dws"
 	"github.com/joho/godotenv"
 )
 
@@ -136,7 +136,7 @@ func main() {
 			}
 			if in.Kind == "reaction" {
 				fmt.Printf("← reaction %s by %s on %s\n", in.Reaction, in.Speaker, trunc(in.TargetMsgID, 24))
-				if core.NegativeReaction(in.Reaction, in.Text) {
+				if dws.NegativeReaction(in.Reaction, in.Text) {
 					rt.ReactionFeedback(ctx, in)
 				} else {
 					fmt.Printf("  (ignored non-negative reaction)\n")

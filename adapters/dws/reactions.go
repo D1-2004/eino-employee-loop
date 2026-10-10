@@ -7,8 +7,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/dingtalk-fde/eino-employee-loop/core"
 )
 
 // Track recent outbound message IDs so poll mode can check ❌ reactions.
@@ -110,7 +108,7 @@ func (p *DWSProvider) pollNegativeReactions(ctx context.Context, convID string) 
 		for _, d := range details {
 			name := firstNonEmpty(d.Name, firstNonEmpty(d.Emoji, d.Reaction))
 			text := d.Text
-			if !core.NegativeReaction(name, text) {
+			if !NegativeReaction(name, text) {
 				continue
 			}
 			rk := "react:" + msgID + ":" + name + ":" + firstNonEmpty(d.OperatorID, d.UserID)

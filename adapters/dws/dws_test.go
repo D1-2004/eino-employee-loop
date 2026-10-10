@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dingtalk-fde/eino-employee-loop/core"
 )
 
 // Regression: Subscribe used to hold p.mu across pollOnce, which also Lock()'s — deadlock.
@@ -55,7 +54,7 @@ func TestParseStreamEventReactionAndMessage(t *testing.T) {
 	if !ok || in.Kind != "reaction" || in.Reaction != "打叉" || in.TargetMsgID != "m9" || in.Speaker != "冬翔" {
 		t.Fatalf("%+v ok=%v", in, ok)
 	}
-	if !core.NegativeReaction(in.Reaction, in.Text) {
+	if !NegativeReaction(in.Reaction, in.Text) {
 		t.Fatal("打叉 should be negative")
 	}
 	msg := `{"type":"user_im_message_receive_group","message_id":"m2","sender":"冬翔","sender_open_dingtalk_id":"u1","content":"Hi","event_time":1710000001000}`
