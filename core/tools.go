@@ -43,15 +43,21 @@ func (t *rtTool) InvokableRun(ctx context.Context, args string, _ ...tool.Option
 	r := t.r
 	name := t.info.Name
 	cfg := r.cfg
-	budget := DefaultToolTimeout
+	budget := TimeoutFor(ToolSpec{Effect: !readOnly[name]})
 	if cfg.ToolTimeouts != nil {
 		if d, ok := cfg.ToolTimeouts[name]; ok && d > 0 {
 			budget = d
-		} else if !readOnly[name] {
-			budget = DefaultEffectTimeout
 		}
-	} else if !readOnly[name] {
-		budget = DefaultEffectTimeout
+	}
+	// Keep tool budgets inside the wake wall-clock so one hung tool cannot stall T03-style.
+	if cfg.TurnTimeout > 0 {
+		half := cfg.TurnTimeout / 2
+		if half < 15*time.Second {
+			half = 15 * time.Second
+		}
+		if budget > half {
+			budget = half
+		}
 	}
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithTimeout(ctx, budget)
@@ -213,6 +219,14 @@ func (t *rtTool) InvokableRun(ctx context.Context, args string, _ ...tool.Option
 		} else {
 			out = map[string]any{"mock": true, "state": "proposal_accepted_not_executed", "business_execution": false}
 		}
+	}
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		r.count("tool_timeout")
+		b, _ := json.Marshal(map[string]any{
+			"error": "tool_timeout", "tool": name, "budget_ms": budget.Milliseconds(),
+			"note": "Host cancelled this tool call; prefer reply/ask_human/dispatch_task next.",
+		})
+		return string(b), nil
 	}
 	b, _ := json.Marshal(out)
 	return string(b), nil
@@ -488,7 +502,7 @@ func (r *Runtime) onEvents(ctx context.Context, tc *adk.TurnContext[Item, *schem
 		} else if len(tc.Consumed) > 0 {
 			var tid string
 			for _, it := range tc.Consumed {
-				if it.Kind == "task_result" || it.Kind == "repair" && it.TaskID != "" {
+				if it.Kind == "task_result" || (it.Kind == "repair" && it.TaskID != "") {
 					tid = it.TaskID
 				}
 			}
@@ -503,11 +517,79 @@ func (r *Runtime) onEvents(ctx context.Context, tc *adk.TurnContext[Item, *schem
 		if canFallback {
 			r.count("budget_exhausted")
 			r.hostAutoDispatch(ctx, turn)
+		} else {
+			r.ensureUserVisible(turn, "这轮没谈拢，你再说具体一点我再办。")
 		}
 	}
+
+	// stay_quiet on a real user ask delivers nothing — Host forces a clarifying ask (T03).
+	if !turn.Canceled && (turn.Trigger == "user" || turn.Trigger == "reaction") && stayQuietOnly(turn, r) && !r.turnDelivered(turn.No) {
+		r.count("host_forced_visible")
+		r.deliver("ask", clarifyingAsk(turn.winText))
+		r.markWindowAnswered(turn)
+	}
+	if turn.Canceled && (turn.Trigger == "user" || turn.Trigger == "reaction") && !r.turnDelivered(turn.No) {
+		r.count("turn_timeout_reply")
+		r.deliver("reply", "这轮超时了，你补一句具体要我办啥，我接着干。")
+		r.markWindowAnswered(turn)
+	}
+
 	atomic.StoreInt32(&r.activeTurn, 0)
 	atomic.AddInt32(&r.inflight, -int32(len(tc.Consumed)))
 	return nil
+}
+
+func stayQuietOnly(turn *Turn, r *Runtime) bool {
+	if turn == nil || len(turn.Calls) == 0 {
+		return false
+	}
+	sawQuiet, sawOtherTerm := false, false
+	for _, c := range turn.Calls {
+		if !r.cfg.Case.Terminal[c.Name] {
+			continue
+		}
+		if c.Name == "stay_quiet" {
+			sawQuiet = true
+		} else {
+			sawOtherTerm = true
+		}
+	}
+	return sawQuiet && !sawOtherTerm
+}
+
+func (r *Runtime) turnDelivered(turnNo int) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, e := range r.out {
+		if e.Turn == turnNo && e.Kind != "user_in" && e.Kind != "reaction_in" && e.Kind != "ack_latency" {
+			switch e.Kind {
+			case "ack", "reply", "dispatch_reply", "result_reply", "ask", "dedup_notice":
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (r *Runtime) ensureUserVisible(turn *Turn, text string) {
+	if turn == nil || r.turnDelivered(turn.No) {
+		return
+	}
+	r.deliver("reply", text)
+	r.markWindowAnswered(turn)
+}
+
+func (r *Runtime) markWindowAnswered(turn *Turn) {
+	if turn == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, s := range turn.WindowSeq {
+		if s > r.answeredUpTo {
+			r.answeredUpTo = s
+		}
+	}
 }
 
 func hasTermEarly(t *Turn, r *Runtime) bool {
@@ -537,8 +619,8 @@ func (r *Runtime) hostAutoDispatch(ctx context.Context, turn *Turn) {
 		r.emitProcess(EvBudget, "", "", "skip_non_actionable")
 		return
 	}
-	if isAmbiguousShort(goal) {
-		r.deliver("ask", "你具体想办哪件事？补一句对象或目标我再动手。")
+	if isAmbiguousShort(goal) || isVagueFragment(goal) {
+		r.deliver("ask", clarifyingAsk(goal))
 		r.count("budget_fallback_ask")
 		r.emitProcess(EvBudget, "", "", "ask_ambiguous")
 		return

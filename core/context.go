@@ -115,24 +115,29 @@ func (r *Runtime) genInput(ctx context.Context, l *adk.TurnLoop[Item, *schema.Me
 	for _, m := range window {
 		turn.WindowSeq = append(turn.WindowSeq, m.Seq)
 	}
-	// memory
-	memTxt := r.memorySnapshot(ctx, speaker, turn.winText)
-	turn.Sections["memory"] = EstTokens(memTxt)
-	msgs = append(msgs, schema.UserMessage(memTxt))
-	// registry
-	if cfg.Registry {
-		regTxt := r.registrySnapshot(ctx, resultIDs)
-		turn.Sections["registry"] = EstTokens(regTxt)
-		msgs = append(msgs, schema.UserMessage(regTxt))
+	slim := slimContextForFastPath(turn.winText)
+	// memory / registry — omitted on greeting & trivial Q&A so old work cannot resurface
+	if slim {
+		memTxt := "Existing memory snapshot (data):\n(Host fast path: memory omitted for greeting/trivial Q&A)"
+		turn.Sections["memory"] = EstTokens(memTxt)
+		msgs = append(msgs, schema.UserMessage(memTxt))
+		turn.Sections["registry"] = 0
+	} else {
+		memTxt := r.memorySnapshot(ctx, speaker, turn.winText)
+		turn.Sections["memory"] = EstTokens(memTxt)
+		msgs = append(msgs, schema.UserMessage(memTxt))
+		if cfg.Registry {
+			regTxt := r.registrySnapshot(ctx, resultIDs)
+			turn.Sections["registry"] = EstTokens(regTxt)
+			msgs = append(msgs, schema.UserMessage(regTxt))
+		}
 	}
 	// nearby conversation under token budget (newest kept).
-	// Trivial Q&A / pure greetings: almost no history — prevents "1+1 → essay" dumps.
+	// Trivial Q&A / pure greetings: no history — prevents "1+1 → essay" / greeting reopen.
 	budget := cfg.ConvTokens
-	if isTrivialQA(turn.winText) || isGreeting(turn.winText) {
-		budget = 280
-		if len(nearby) > 2 {
-			nearby = nearby[len(nearby)-2:]
-		}
+	if slim {
+		budget = 0
+		nearby = nil
 	}
 	var lines []*schema.Message
 	used, omitted := 0, 0
@@ -185,10 +190,10 @@ func (r *Runtime) genInput(ctx context.Context, l *adk.TurnLoop[Item, *schema.Me
 	if hasReaction {
 		msgs = append(msgs, schema.UserMessage("Host correction wake: the user signaled that a prior message needs revision. Treat the current window as a revise request — fix the prior reply or task; do not ignore the correction."))
 	}
-	if hint := hostUtteranceHint(turn.winText); hint != "" {
+	if hint := hostRouteHint(turn.winText); hint != "" {
 		msgs = append(msgs, schema.UserMessage(hint))
 	}
-		if repair {
+	if repair {
 		msgs = append(msgs, schema.UserMessage("Host protocol notice: your previous response ended without calling a decision tool, so NOTHING was delivered to the user. Your previous plain text (not delivered): "+truncRunes(repairText, 600)+"\nNow call exactly one decision tool (reply / dispatch_task / ask_human / stay_quiet / ...). If you wanted to answer, use reply with the exact text."))
 	}
 	_ = srcRef
@@ -206,6 +211,7 @@ func (r *Runtime) genInput(ctx context.Context, l *adk.TurnLoop[Item, *schema.Me
 	atomic.StoreInt32(&r.activeTurn, 1)
 	return &adk.GenInputResult[Item, *schema.Message]{Input: &adk.AgentInput{Messages: msgs}, Consumed: items}, nil
 }
+
 
 func (r *Runtime) memorySnapshot(ctx context.Context, speaker, text string) string {
 	cfg := r.cfg

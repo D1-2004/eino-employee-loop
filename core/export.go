@@ -58,6 +58,7 @@ func DefaultConfig(tenant, scene string, models ModelProvider, caseData CaseData
 		MaxModelRoundsPerTurn:  4,
 		BudgetFallbackDispatch: true,
 		JobTimeout:             90 * time.Second,
+		TurnTimeout:            75 * time.Second,
 	}
 }
 

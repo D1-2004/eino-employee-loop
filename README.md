@@ -67,7 +67,7 @@ go run ./cmd/dws-consumer \
 | `Field` | Work locus — not bound to a chat or enterprise |
 | `Actor` / `Trigger` | Who woke the loop and why (`user_message`, `reaction`, `task_result`, …) |
 | `ProcessEvent` | Host lifecycle: accepted / progress / done / failed / budget fallback |
-| Host turn budget | Per-wake model-round cap; optional auto-dispatch when exhausted without a terminal tool (`MAX_MODEL_ROUNDS_PER_TURN`, `BUDGET_FALLBACK_DISPATCH`) |
+| Host wake budget | Per-wake model-round cap with optional Host fallback when exhausted |
 | `ToolSpec` | Tools are injected; each call has a timeout budget |
 | `IMProvider` | Channel port — any adapter that can Subscribe + Send |
 

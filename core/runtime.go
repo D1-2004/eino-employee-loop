@@ -78,6 +78,9 @@ type Config struct {
 	// JobTimeout caps a single JobExecutor.Execute call (default 90s). Prevents
 	// hung OpenCode/shell jobs from leaving the user without a turn completion.
 	JobTimeout time.Duration
+	// TurnTimeout caps one decision wake wall-clock (default 75s). On expiry Host
+	// preempts and ensures a user-visible reply if none was delivered.
+	TurnTimeout time.Duration
 }
 
 type Item struct {
@@ -227,6 +230,18 @@ func (r *Runtime) UserMessage(ctx context.Context, speaker, text string, atMs in
 	r.mu.Lock()
 	r.out = append(r.out, OutEv{TMs: r.now(), Kind: "user_in", Text: text})
 	r.mu.Unlock()
+	// Host fast path: greetings / arithmetic never enter the model — prevents
+	// registry/memory bleed (eval T11/C08) and keeps trivial Q&A short.
+	if reply, ok := hostDirectReply(text); ok {
+		r.deliver("reply", reply)
+		r.mu.Lock()
+		if m.Seq > r.answeredUpTo {
+			r.answeredUpTo = m.Seq
+		}
+		r.mu.Unlock()
+		r.count("host_direct_reply")
+		return m
+	}
 	if r.cfg.Ack {
 		r.ackWG.Add(1)
 		go func() { defer r.ackWG.Done(); r.doAck(ctx, m) }()
