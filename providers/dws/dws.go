@@ -291,11 +291,11 @@ func (p *DWSProvider) Subscribe(ctx context.Context, convID string) (<-chan Inbo
 			if runCtx.Err() != nil {
 				return
 			}
-			fmt.Fprintf(os.Stderr, "dws stream exited: %v — restart in 3s\n", err)
+			fmt.Fprintf(os.Stderr, "dws stream exited: %v — restart in 90s (event-center cooldown)\n", err)
 			select {
 			case <-runCtx.Done():
 				return
-			case <-time.After(3 * time.Second):
+			case <-time.After(90 * time.Second):
 			}
 		}
 	}()
