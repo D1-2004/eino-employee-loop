@@ -29,8 +29,15 @@ type DWSConfig struct {
 	// SelfNames: skip inbound when sender display name matches (case-sensitive).
 	// Also skip when MsgID was recorded as our own outbound.
 	SelfNames []string
+	// SelfIDs: skip inbound when senderId matches (openDingTalkId). Preferred over names.
+	SelfIDs []string
 	// Kind: "group" (default) uses --group; "dm" uses --open-dingtalk-id for the peer.
+	// Note: single-chat openConversationId (cid…) still uses --group; dws rejects cid as --open-dingtalk-id.
 	Kind string
+	// CatchUp: when the seen store is empty (first subscribe / after wipe), still deliver
+	// messages newer than now-CatchUp instead of seeding them away. Default 10m.
+	// Fixes the case where the consumer was stuck/deadlocked while Hi already arrived.
+	CatchUp time.Duration
 }
 
 // DWSProvider polls dws chat +chat-messages and sends via +messages-send.
@@ -56,6 +63,9 @@ func NewDWSProvider(cfg DWSConfig) *DWSProvider {
 	}
 	if cfg.DWSBin == "" {
 		cfg.DWSBin = resolveDWSBin()
+	}
+	if cfg.CatchUp <= 0 {
+		cfg.CatchUp = 10 * time.Minute
 	}
 	return &DWSProvider{
 		cfg:  cfg,
@@ -95,18 +105,19 @@ func (p *DWSProvider) seenPath(convID string) string {
 	return filepath.Join(dir, "seen-"+safe+".json")
 }
 
-func (p *DWSProvider) loadSeen(convID string) {
+func (p *DWSProvider) loadSeen(convID string) int {
 	raw, err := os.ReadFile(p.seenPath(convID))
 	if err != nil {
-		return
+		return 0
 	}
 	var ids []string
 	if json.Unmarshal(raw, &ids) != nil {
-		return
+		return 0
 	}
 	for _, id := range ids {
 		p.seen[id] = struct{}{}
 	}
+	return len(ids)
 }
 
 func (p *DWSProvider) saveSeen(convID string) {
@@ -182,6 +193,11 @@ func parseCreateTime(s string) int64 {
 }
 
 func (p *DWSProvider) isSelf(m dwsMsg) bool {
+	for _, id := range p.cfg.SelfIDs {
+		if id != "" && m.SenderID == id {
+			return true
+		}
+	}
 	for _, n := range p.cfg.SelfNames {
 		if n != "" && m.Sender == n {
 			return true
@@ -194,15 +210,17 @@ func (p *DWSProvider) Subscribe(ctx context.Context, convID string) (<-chan Inbo
 	if strings.TrimSpace(convID) == "" {
 		return nil, fmt.Errorf("im.DWSProvider: empty convID")
 	}
+
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	if p.closed {
+		p.mu.Unlock()
 		return nil, fmt.Errorf("im.DWSProvider: closed")
 	}
 	if ch, ok := p.subs[convID]; ok {
+		p.mu.Unlock()
 		return ch, nil
 	}
-	p.loadSeen(convID)
+	hadSeen := p.loadSeen(convID)
 	ch := make(chan Inbound, 32)
 	p.subs[convID] = ch
 
@@ -214,15 +232,28 @@ func (p *DWSProvider) Subscribe(ctx context.Context, convID string) (<-chan Inbo
 			prev()
 		}
 	}
+	p.mu.Unlock() // MUST unlock before pollOnce — pollOnce takes the same mutex (non-reentrant).
 
 	// Seed seen with current page so restart does not replay history.
-	seeded, err := p.pollOnce(runCtx, convID, true)
+	// When seen store was empty, still deliver recent messages (CatchUp window).
+	seedOnly := true
+	catchUpCutoff := int64(0)
+	if hadSeen == 0 {
+		seedOnly = false
+		catchUpCutoff = time.Now().Add(-p.cfg.CatchUp).UnixMilli()
+		fmt.Fprintf(os.Stderr, "dws: empty seen store — catch-up messages newer than %s\n",
+			time.UnixMilli(catchUpCutoff).In(time.FixedZone("CST", 8*3600)).Format("2006-01-02 15:04:05"))
+	}
+	seeded, err := p.pollOnce(runCtx, convID, seedOnly, catchUpCutoff)
 	if err != nil {
+		p.mu.Lock()
 		delete(p.subs, convID)
+		p.mu.Unlock()
 		close(ch)
 		return nil, fmt.Errorf("dws subscribe seed: %w", err)
 	}
-	_ = seeded
+	fmt.Fprintf(os.Stderr, "dws: subscribe ok cid=%s kind=%s seeded_or_new=%d had_seen=%d\n",
+		trunc(convID, 40), p.cfg.Kind, seeded, hadSeen)
 
 	p.wg.Add(1)
 	go func() {
@@ -235,8 +266,11 @@ func (p *DWSProvider) Subscribe(ctx context.Context, convID string) (<-chan Inbo
 			case <-runCtx.Done():
 				return
 			case <-t.C:
-				if _, err := p.pollOnce(runCtx, convID, false); err != nil {
+				n, err := p.pollOnce(runCtx, convID, false, 0)
+				if err != nil {
 					fmt.Fprintf(os.Stderr, "dws poll: %v\n", err)
+				} else if n > 0 {
+					fmt.Fprintf(os.Stderr, "dws poll: +%d new\n", n)
 				}
 			}
 		}
@@ -244,12 +278,16 @@ func (p *DWSProvider) Subscribe(ctx context.Context, convID string) (<-chan Inbo
 	return ch, nil
 }
 
-func (p *DWSProvider) pollOnce(ctx context.Context, convID string, seedOnly bool) (int, error) {
+// pollOnce fetches one page. seedOnly marks everything seen without delivering.
+// If catchUpCutoff > 0 and !seedOnly, messages older than cutoff are only seeded;
+// newer ones are delivered (first-run catch-up).
+func (p *DWSProvider) pollOnce(ctx context.Context, convID string, seedOnly bool, catchUpCutoff int64) (int, error) {
 	args := []string{"chat", "+chat-messages", "--limit", fmt.Sprintf("%d", p.cfg.Limit), "-y", "-f", "json"}
 	switch p.cfg.Kind {
 	case "dm":
 		args = append(args, "--open-dingtalk-id", convID)
 	default:
+		// openConversationId for both group and singleChat (1:1 still uses --group with cid…).
 		args = append(args, "--group", convID)
 	}
 	raw, err := p.run(ctx, args...)
@@ -258,12 +296,13 @@ func (p *DWSProvider) pollOnce(ctx context.Context, convID string, seedOnly bool
 	}
 	var list dwsMsgList
 	if err := json.Unmarshal(raw, &list); err != nil {
-		return 0, fmt.Errorf("parse chat-messages: %w", err)
+		return 0, fmt.Errorf("parse chat-messages: %w (head=%q)", err, trunc(string(raw), 120))
 	}
 	// API returns newest first; process oldest-first among new ones.
 	msgs := list.Messages
 	nNew := 0
 	p.mu.Lock()
+	defer p.mu.Unlock()
 	ch := p.subs[convID]
 	for i := len(msgs) - 1; i >= 0; i-- {
 		m := msgs[i]
@@ -271,6 +310,12 @@ func (p *DWSProvider) pollOnce(ctx context.Context, convID string, seedOnly bool
 			continue
 		}
 		if _, ok := p.seen[m.MessageID]; ok {
+			continue
+		}
+		at := parseCreateTime(m.CreateTime)
+		// First-run catch-up: older than cutoff → seed only.
+		if !seedOnly && catchUpCutoff > 0 && at < catchUpCutoff {
+			p.seen[m.MessageID] = struct{}{}
 			continue
 		}
 		p.seen[m.MessageID] = struct{}{}
@@ -289,7 +334,7 @@ func (p *DWSProvider) pollOnce(ctx context.Context, convID string, seedOnly bool
 			MsgID:   m.MessageID,
 			Speaker: m.Sender,
 			Text:    text,
-			AtMs:    parseCreateTime(m.CreateTime),
+			AtMs:    at,
 		}
 		nNew++
 		if ch != nil {
@@ -297,7 +342,6 @@ func (p *DWSProvider) pollOnce(ctx context.Context, convID string, seedOnly bool
 			case ch <- in:
 			case <-ctx.Done():
 				p.saveSeen(convID)
-				p.mu.Unlock()
 				return nNew, ctx.Err()
 			default:
 				fmt.Fprintf(os.Stderr, "dws: inbound channel full, drop %s\n", m.MessageID)
@@ -305,7 +349,6 @@ func (p *DWSProvider) pollOnce(ctx context.Context, convID string, seedOnly bool
 		}
 	}
 	p.saveSeen(convID)
-	p.mu.Unlock()
 	return nNew, nil
 }
 
