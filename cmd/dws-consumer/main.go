@@ -35,7 +35,8 @@ func main() {
 	db := flag.String("db", filepath.Join("data", "employee.db"), "SQLite path")
 	dotenv := flag.String("dotenv", ".env", "optional dotenv")
 	poll := flag.Duration("poll", 8*time.Second, "DWS poll interval")
-	self := flag.String("self-name", os.Getenv("DWS_SELF_NAME"), "skip inbound from this display name (comma-separated)")
+	self := flag.String("self-name", os.Getenv("DWS_SELF_NAME"), "skip inbound from these display names (comma-separated)")
+	selfID := flag.String("self-id", os.Getenv("DWS_SELF_ID"), "skip inbound from these senderId/openDingTalkId (comma-separated)")
 	tenant := flag.String("tenant", "dws", "tenant id")
 	scene := flag.String("scene", "", "scene id (default = cid)")
 	jobMs := flag.Int("job-ms", 4000, "simulated background job duration")
@@ -81,12 +82,20 @@ func main() {
 			selfNames = append(selfNames, n)
 		}
 	}
+	var selfIDs []string
+	for _, n := range strings.Split(*selfID, ",") {
+		n = strings.TrimSpace(n)
+		if n != "" {
+			selfIDs = append(selfIDs, n)
+		}
+	}
 
 	prov := im.NewDWSProvider(im.DWSConfig{
 		Profile:   *profile,
 		PollEvery: *poll,
 		Kind:      *kind,
 		SelfNames: selfNames,
+		SelfIDs:   selfIDs,
 	})
 	defer prov.Close()
 
