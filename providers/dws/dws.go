@@ -45,13 +45,14 @@ type DWSConfig struct {
 
 // DWSProvider polls dws chat +chat-messages and sends via +messages-send.
 type DWSProvider struct {
-	cfg    DWSConfig
-	mu     sync.Mutex
-	seen   map[string]struct{}
-	subs   map[string]chan Inbound
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
-	closed bool
+	cfg      DWSConfig
+	mu       sync.Mutex
+	seen     map[string]struct{}
+	outbound []string // recent Send msg ids for reaction poll fallback
+	subs     map[string]chan Inbound
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
+	closed   bool
 }
 
 func NewDWSProvider(cfg DWSConfig) *DWSProvider {
@@ -283,6 +284,8 @@ func (p *DWSProvider) Subscribe(ctx context.Context, convID string) (<-chan Inbo
 			}
 		}
 		// Default: DingTalk Stream via `dws event +listen-im` (message + reaction).
+		// After repeated event-center failures, fall back to poll so the loop stays live.
+		failures := 0
 		for {
 			if runCtx.Err() != nil {
 				return
@@ -291,15 +294,48 @@ func (p *DWSProvider) Subscribe(ctx context.Context, convID string) (<-chan Inbo
 			if runCtx.Err() != nil {
 				return
 			}
-			fmt.Fprintf(os.Stderr, "dws stream exited: %v — restart in 90s (event-center cooldown)\n", err)
+			failures++
+			wait := 90 * time.Second
+			if failures >= 1 {
+				fmt.Fprintf(os.Stderr, "dws stream failed %d times (%v) — falling back to poll; reactions via list-emotion-replies\n", failures, err)
+				p.runPollLoop(runCtx, convID)
+				return
+			}
+			fmt.Fprintf(os.Stderr, "dws stream exited: %v — restart in %s (event-center cooldown)\n", err, wait)
 			select {
 			case <-runCtx.Done():
 				return
-			case <-time.After(90 * time.Second):
+			case <-time.After(wait):
 			}
 		}
 	}()
 	return ch, nil
+}
+
+func (p *DWSProvider) runPollLoop(ctx context.Context, convID string) {
+	t := time.NewTicker(p.cfg.PollEvery)
+	defer t.Stop()
+	reactEvery := time.NewTicker(12 * time.Second)
+	defer reactEvery.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			n, err := p.pollOnce(ctx, convID, false, 0)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "dws poll: %v\n", err)
+			} else if n > 0 {
+				fmt.Fprintf(os.Stderr, "dws poll: +%d new\n", n)
+			}
+		case <-reactEvery.C:
+			if n, err := p.pollNegativeReactions(ctx, convID); err != nil {
+				fmt.Fprintf(os.Stderr, "dws reaction-poll: %v\n", err)
+			} else if n > 0 {
+				fmt.Fprintf(os.Stderr, "dws reaction-poll: +%d negative\n", n)
+			}
+		}
+	}
 }
 
 // pollOnce fetches one page. seedOnly marks everything seen without delivering.
@@ -397,7 +433,26 @@ func (p *DWSProvider) Send(ctx context.Context, convID, text string) error {
 	default:
 		args = append(args, "--group", convID)
 	}
-	_, err := p.run(ctx, args...)
+	raw, err := p.run(ctx, args...)
+	if err == nil {
+		var resp map[string]any
+		if json.Unmarshal(raw, &resp) == nil {
+			for _, k := range []string{"openMsgId", "messageId", "msgId", "id"} {
+				if s, _ := resp[k].(string); s != "" {
+					p.rememberOutbound(s)
+					break
+				}
+			}
+			if data, ok := resp["data"].(map[string]any); ok {
+				for _, k := range []string{"openMsgId", "messageId", "msgId", "id"} {
+					if s, _ := data[k].(string); s != "" {
+						p.rememberOutbound(s)
+						break
+					}
+				}
+			}
+		}
+	}
 	return err
 }
 
