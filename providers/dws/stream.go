@@ -9,12 +9,14 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
 // startEventStream runs `dws event +listen-im` (DingTalk Stream) and pumps
-// flattened NDJSON into ch. Blocks until ctx cancelled or process exits.
-func (p *DWSProvider) startEventStream(ctx context.Context, convID string, ch chan Inbound) error {
+// NDJSON into ch. Blocks until ctx cancelled or process exits.
+// cooldown is parsed from dws stderr ("Retry After: Ns") when present.
+func (p *DWSProvider) startEventStream(ctx context.Context, convID string, ch chan Inbound) (err error, cooldown time.Duration) {
 	args := []string{
 		"event", "+listen-im",
 		"--events", "message,reaction",
@@ -31,19 +33,21 @@ func (p *DWSProvider) startEventStream(ctx context.Context, convID string, ch ch
 	cmd := exec.CommandContext(ctx, p.cfg.DWSBin, p.dwsArgs(args...)...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return err
+		return err, 0
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return err
+		return err, 0
 	}
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("dws event listen-im start: %w", err)
+		return fmt.Errorf("dws event listen-im start: %w", err), 0
 	}
 	fmt.Fprintf(os.Stderr, "dws: stream started pid=%d cid=%s events=message,reaction\n",
 		cmd.Process.Pid, trunc(convID, 40))
 
 	ready := make(chan struct{}, 1)
+	var coolMu sync.Mutex
+	var coolHint time.Duration
 	go func() {
 		sc := bufio.NewScanner(stderr)
 		sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -56,6 +60,13 @@ func (p *DWSProvider) startEventStream(ctx context.Context, convID string, ch ch
 				default:
 				}
 			}
+			if d := parseRetryAfter(line); d > 0 {
+				coolMu.Lock()
+				if d > coolHint {
+					coolHint = d
+				}
+				coolMu.Unlock()
+			}
 		}
 	}()
 
@@ -65,7 +76,7 @@ func (p *DWSProvider) startEventStream(ctx context.Context, convID string, ch ch
 		fmt.Fprintf(os.Stderr, "dws: stream ready timeout — still reading stdout\n")
 	case <-ctx.Done():
 		_ = cmd.Process.Kill()
-		return ctx.Err()
+		return ctx.Err(), 0
 	}
 
 	sc := bufio.NewScanner(stdout)
@@ -117,7 +128,7 @@ func (p *DWSProvider) startEventStream(ctx context.Context, convID string, ch ch
 		case ch <- in:
 		case <-ctx.Done():
 			_ = cmd.Process.Kill()
-			return ctx.Err()
+			return ctx.Err(), 0
 		default:
 			fmt.Fprintf(os.Stderr, "dws stream: channel full, drop %s %s\n", in.Kind, in.MsgID)
 		}
@@ -126,10 +137,41 @@ func (p *DWSProvider) startEventStream(ctx context.Context, convID string, ch ch
 		fmt.Fprintf(os.Stderr, "dws stream stdout: %v\n", err)
 	}
 	waitErr := cmd.Wait()
+	coolMu.Lock()
+	cd := coolHint
+	coolMu.Unlock()
 	if ctx.Err() != nil {
-		return ctx.Err()
+		return ctx.Err(), cd
 	}
-	return waitErr
+	return waitErr, cd
+}
+
+// parseRetryAfter extracts "Retry After: 518s" style hints from dws stderr.
+func parseRetryAfter(line string) time.Duration {
+	// Retry After: 518s
+	if i := strings.Index(line, "Retry After:"); i >= 0 {
+		rest := strings.TrimSpace(line[i+len("Retry After:"):])
+		fs := strings.Fields(rest)
+		if len(fs) > 0 {
+			if d, err := time.ParseDuration(fs[0]); err == nil && d > 0 {
+				return d + 5*time.Second // small cushion past server hint
+			}
+		}
+	}
+	// subscription attempt cooldown until 2026-10-10T05:10:09Z
+	if i := strings.Index(line, "cooldown until "); i >= 0 {
+		rest := strings.TrimSpace(line[i+len("cooldown until "):])
+		fs := strings.Fields(rest)
+		if len(fs) > 0 {
+			ts := strings.TrimRight(fs[0], ".,;")
+			if t, err := time.Parse(time.RFC3339, ts); err == nil {
+				if d := time.Until(t); d > 0 {
+					return d + 5*time.Second
+				}
+			}
+		}
+	}
+	return 0
 }
 
 type streamEvt map[string]any

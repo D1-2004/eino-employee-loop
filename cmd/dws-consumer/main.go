@@ -35,7 +35,8 @@ func main() {
 	ocModel := flag.String("opencode-model", os.Getenv("OPENCODE_MODEL"), "optional OpenCode model")
 	instr := flag.String("instruction", "", "override system instruction")
 	seedHist := flag.Int("seed-history", 40, "seed recent DWS messages on first run (0=off)")
-	transport := flag.String("transport", envOr("DWS_TRANSPORT", "stream"), "stream (dws event listen-im) | poll")
+	transport := flag.String("transport", envOr("DWS_TRANSPORT", "stream"), "stream (dws event +listen-im) | poll (emergency only)")
+	allowPoll := flag.Bool("allow-poll-fallback", envOr("DWS_ALLOW_POLL_FALLBACK", "") == "1", "if stream keeps failing, eventually fall back to poll (default: never)")
 	flag.Parse()
 	_ = godotenv.Load(*dotenv)
 
@@ -78,7 +79,7 @@ func main() {
 	prov := dws.NewDWSProvider(dws.DWSConfig{
 		Profile: *profile, PollEvery: *poll, Kind: *kind,
 		SelfNames: selfNames, SelfIDs: selfIDs,
-		Transport: *transport,
+		Transport: *transport, AllowPollFallback: *allowPoll,
 	})
 	defer prov.Close()
 
@@ -102,8 +103,8 @@ func main() {
 	must(err)
 	defer rt.Stop()
 
-	fmt.Printf("dws-consumer starting\n  field=%s locator=%s kind=%s profile=%q\n  db=%s checkpoint=%s|%s\n  markdown_send=true ai_tag=false ack_mode=auto transport=%s\n",
-		field.ID, trunc(*cid, 40), *kind, *profile, *db, *tenant, *scene, *transport)
+	fmt.Printf("dws-consumer starting\n  field=%s locator=%s kind=%s profile=%q\n  db=%s checkpoint=%s|%s\n  markdown_send=true ai_tag=false ack_mode=auto transport=%s allow_poll_fallback=%v\n",
+		field.ID, trunc(*cid, 40), *kind, *profile, *db, *tenant, *scene, *transport, *allowPoll)
 
 	if *seedHist > 0 {
 		existing, _ := stack.Conv.Recent(ctx, *tenant, *scene, 0, 20)

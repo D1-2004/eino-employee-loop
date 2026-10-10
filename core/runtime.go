@@ -75,6 +75,9 @@ type Config struct {
 	// BudgetFallbackDispatch: when the per-turn budget is exhausted without a
 	// terminal tool, Host auto-dispatches the window text instead of stalling/asking again.
 	BudgetFallbackDispatch bool
+	// JobTimeout caps a single JobExecutor.Execute call (default 90s). Prevents
+	// hung OpenCode/shell jobs from leaving the user without a turn completion.
+	JobTimeout time.Duration
 }
 
 type Item struct {
@@ -375,8 +378,19 @@ const ackSystem = `你是钉钉同事的「秒回」通道。主决策在另一�
 // isGreetingOrAckSkip detects utterances that should skip the stiff ack path
 // (greetings, status/memory lookups, summaries — Host answers these in the decision turn).
 func isGreetingOrAckSkip(text string) bool {
+	if isGreeting(text) || isTrivialQA(text) || isStatusLookup(text) {
+		return true
+	}
+	return false
+}
+
+func normalizeUtterance(text string) string {
 	t := strings.TrimSpace(strings.ToLower(text))
-	t = strings.Trim(t, "！!。.?？~～、，,")
+	return strings.Trim(t, "！!。.?？~～、，,")
+}
+
+func isGreeting(text string) bool {
+	t := normalizeUtterance(text)
 	if t == "" {
 		return true
 	}
@@ -395,15 +409,21 @@ func isGreetingOrAckSkip(text string) bool {
 	}
 	switch t {
 	case "hi", "hello", "hey", "yo", "sup",
-		"你好", "您好", "嗨", "哈喽", "哈罗", "在吗", "在不在", "早上好", "中午好", "下午好", "晚上好", "晚安",
-		"谢谢", "多谢", "感谢", "thx", "thanks", "thank you", "ok", "okay", "好的", "好", "嗯", "哦", "收到":
+		"你好", "你好呀", "您好", "嗨", "哈喽", "哈罗", "在吗", "在不在",
+		"早上好", "中午好", "下午好", "晚上好", "晚安", "早",
+		"谢谢", "多谢", "感谢", "thx", "thanks", "thank you",
+		"ok", "okay", "好的", "好", "嗯", "哦", "收到", "不需要", "先不用", "算了":
 		return true
 	}
-	// Status / memory / summary questions — no ack; decision turn replies once.
+	return false
+}
+
+func isStatusLookup(text string) bool {
+	t := normalizeUtterance(text)
 	statusHints := []string{
 		"有哪些任务", "哪些任务在执行", "任务在执行", "还在查吗", "进度",
 		"有哪些记忆", "有什么记忆", "记忆呢", "当前会话有哪些记忆",
-		"刚才都做了啥", "总结", "聊天记录", "你有什么能力", "定时任务",
+		"刚才都做了啥", "刚才我说了啥", "总结", "聊天记录", "你有什么能力", "你可以做啥", "定时任务",
 	}
 	for _, h := range statusHints {
 		if strings.Contains(t, h) {
@@ -411,6 +431,64 @@ func isGreetingOrAckSkip(text string) bool {
 		}
 	}
 	return false
+}
+
+// isTrivialQA: short math / one-shot fact that must be answered directly without tools or recap.
+func isTrivialQA(text string) bool {
+	t := strings.TrimSpace(text)
+	if t == "" {
+		return false
+	}
+	rs := []rune(t)
+	if len(rs) > 24 {
+		return false
+	}
+	// arithmetic like 1+1, 2*3, 10-4, 3÷3
+	if regexp.MustCompile(`^[\d\s.+\-*/×÷=？?]+$`).MatchString(t) && regexp.MustCompile(`\d`).MatchString(t) {
+		return true
+	}
+	low := normalizeUtterance(t)
+	switch low {
+	case "1+1", "1＋1", "2+1", "2＋1", "3+3", "3＋3":
+		return true
+	}
+	return false
+}
+
+// isAmbiguousShort: one vague token without object — prefer ask_human over dispatch.
+func isAmbiguousShort(text string) bool {
+	t := normalizeUtterance(text)
+	if t == "" || isGreeting(text) || isTrivialQA(text) || isStatusLookup(text) {
+		return false
+	}
+	rs := []rune(t)
+	if len(rs) > 6 {
+		return false
+	}
+	switch t {
+	case "调度", "安排", "处理", "弄一下", "搞一下", "看看", "查查", "帮我", "继续", "那个", "这个":
+		return true
+	}
+	// single CJK token / short english verb without object
+	if len(rs) <= 2 && !regexp.MustCompile(`[0-9]`).MatchString(t) {
+		return true
+	}
+	return false
+}
+
+func hostUtteranceHint(winText string) string {
+	switch {
+	case isTrivialQA(winText):
+		return "Host route hint: current utterance is trivial Q&A. Call reply with ONLY the short answer (e.g. 1+1 → 2). No tools. Do not recap prior memory, tasks, weather, or capabilities."
+	case isGreeting(winText):
+		return "Host route hint: pure greeting/ack. Call reply with one short hello (or stay_quiet). Do NOT revive prior tasks, weather, fishing, memory, or progress."
+	case isAmbiguousShort(winText):
+		return "Host route hint: utterance is ambiguous/underspecified. Call ask_human with one brief clarifying question. Do NOT dispatch_task."
+	case isStatusLookup(winText):
+		return "Host route hint: status/memory/summary question. Answer from Host registry/memory snapshot only; do not dispatch new work; keep it short."
+	default:
+		return ""
+	}
 }
 
 func (r *Runtime) doAck(ctx context.Context, m Msg) {

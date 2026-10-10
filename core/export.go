@@ -57,6 +57,7 @@ func DefaultConfig(tenant, scene string, models ModelProvider, caseData CaseData
 		ConvTokens: 2200, MemTokens: 700, RegTokens: 450,
 		MaxModelRoundsPerTurn:  4,
 		BudgetFallbackDispatch: true,
+		JobTimeout:             90 * time.Second,
 	}
 }
 

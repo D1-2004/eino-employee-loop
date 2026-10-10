@@ -20,7 +20,11 @@ const runtimeAddendum = `RUNTIME NOTES (Host, authoritative):
 5. User-facing text: short, conclusion first, DingTalk markdown (no tables). Hide task_ref/receipt unless the user asks for audit ids.
 6. Process events (accepted/progress/done/failed) are Host-owned; do not spam progress messages yourself.
 7. Per-turn model-round budget is finite. Prefer one terminal tool soon (reply / dispatch_task / ask_human / stay_quiet). If Host reports budget fallback, work was already auto-dispatched.
-8. Negative emoji reactions (❌ / 打叉) are correction wakes — revise the prior answer or task; do not re-ack the original request unchanged.`
+8. Negative emoji reactions (❌ / 打叉) are correction wakes — revise the prior answer or task; do not re-ack the original request unchanged.
+9. Answer ONLY the current sender utterance. Do not re-summarize prior memory/tasks/weather/capabilities unless the user asked for that summary.
+10. Trivial Q&A (math, yes/no, one-fact): reply with the answer alone — no tools, no recap.
+11. Pure greetings: one short hello; do not revive old work.
+12. Ambiguous one-token asks without object: ask_human once; do not dispatch_task.`
 
 func vclock(ms int64) string {
 	return time.UnixMilli(ms).In(time.FixedZone("CST", 8*3600)).Format("15:04:05")
@@ -121,8 +125,15 @@ func (r *Runtime) genInput(ctx context.Context, l *adk.TurnLoop[Item, *schema.Me
 		turn.Sections["registry"] = EstTokens(regTxt)
 		msgs = append(msgs, schema.UserMessage(regTxt))
 	}
-	// nearby conversation under token budget (newest kept)
+	// nearby conversation under token budget (newest kept).
+	// Trivial Q&A / pure greetings: almost no history — prevents "1+1 → essay" dumps.
 	budget := cfg.ConvTokens
+	if isTrivialQA(turn.winText) || isGreeting(turn.winText) {
+		budget = 280
+		if len(nearby) > 2 {
+			nearby = nearby[len(nearby)-2:]
+		}
+	}
 	var lines []*schema.Message
 	used, omitted := 0, 0
 	for i := len(nearby) - 1; i >= 0; i-- {
@@ -173,6 +184,9 @@ func (r *Runtime) genInput(ctx context.Context, l *adk.TurnLoop[Item, *schema.Me
 	}
 	if hasReaction {
 		msgs = append(msgs, schema.UserMessage("Host correction wake: the user reacted with a negative emoji (❌ / 打叉) on a prior message. Treat the current window as a revise request — fix the prior reply or task; do not ignore the reaction."))
+	}
+	if hint := hostUtteranceHint(turn.winText); hint != "" {
+		msgs = append(msgs, schema.UserMessage(hint))
 	}
 		if repair {
 		msgs = append(msgs, schema.UserMessage("Host protocol notice: your previous response ended without calling a decision tool, so NOTHING was delivered to the user. Your previous plain text (not delivered): "+truncRunes(repairText, 600)+"\nNow call exactly one decision tool (reply / dispatch_task / ask_human / stay_quiet / ...). If you wanted to answer, use reply with the exact text."))

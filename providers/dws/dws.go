@@ -39,8 +39,14 @@ type DWSConfig struct {
 	// Fixes the case where the consumer was stuck/deadlocked while Hi already arrived.
 	CatchUp time.Duration
 	// Transport: "stream" (default) uses `dws event +listen-im` (DingTalk Stream).
-	// "poll" keeps the legacy chat +chat-messages ticker (fallback / tests).
+	// "poll" keeps the legacy chat +chat-messages ticker (tests / emergency only).
 	Transport string
+	// AllowPollFallback: when false (default), stream failures only restart with
+	// backoff — never switch to poll. Set true only for emergency / offline eval.
+	AllowPollFallback bool
+	// StreamRestartMin is the minimum wait before restarting stream after exit.
+	// Default 30s. Cooldown hints from dws stderr override when larger.
+	StreamRestartMin time.Duration
 }
 
 // DWSProvider polls dws chat +chat-messages and sends via +messages-send.
@@ -73,6 +79,9 @@ func NewDWSProvider(cfg DWSConfig) *DWSProvider {
 	}
 	if cfg.Transport == "" {
 		cfg.Transport = "stream"
+	}
+	if cfg.StreamRestartMin <= 0 {
+		cfg.StreamRestartMin = 30 * time.Second
 	}
 	return &DWSProvider{
 		cfg:  cfg,
@@ -284,24 +293,35 @@ func (p *DWSProvider) Subscribe(ctx context.Context, convID string) (<-chan Inbo
 			}
 		}
 		// Default: DingTalk Stream via `dws event +listen-im` (message + reaction).
-		// After repeated event-center failures, fall back to poll so the loop stays live.
+		// Do NOT fall back to poll unless AllowPollFallback is explicitly set —
+		// poll is slow and was the root cause of late replies in eval.
 		failures := 0
 		for {
 			if runCtx.Err() != nil {
 				return
 			}
-			err := p.startEventStream(runCtx, convID, ch)
+			streamErr, cooldown := p.startEventStream(runCtx, convID, ch)
 			if runCtx.Err() != nil {
 				return
 			}
 			failures++
-			wait := 90 * time.Second
-			if failures >= 1 {
-				fmt.Fprintf(os.Stderr, "dws stream failed %d times (%v) — falling back to poll; reactions via list-emotion-replies\n", failures, err)
+			wait := p.cfg.StreamRestartMin
+			if cooldown > wait {
+				wait = cooldown
+			}
+			// Exponential-ish backoff capped at 5m, but honour dws cooldown hints.
+			if backoff := time.Duration(failures) * 45 * time.Second; backoff > wait && cooldown == 0 {
+				wait = backoff
+			}
+			if wait > 5*time.Minute {
+				wait = 5 * time.Minute
+			}
+			if p.cfg.AllowPollFallback && failures >= 5 {
+				fmt.Fprintf(os.Stderr, "dws stream failed %d times (%v) — AllowPollFallback=true, switching to poll; reactions via list-emotion-replies\n", failures, streamErr)
 				p.runPollLoop(runCtx, convID)
 				return
 			}
-			fmt.Fprintf(os.Stderr, "dws stream exited: %v — restart in %s (event-center cooldown)\n", err, wait)
+			fmt.Fprintf(os.Stderr, "dws stream exited (#%d): %v — restart in %s (stream-only; poll disabled)\n", failures, streamErr, wait)
 			select {
 			case <-runCtx.Done():
 				return

@@ -280,9 +280,9 @@ func (r *Runtime) dispatch(ctx context.Context, a map[string]any, winSeq []int64
 		}
 		if existing != nil {
 			r.count("dispatch_deduplicated")
-			msg := fmt.Sprintf("这件事已经在登记里了，不重复派发：「%s」（任务 %s，状态 %s，%d 秒前派出）。", truncRunes(existing.Goal, 40), existing.ID, existing.Status, (NowMs()-existing.CreatedMs)/1000)
+			msg := fmt.Sprintf("这个还在办：「%s」，不重复派。", truncRunes(existing.Goal, 40))
 			if existing.Status == StDone {
-				msg = fmt.Sprintf("这件事刚做完，不重复派发：「%s」（任务 %s）。结果：%s", truncRunes(existing.Goal, 40), existing.ID, truncRunes(existing.Result, 120))
+				msg = fmt.Sprintf("这个刚做完：「%s」。%s", truncRunes(existing.Goal, 36), truncRunes(existing.Result, 80))
 			}
 			r.deliver("dedup_notice", msg)
 			return map[string]any{"accepted": false, "deduplicated": true, "task_ref": existing.ID, "state": existing.Status, "note": "Host found an equivalent task; nothing new was created. The Host already told the user."}
@@ -306,7 +306,7 @@ func (r *Runtime) dispatch(ctx context.Context, a map[string]any, winSeq []int64
 	}
 	if !created {
 		r.count("dispatch_deduplicated")
-		r.deliver("dedup_notice", fmt.Sprintf("这件事已经在登记里了，不重复派发（任务 %s，状态 %s）。", cur.ID, cur.Status))
+		r.deliver("dedup_notice", fmt.Sprintf("这个已经在办了（%s），不重复派。", cur.Status))
 		return map[string]any{"accepted": false, "deduplicated": true, "task_ref": cur.ID, "state": cur.Status}
 	}
 	r.count("tasks_created")
@@ -343,9 +343,18 @@ func (r *Runtime) startJob(t *Task) {
 				return
 			}
 		}
-		res, err := exec.Execute(jctx, t)
+		jobTO := r.cfg.JobTimeout
+		if jobTO <= 0 {
+			jobTO = 90 * time.Second
+		}
+		execCtx, execCancel := context.WithTimeout(jctx, jobTO)
+		res, err := exec.Execute(execCtx, t)
+		execCancel()
 		if jctx.Err() != nil {
 			return
+		}
+		if err != nil && execCtx.Err() != nil {
+			err = fmt.Errorf("job timeout after %s: %w", jobTO, err)
 		}
 		if err != nil {
 			_, _ = r.ts.Transition(ctx, r.cfg.Tenant, t.ID, []string{StRunning}, StFailed, err.Error())
@@ -513,9 +522,15 @@ func (r *Runtime) hostAutoDispatch(ctx context.Context, turn *Turn) {
 		r.deliver("reply", "这轮没谈拢，你再说具体一点我再办。")
 		return
 	}
-	if isGreetingOrAckSkip(goal) {
+	if isGreeting(goal) || isTrivialQA(goal) || isStatusLookup(goal) {
+		// Should have been a direct reply; do not invent a background job.
 		r.deliver("reply", "这轮没谈拢，你再说具体一点我再办。")
 		r.count("budget_fallback_skip")
+		return
+	}
+	if isAmbiguousShort(goal) {
+		r.deliver("ask", "你具体想办哪件事？补一句对象或目标我再动手。")
+		r.count("budget_fallback_ask")
 		return
 	}
 	if turn.Trigger == "reaction" {
