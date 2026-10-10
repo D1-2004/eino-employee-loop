@@ -307,14 +307,12 @@ func (p *DWSProvider) Subscribe(ctx context.Context, convID string) (<-chan Inbo
 			failures++
 			wait := p.cfg.StreamRestartMin
 			if cooldown > wait {
-				wait = cooldown
-			}
-			// Exponential-ish backoff capped at 5m, but honour dws cooldown hints.
-			if backoff := time.Duration(failures) * 45 * time.Second; backoff > wait && cooldown == 0 {
+				wait = cooldown // honour full "Retry After" / cooldown-until from dws
+			} else if backoff := time.Duration(failures) * 45 * time.Second; backoff > wait {
 				wait = backoff
-			}
-			if wait > 5*time.Minute {
-				wait = 5 * time.Minute
+				if wait > 5*time.Minute {
+					wait = 5 * time.Minute // only cap synthetic backoff, never the server hint
+				}
 			}
 			if p.cfg.AllowPollFallback && failures >= 5 {
 				fmt.Fprintf(os.Stderr, "dws stream failed %d times (%v) — AllowPollFallback=true, switching to poll; reactions via list-emotion-replies\n", failures, streamErr)
