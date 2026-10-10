@@ -1,0 +1,382 @@
+{
+ "treat": {
+  "runs": 26,
+  "judged": 18,
+  "judge_pass": 10,
+  "judge_pass_strict": 10,
+  "dup_attempts": 0,
+  "dup_created": 0,
+  "dedup_hits": 0,
+  "dispatch_attempts": 30,
+  "tasks_created": 30,
+  "ungrounded_exec_claims": 0,
+  "runs_with_ungrounded_claims": 0,
+  "final_ack_ms_p50": 713.0,
+  "final_ack_ms_p95": 966.0,
+  "ack_call_ms_p50": 726,
+  "ack_call_ms_p95": 975,
+  "final_decision_ms_p50": 5737.0,
+  "final_decision_ms_p95": 26963.0,
+  "decision_ms_all_p50": 3932.0,
+  "decision_ms_all_p95": 17695.0,
+  "prompt_tokens_per_model_call": 22561,
+  "completion_tokens_per_model_call": 879,
+  "cache_hit_ratio": 0.975,
+  "model_calls_per_run": 7.3,
+  "agent_errors": 0,
+  "plain_text_turns": 10,
+  "no_terminal_turns": 10,
+  "total_turns": 138,
+  "canceled_turns": 6,
+  "ack_misfire_stay_quiet": 0,
+  "dispatch_on_status_q": 0,
+  "repairs": 9,
+  "protocol_failures": 1,
+  "acks": 87
+ },
+ "control": {
+  "runs": 26,
+  "judged": 18,
+  "judge_pass": 11,
+  "judge_pass_strict": 11,
+  "dup_attempts": 3,
+  "dup_created": 3,
+  "dedup_hits": 0,
+  "dispatch_attempts": 51,
+  "tasks_created": 51,
+  "ungrounded_exec_claims": 3,
+  "runs_with_ungrounded_claims": 2,
+  "final_ack_ms_p50": 747.0,
+  "final_ack_ms_p95": 981.0,
+  "ack_call_ms_p50": 762,
+  "ack_call_ms_p95": 980,
+  "final_decision_ms_p50": 10703.0,
+  "final_decision_ms_p95": 25605.0,
+  "decision_ms_all_p50": 5196.0,
+  "decision_ms_all_p95": 23417.0,
+  "prompt_tokens_per_model_call": 22532,
+  "completion_tokens_per_model_call": 1049,
+  "cache_hit_ratio": 0.973,
+  "model_calls_per_run": 7.7,
+  "agent_errors": 0,
+  "plain_text_turns": 8,
+  "no_terminal_turns": 8,
+  "total_turns": 158,
+  "canceled_turns": 6,
+  "ack_misfire_stay_quiet": 0,
+  "dispatch_on_status_q": 9,
+  "repairs": 7,
+  "protocol_failures": 1,
+  "acks": 87
+ },
+ "per_scenario": {
+  "C01|control": {
+   "runs": 2,
+   "pass": 2,
+   "judged": 2,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 6
+  },
+  "C01|treat": {
+   "runs": 2,
+   "pass": 2,
+   "judged": 2,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 4
+  },
+  "C03-done|control": {
+   "runs": 2,
+   "pass": 0,
+   "judged": 2,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 4
+  },
+  "C03-done|treat": {
+   "runs": 2,
+   "pass": 2,
+   "judged": 2,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 4
+  },
+  "C03-run|control": {
+   "runs": 2,
+   "pass": 2,
+   "judged": 2,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 4
+  },
+  "C03-run|treat": {
+   "runs": 2,
+   "pass": 1,
+   "judged": 2,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 4
+  },
+  "C08|control": {
+   "runs": 2,
+   "pass": 0,
+   "judged": 2,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 2
+  },
+  "C08|treat": {
+   "runs": 2,
+   "pass": 2,
+   "judged": 2,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 2
+  },
+  "C13-done|control": {
+   "runs": 2,
+   "pass": 1,
+   "judged": 2,
+   "dup_att": 1,
+   "dup_cr": 1,
+   "dedup": 0,
+   "claims": 2,
+   "tasks": 5
+  },
+  "C13-done|treat": {
+   "runs": 2,
+   "pass": 0,
+   "judged": 2,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 2
+  },
+  "C13-run|control": {
+   "runs": 2,
+   "pass": 2,
+   "judged": 2,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 1,
+   "tasks": 6
+  },
+  "C13-run|treat": {
+   "runs": 2,
+   "pass": 0,
+   "judged": 2,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 2
+  },
+  "C15|control": {
+   "runs": 2,
+   "pass": 0,
+   "judged": 2,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 6
+  },
+  "C15|treat": {
+   "runs": 2,
+   "pass": 0,
+   "judged": 2,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 2
+  },
+  "C20-done|control": {
+   "runs": 2,
+   "pass": 2,
+   "judged": 2,
+   "dup_att": 1,
+   "dup_cr": 1,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 6
+  },
+  "C20-done|treat": {
+   "runs": 2,
+   "pass": 1,
+   "judged": 2,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 2
+  },
+  "C20-run|control": {
+   "runs": 2,
+   "pass": 2,
+   "judged": 2,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 4
+  },
+  "C20-run|treat": {
+   "runs": 2,
+   "pass": 2,
+   "judged": 2,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 2
+  },
+  "S-memory|control": {
+   "runs": 2,
+   "pass": 0,
+   "judged": 0,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 2
+  },
+  "S-memory|treat": {
+   "runs": 2,
+   "pass": 0,
+   "judged": 0,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 2
+  },
+  "S-memory-priv|control": {
+   "runs": 2,
+   "pass": 0,
+   "judged": 0,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 0
+  },
+  "S-memory-priv|treat": {
+   "runs": 2,
+   "pass": 0,
+   "judged": 0,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 0
+  },
+  "S-preempt|control": {
+   "runs": 2,
+   "pass": 0,
+   "judged": 0,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 2
+  },
+  "S-preempt|treat": {
+   "runs": 2,
+   "pass": 0,
+   "judged": 0,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 2
+  },
+  "S-webhook-dup|control": {
+   "runs": 2,
+   "pass": 0,
+   "judged": 0,
+   "dup_att": 1,
+   "dup_cr": 1,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 4
+  },
+  "S-webhook-dup|treat": {
+   "runs": 2,
+   "pass": 0,
+   "judged": 0,
+   "dup_att": 0,
+   "dup_cr": 0,
+   "dedup": 0,
+   "claims": 0,
+   "tasks": 2
+  }
+ },
+ "store_ops_in_runtime_us": {
+  "kv.get": {
+   "n": 53,
+   "p50_median": 1.6,
+   "p95_median": 1.6
+  },
+  "kv.setnx": {
+   "n": 30,
+   "p50_median": 3.7,
+   "p95_median": 3.7
+  },
+  "mem.put": {
+   "n": 38,
+   "p50_median": 203.5,
+   "p95_median": 203.5
+  },
+  "mem.recent": {
+   "n": 330,
+   "p50_median": 100.0,
+   "p95_median": 141.7
+  },
+  "mem.search": {
+   "n": 370,
+   "p50_median": 110.7,
+   "p95_median": 221.5
+  },
+  "task.create": {
+   "n": 30,
+   "p50_median": 212.0,
+   "p95_median": 212.0
+  },
+  "task.find": {
+   "n": 368,
+   "p50_median": 175.1,
+   "p95_median": 351.6
+  },
+  "task.get": {
+   "n": 70,
+   "p50_median": 51.8,
+   "p95_median": 171.8
+  },
+  "task.transition": {
+   "n": 60,
+   "p50_median": 114.8,
+   "p95_median": 127.0
+  }
+ },
+ "db_bytes_per_run_median": 341968
+}

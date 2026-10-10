@@ -1,0 +1,247 @@
+{
+ "postgres17+redis7": {
+  "concurrent_create_16w": {
+   "errors": 0,
+   "ok": 4000,
+   "writes_per_s": 15129.505102805724
+  },
+  "concurrent_create_1w": {
+   "errors": 0,
+   "ok": 250,
+   "writes_per_s": 6337.291597215232
+  },
+  "concurrent_create_4w": {
+   "errors": 0,
+   "ok": 1000,
+   "writes_per_s": 12321.479474540649
+  },
+  "concurrent_create_8w": {
+   "errors": 0,
+   "ok": 2000,
+   "writes_per_s": 8625.825330288997
+  },
+  "dedup_race_64_goroutines_winners": 1,
+  "growth": {
+   "bytes_per_task_plus_fact": 1181.2864,
+   "bytes_total": 23625728,
+   "db_bytes_after": 28360704,
+   "records": 20000
+  },
+  "single_thread_us": {
+   "kv.get": {
+    "N": 2000,
+    "P50us": 22.541,
+    "P95us": 27.058,
+    "P99us": 32.571,
+    "MeanUs": 23.535013500000016
+   },
+   "kv.lock+unlock": {
+    "N": 2000,
+    "P50us": 51.826,
+    "P95us": 63.12,
+    "P99us": 84.929,
+    "MeanUs": 53.215364500000106
+   },
+   "kv.set": {
+    "N": 2000,
+    "P50us": 24.174,
+    "P95us": 30.214,
+    "P99us": 43.284,
+    "MeanUs": 25.872644999999984
+   },
+   "kv.setnx(dedup)": {
+    "N": 2000,
+    "P50us": 24.852,
+    "P95us": 32.421,
+    "P99us": 51.724,
+    "MeanUs": 26.827351500000006
+   },
+   "mem.put": {
+    "N": 2000,
+    "P50us": 566.581,
+    "P95us": 1138.93,
+    "P99us": 1409.931,
+    "MeanUs": 599.980518
+   },
+   "mem.recent(30)": {
+    "N": 2000,
+    "P50us": 115.353,
+    "P95us": 214.625,
+    "P99us": 380.298,
+    "MeanUs": 130.8676269999998
+   },
+   "mem.search(keyword)": {
+    "N": 2000,
+    "P50us": 94.152,
+    "P95us": 146.352,
+    "P99us": 269.568,
+    "MeanUs": 102.83387250000017
+   },
+   "task.create": {
+    "N": 2000,
+    "P50us": 145.374,
+    "P95us": 226.786,
+    "P99us": 354.588,
+    "MeanUs": 160.5295034999996
+   },
+   "task.create(dup,dedup hit)": {
+    "N": 2000,
+    "P50us": 72.644,
+    "P95us": 106.141,
+    "P99us": 181.981,
+    "MeanUs": 80.34305400000012
+   },
+   "task.find(scene,20 rows)": {
+    "N": 2000,
+    "P50us": 96.325,
+    "P95us": 143.489,
+    "P99us": 288.308,
+    "MeanUs": 102.79027449999994
+   },
+   "task.find(substring)": {
+    "N": 2000,
+    "P50us": 155.936,
+    "P95us": 255.801,
+    "P99us": 375.119,
+    "MeanUs": 165.62278649999996
+   },
+   "task.get": {
+    "N": 2000,
+    "P50us": 47.337,
+    "P95us": 66.742,
+    "P99us": 135.049,
+    "MeanUs": 50.74425750000002
+   },
+   "task.transition(CAS)": {
+    "N": 2000,
+    "P50us": 86.883,
+    "P95us": 174.244,
+    "P99us": 283.515,
+    "MeanUs": 101.83506099999995
+   }
+  }
+ },
+ "sqlite(WAL)+memkv": {
+  "concurrent_create_16w": {
+   "errors": 0,
+   "ok": 4000,
+   "writes_per_s": 2912.1124725164923
+  },
+  "concurrent_create_1w": {
+   "errors": 0,
+   "ok": 250,
+   "writes_per_s": 6367.364050091799
+  },
+  "concurrent_create_4w": {
+   "errors": 0,
+   "ok": 1000,
+   "writes_per_s": 5263.737238279616
+  },
+  "concurrent_create_8w": {
+   "errors": 0,
+   "ok": 2000,
+   "writes_per_s": 3720.195980073038
+  },
+  "dedup_race_64_goroutines_winners": 1,
+  "growth": {
+   "bytes_per_task_plus_fact": 1226.752,
+   "bytes_total": 24535040,
+   "db_bytes_after": 111734376,
+   "records": 20000
+  },
+  "single_thread_us": {
+   "kv.get": {
+    "N": 2000,
+    "P50us": 0.211,
+    "P95us": 0.292,
+    "P99us": 0.351,
+    "MeanUs": 0.22715550000000026
+   },
+   "kv.lock+unlock": {
+    "N": 2000,
+    "P50us": 0.81,
+    "P95us": 1.255,
+    "P99us": 1.584,
+    "MeanUs": 0.8535994999999981
+   },
+   "kv.set": {
+    "N": 2000,
+    "P50us": 0.212,
+    "P95us": 0.276,
+    "P99us": 0.421,
+    "MeanUs": 0.2921720000000008
+   },
+   "kv.setnx(dedup)": {
+    "N": 2000,
+    "P50us": 0.267,
+    "P95us": 0.619,
+    "P99us": 1.089,
+    "MeanUs": 0.5032684999999986
+   },
+   "mem.put": {
+    "N": 2000,
+    "P50us": 423.535,
+    "P95us": 895.968,
+    "P99us": 4455.613,
+    "MeanUs": 496.58492300000046
+   },
+   "mem.recent(30)": {
+    "N": 2000,
+    "P50us": 173.26,
+    "P95us": 282.331,
+    "P99us": 486.856,
+    "MeanUs": 197.6768289999999
+   },
+   "mem.search(keyword)": {
+    "N": 2000,
+    "P50us": 122.96,
+    "P95us": 1414.727,
+    "P99us": 1861.806,
+    "MeanUs": 391.8586434999992
+   },
+   "task.create": {
+    "N": 2000,
+    "P50us": 101.666,
+    "P95us": 190.473,
+    "P99us": 474.898,
+    "MeanUs": 139.8313945000002
+   },
+   "task.create(dup,dedup hit)": {
+    "N": 2000,
+    "P50us": 71.917,
+    "P95us": 122.496,
+    "P99us": 142.399,
+    "MeanUs": 79.79458100000008
+   },
+   "task.find(scene,20 rows)": {
+    "N": 2000,
+    "P50us": 110.74,
+    "P95us": 174.845,
+    "P99us": 248.06,
+    "MeanUs": 124.68460899999997
+   },
+   "task.find(substring)": {
+    "N": 2000,
+    "P50us": 183.168,
+    "P95us": 300.326,
+    "P99us": 448.9,
+    "MeanUs": 193.24070400000002
+   },
+   "task.get": {
+    "N": 2000,
+    "P50us": 22.824,
+    "P95us": 33.098,
+    "P99us": 41.025,
+    "MeanUs": 24.516423999999976
+   },
+   "task.transition(CAS)": {
+    "N": 2000,
+    "P50us": 25.972,
+    "P95us": 42.919,
+    "P99us": 68.346,
+    "MeanUs": 37.98059999999999
+   }
+  }
+ },
+ "sqlite_fts5_trigram": true
+}
