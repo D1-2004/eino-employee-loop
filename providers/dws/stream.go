@@ -18,7 +18,6 @@ func (p *DWSProvider) startEventStream(ctx context.Context, convID string, ch ch
 	args := []string{
 		"event", "+listen-im",
 		"--events", "message,reaction",
-		"--flatten",
 		"-f", "ndjson",
 		"-y",
 	}
@@ -140,6 +139,29 @@ func parseStreamEvent(line, convID string) (Inbound, bool) {
 	if err := json.Unmarshal([]byte(line), &m); err != nil {
 		fmt.Fprintf(os.Stderr, "dws stream: bad json: %v head=%q\n", err, trunc(line, 80))
 		return Inbound{}, false
+	}
+	// Unwrap transport envelope when --flatten is off: {type, data:{...}}.
+	if data, ok := m["data"].(map[string]any); ok && len(data) > 0 {
+		typ0 := strField(m, "type")
+		if typ0 == "" {
+			typ0 = strField(m, "event_type")
+		}
+		merged := streamEvt{}
+		for k, v := range data {
+			merged[k] = v
+		}
+		for k, v := range m {
+			if k == "data" {
+				continue
+			}
+			if _, exists := merged[k]; !exists {
+				merged[k] = v
+			}
+		}
+		if typ0 != "" {
+			merged["type"] = typ0
+		}
+		m = merged
 	}
 	typ := strField(m, "type")
 	if typ == "" {
