@@ -125,9 +125,13 @@ func main() {
 	fmt.Printf("dws-consumer starting\n  cid=%s kind=%s profile=%q\n  db=%s checkpoint=%s\n  instruction_chars=%d markdown_send=true ai_tag=false\n",
 		*cid, *kind, *profile, *db, cfg.CheckpointID, len([]rune(cd.System)))
 
-	// Seed recent DWS history so the first turn already sees speakers/order.
+	// Seed recent DWS history only when the local log is thin (first run / new scene),
+	// so we do not duplicate already-tracked turns after a restart.
 	if *seedHist > 0 {
-		if hist, err := prov.FetchHistory(ctx, *cid, *seedHist); err != nil {
+		existing, _ := conv.Recent(ctx, *tenant, *scene, 0, 20)
+		if len(existing) >= 8 {
+			fmt.Printf("skip history seed: local conv already has %d msgs\n", len(existing))
+		} else if hist, err := prov.FetchHistory(ctx, *cid, *seedHist); err != nil {
 			fmt.Fprintf(os.Stderr, "seed history: %v\n", err)
 		} else if n, err := rt.SeedFromHistory(ctx, hist, selfNames, selfIDs); err != nil {
 			fmt.Fprintf(os.Stderr, "seed history append: %v\n", err)
