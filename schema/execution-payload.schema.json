@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/D1-2004/eino-employee-loop/schema/execution-payload.schema.json",
+  "title": "ExecutionPayload",
+  "description": "Payload of every Task Manager event (taskmgr.ExecutionPayload, payload_schema taskmgr.execution/v1).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_status",
+    "run_status",
+    "revision"
+  ],
+  "properties": {
+    "task_status": {
+      "$ref": "defs.schema.json#/$defs/TaskStatus"
+    },
+    "run_status": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "running",
+        "done",
+        "failed",
+        "cancelled",
+        "superseded"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "failed",
+        "stopped",
+        "steered",
+        "continued",
+        "shutdown"
+      ]
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Numbers progress events within a run."
+    }
+  }
+}

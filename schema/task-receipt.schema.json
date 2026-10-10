@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/D1-2004/eino-employee-loop/schema/task-receipt.schema.json",
+  "title": "TaskReceipt",
+  "description": "Proves the Task Manager accepted a request (contract.TaskReceipt).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_ref",
+    "status",
+    "created",
+    "revision"
+  ],
+  "properties": {
+    "task_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_ref": {
+      "type": "string"
+    },
+    "status": {
+      "$ref": "defs.schema.json#/$defs/TaskStatus"
+    },
+    "created": {
+      "type": "boolean"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

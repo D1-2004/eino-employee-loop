@@ -1,0 +1,3 @@
+{
+  "memstore.memory.digest": "已归档 {count} 条较早记忆（原文仍可按 id 取回）：\n{lines}"
+}

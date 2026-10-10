@@ -1,0 +1,10 @@
+{
+  "hostext.event.plan.step_completed": "计划中的一步已完成，下一步需要复核。",
+  "hostext.event.collection.ready": "征集的回答已全部到齐或已到截止时间。",
+  "hostext.event.task.reminder": "任务提醒或看门狗触发。",
+  "hostext.tool.continue_plan": "按原计划启动已复核计划的下一步。",
+  "hostext.tool.describe_capabilities": "说明在本场域能协助做什么，配置链接由 Host 附上。",
+  "hostext.tool.scene_config_get": "读取本场域当前的配置。",
+  "hostext.tool.create_collection": "向多人提出同一个问题并收集回答。",
+  "hostext.tool.set_scene_participation": "场域负责人要求时，调整在本场域的参与程度。"
+}

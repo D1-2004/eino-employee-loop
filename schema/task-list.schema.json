@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/D1-2004/eino-employee-loop/schema/task-list.schema.json",
+  "title": "TaskList",
+  "description": "The answer to GET /v1/tasks (httpapi.TaskList), newest first.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tasks"
+  ],
+  "properties": {
+    "tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "task-view.schema.json"
+      }
+    }
+  }
+}

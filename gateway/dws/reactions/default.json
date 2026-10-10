@@ -1,0 +1,13 @@
+{
+  "negative_names": [
+    "wrong",
+    "sayno",
+    "thumbsdown",
+    "dislike",
+    "thumbs down",
+    "reject",
+    "❌",
+    "👎"
+  ],
+  "negative_substrings": []
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/D1-2004/eino-employee-loop/schema/delivery-status.schema.json",
+  "title": "DeliveryStatus",
+  "description": "The answer to POST /v1/deliveries/status (httpapi.DeliveryStatus): what the channel knows about a delivery whose send outcome is unknown. The query never sends.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "state"
+  ],
+  "properties": {
+    "state": {
+      "type": "string",
+      "enum": ["delivered", "provider_accepted", "failed", "unknown"],
+      "description": "delivered or provider_accepted when the message exists, failed when it definitely was not and will not be sent, unknown when the channel cannot tell."
+    },
+    "provider_id": {
+      "type": "string",
+      "description": "Provider message id when the message exists."
+    }
+  }
+}
