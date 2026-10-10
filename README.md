@@ -72,3 +72,16 @@ IM Provider (stdin | DWS)
                     ├─ dispatch_task          → TaskStore + JobExecutor
                     └─ reply / ask / …        → OnOutbound
 ```
+
+## Model providers (env)
+
+`providers/llm` injects the models into Core (`core.ModelProvider`). Env:
+
+```
+LLM_PROVIDER=dashscope            # deepseek (default) | dashscope | openai
+LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+LLM_API_KEY=...                   # never commit
+LLM_MODEL=deepseek-v4.1-flash     # LLM_ACK_MODEL optional
+```
+Ack path runs with thinking off (`enable_thinking=false` on DashScope, `thinking: disabled` on DeepSeek).
+`dws-consumer --executor opencode --opencode-dir <sandbox>` runs dispatched tasks in a local OpenCode session.

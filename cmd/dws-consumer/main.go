@@ -21,6 +21,8 @@ import (
 	"github.com/dingtalk-fde/eino-employee-loop/checkpoint"
 	"github.com/dingtalk-fde/eino-employee-loop/core"
 	"github.com/dingtalk-fde/eino-employee-loop/providers/im"
+	"github.com/dingtalk-fde/eino-employee-loop/providers/llm"
+	"github.com/dingtalk-fde/eino-employee-loop/providers/session/opencode"
 	"github.com/dingtalk-fde/eino-employee-loop/providers/store"
 	"github.com/dingtalk-fde/eino-employee-loop/providers/tools"
 	"github.com/joho/godotenv"
@@ -37,6 +39,9 @@ func main() {
 	tenant := flag.String("tenant", "dws", "tenant id")
 	scene := flag.String("scene", "", "scene id (default = cid)")
 	jobMs := flag.Int("job-ms", 4000, "simulated background job duration")
+	execName := flag.String("executor", envOr("EXECUTOR", "mock"), "mock | opencode")
+	ocDir := flag.String("opencode-dir", os.Getenv("OPENCODE_DIR"), "OpenCode working dir (sandbox) for --executor opencode")
+	ocModel := flag.String("opencode-model", os.Getenv("OPENCODE_MODEL"), "optional OpenCode provider/model")
 	flag.Parse()
 	_ = godotenv.Load(*dotenv)
 
@@ -44,9 +49,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "required: --cid or DWS_CID")
 		os.Exit(2)
 	}
-	key, base := os.Getenv("DEEPSEEK_API_KEY"), os.Getenv("DEEPSEEK_BASE_URL")
-	if key == "" {
-		fmt.Fprintln(os.Stderr, "set DEEPSEEK_API_KEY")
+	lcfg, lerr := llm.FromEnv()
+	if lerr != nil {
+		fmt.Fprintln(os.Stderr, lerr)
 		os.Exit(2)
 	}
 	if *scene == "" {
@@ -86,11 +91,16 @@ func main() {
 	defer prov.Close()
 
 	cd := core.DemoCase("")
-	cfg := core.DefaultConfig(*tenant, *scene, key, base, cd)
+	cfg := core.DefaultConfig(*tenant, *scene, llm.New(lcfg), cd)
 	cfg.JobDelay = time.Duration(*jobMs) * time.Millisecond
 	cfg.CheckPointStore = cps
 	cfg.CheckpointID = *tenant + "|" + *scene
-	cfg.Executor = tools.MockExecutor{}
+	switch *execName {
+	case "opencode":
+		cfg.Executor = tools.OpenCodeExecutor{Session: &opencode.Session{WorkDir: *ocDir, Model: *ocModel}, Scene: *scene}
+	default:
+		cfg.Executor = tools.MockExecutor{}
+	}
 	cfg.OnOutbound = func(ctx context.Context, kind, text string) {
 		if kind == "ack_latency" || kind == "user_in" || kind == "suppressed_ack_dup" {
 			return

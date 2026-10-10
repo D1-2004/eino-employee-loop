@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cloudwego/eino/components/model"
 	"math"
 	"regexp"
 	"sort"
@@ -12,7 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cloudwego/eino-ext/components/model/deepseek"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
@@ -33,14 +33,15 @@ type Config struct {
 	Tenant, Scene string
 	Case          CaseData
 	JobDelay      time.Duration
-	Key, BaseURL  string
-	Registry      bool // registry + memory store injected and tool-backed (treatment); false = control
-	Ack           bool
-	NoThinkAck    bool
-	DedupWindow   time.Duration
-	ConvTokens    int // token budgets of dynamic context
-	MemTokens     int
-	RegTokens     int
+	// Models injects the decision and ack chat models (see providers/llm).
+	Models      ModelProvider
+	Registry    bool // registry + memory store injected and tool-backed (treatment); false = control
+	Ack         bool
+	NoThinkAck  bool
+	DedupWindow time.Duration
+	ConvTokens  int // token budgets of dynamic context
+	MemTokens   int
+	RegTokens   int
 
 	// CheckPointStore + CheckpointID wire Eino TurnLoop resume (SQLite KV locally).
 	// Item must remain gob-encodable. Empty CheckpointID defaults to tenant|scene.
@@ -123,8 +124,8 @@ type Runtime struct {
 	ackWG        sync.WaitGroup
 	counters     map[string]int
 	labels       map[string]string // memory label (m1) -> id for last snapshot
-	cmodel       *deepseek.ChatModel
-	ackModel     *deepseek.ChatModel
+	cmodel       model.ToolCallingChatModel
+	ackModel     model.BaseChatModel
 	ackUsage     []Usage
 	vbase, vwall int64
 }
@@ -148,19 +149,14 @@ func (r *Runtime) count(k string) { r.mu.Lock(); r.counters[k]++; r.mu.Unlock() 
 func NewRuntime(ctx context.Context, cfg Config, ts TaskStore, ms MemoryStore, kv KV, conv Conversation, st *Stats) (*Runtime, error) {
 	r := &Runtime{cfg: cfg, ts: timedTasks{ts, st}, ms: timedMem{ms, st}, kv: timedKV{kv, st}, conv: conv, stats: st, t0: time.Now(),
 		ack: map[int64]string{}, jobCancel: map[string]context.CancelFunc{}, counters: map[string]int{}, labels: map[string]string{}}
-	mk := func(think bool) (*deepseek.ChatModel, error) {
-		mc := &deepseek.ChatModelConfig{APIKey: cfg.Key, Model: "deepseek-flash", BaseURL: cfg.BaseURL, Timeout: 120 * time.Second}
-		if !think {
-			mc.ThinkingConfig = &deepseek.ThinkingConfig{Type: "disabled"}
-			mc.MaxTokens = 80
-		}
-		return deepseek.NewChatModel(ctx, mc)
+	if cfg.Models == nil {
+		return nil, fmt.Errorf("core: Config.Models is required (see providers/llm)")
 	}
 	var err error
-	if r.cmodel, err = mk(true); err != nil {
+	if r.cmodel, err = cfg.Models.Decision(ctx); err != nil {
 		return nil, err
 	}
-	if r.ackModel, err = mk(false); err != nil {
+	if r.ackModel, err = cfg.Models.Ack(ctx); err != nil {
 		return nil, err
 	}
 	var tools []tool.BaseTool

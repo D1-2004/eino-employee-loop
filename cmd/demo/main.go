@@ -18,6 +18,7 @@ import (
 	"github.com/dingtalk-fde/eino-employee-loop/checkpoint"
 	"github.com/dingtalk-fde/eino-employee-loop/core"
 	"github.com/dingtalk-fde/eino-employee-loop/providers/im"
+	"github.com/dingtalk-fde/eino-employee-loop/providers/llm"
 	"github.com/dingtalk-fde/eino-employee-loop/providers/store"
 	"github.com/dingtalk-fde/eino-employee-loop/providers/tools"
 	"github.com/joho/godotenv"
@@ -31,9 +32,9 @@ func main() {
 	cpID := flag.String("checkpoint-id", "demo|scene-demo", "TurnLoop CheckpointID")
 	flag.Parse()
 	_ = godotenv.Load(*dotenv)
-	key, base := os.Getenv("DEEPSEEK_API_KEY"), os.Getenv("DEEPSEEK_BASE_URL")
-	if key == "" {
-		fmt.Fprintln(os.Stderr, "set DEEPSEEK_API_KEY (and optionally DEEPSEEK_BASE_URL)")
+	lcfg, lerr := llm.FromEnv()
+	if lerr != nil {
+		fmt.Fprintln(os.Stderr, lerr)
 		os.Exit(2)
 	}
 	ctx := context.Background()
@@ -46,7 +47,7 @@ func main() {
 	must(err)
 	stats := core.NewStats()
 	cd := core.DemoCase("")
-	cfg := core.DefaultConfig("demo", "scene-demo", key, base, cd)
+	cfg := core.DefaultConfig("demo", "scene-demo", llm.New(lcfg), cd)
 	cfg.JobDelay = time.Duration(*jobMs) * time.Millisecond
 	cfg.CheckPointStore = cps
 	cfg.CheckpointID = *cpID

@@ -48,10 +48,10 @@ func (r *Runtime) ListMemory(ctx context.Context, subject, audience string) ([]*
 func (r *Runtime) StoreStats() map[string]map[string]float64 { return r.stats.Summary() }
 
 // DefaultConfig builds a treat-mode Config (registry+memory+ack) for the demo.
-func DefaultConfig(tenant, scene, key, baseURL string, caseData CaseData) Config {
+func DefaultConfig(tenant, scene string, models ModelProvider, caseData CaseData) Config {
 	return Config{
 		Tenant: tenant, Scene: scene, Case: caseData,
-		JobDelay: 4 * time.Second, Key: key, BaseURL: baseURL,
+		JobDelay: 4 * time.Second, Models: models,
 		Registry: true, Ack: true, DedupWindow: 90 * time.Second,
 		ConvTokens: 1200, MemTokens: 500, RegTokens: 450,
 	}
