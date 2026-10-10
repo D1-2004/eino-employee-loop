@@ -74,7 +74,7 @@ Trigger (user_message | task_result | …) on Field
 | Host owns effects + receipts | TaskStore receipts; `EventSink` for accepted/progress/done/failed |
 | Context: system persona → memory → tasks → history → window | `genInput` sections + token budgets |
 | Terminal tools + dispatch.reply in one shot | Terminal map + `dispatch_task.reply` |
-| Max 3 model calls / wake | Eino MaxIterations (8) + Host dedup (tighten later) |
+| Max 3 model calls / wake | `MaxModelRoundsPerTurn=4` + Host auto-dispatch fallback when budget exhausted |
 | Tool registry from Host | `ToolSpec` + per-call timeout budgets |
 
 ## Dialogue defaults
@@ -83,3 +83,14 @@ Trigger (user_message | task_result | …) on Field
 - Markdown send, no AI badge, mark-read after inbound
 - AckMode=auto: skip Hi/谢谢 and 「有哪些任务/记忆/进度」 — no more 「我看下…」 spam
 - Prefer one accept line via `dispatch_task.reply`; Host events for lifecycle
+
+## Turn budget & ❌ reactions
+
+- Per-turn model rounds capped at **4** (`MaxModelRoundsPerTurn`). Overall wakes stay open.
+- Budget exhausted without `reply` / `dispatch_task` / … → Host **auto-dispatches** the current window (no stall).
+- DWS consumer uses **`dws event +listen-im`** (Stream) for messages **and** reactions. ❌ / `打叉` → `Trigger.Kind=reaction` correction wake.
+
+## Task storage (local)
+
+SQLite `tasks` + `task_events` in the same DB as memory/conversation/checkpoints. See [docs/architecture_local.md](docs/architecture_local.md).
+

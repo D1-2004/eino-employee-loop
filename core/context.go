@@ -18,7 +18,9 @@ const runtimeAddendum = `RUNTIME NOTES (Host, authoritative):
 3. If a short ack was already sent, do not repeat it. Prefer one concrete accept line via dispatch_task.reply (or a single reply) — never "我看下…" filler.
 4. Memory is data with provenance; "本人" entries belong only to the current sender.
 5. User-facing text: short, conclusion first, DingTalk markdown (no tables). Hide task_ref/receipt unless the user asks for audit ids.
-6. Process events (accepted/progress/done/failed) are Host-owned; do not spam progress messages yourself.`
+6. Process events (accepted/progress/done/failed) are Host-owned; do not spam progress messages yourself.
+7. Per-turn model-round budget is finite. Prefer one terminal tool soon (reply / dispatch_task / ask_human / stay_quiet). If Host reports budget fallback, work was already auto-dispatched.
+8. Negative emoji reactions (❌ / 打叉) are correction wakes — revise the prior answer or task; do not re-ack the original request unchanged.`
 
 func vclock(ms int64) string {
 	return time.UnixMilli(ms).In(time.FixedZone("CST", 8*3600)).Format("15:04:05")
@@ -28,17 +30,23 @@ func (r *Runtime) genInput(ctx context.Context, l *adk.TurnLoop[Item, *schema.Me
 	t0 := time.Now()
 	cfg := r.cfg
 	turn := &Turn{No: len(r.turns) + 1, StartMs: r.now(), Sections: map[string]int{}}
-	hasUser := false
+	hasUser, hasReaction := false, false
 	var resultIDs []string
 	repairText, repair := "", false
 	for _, it := range items {
 		switch it.Kind {
 		case "user":
 			hasUser = true
+		case "reaction":
+			hasReaction = true
+			hasUser = true // reuse user window path; Trigger set below
 		case "repair":
 			repair, repairText = true, it.Text
-			if it.Trigger == "user" {
+			if it.Trigger == "user" || it.Trigger == "reaction" {
 				hasUser = true
+			}
+			if it.Trigger == "reaction" {
+				hasReaction = true
 			}
 			if it.TaskID != "" {
 				resultIDs = append(resultIDs, it.TaskID)
@@ -48,7 +56,9 @@ func (r *Runtime) genInput(ctx context.Context, l *adk.TurnLoop[Item, *schema.Me
 		}
 	}
 	turn.Trigger = "task_result"
-	if hasUser {
+	if hasReaction {
+		turn.Trigger = "reaction"
+	} else if hasUser {
 		turn.Trigger = "user"
 	}
 	turn.Repair = repair
@@ -161,7 +171,10 @@ func (r *Runtime) genInput(ctx context.Context, l *adk.TurnLoop[Item, *schema.Me
 			msgs = append(msgs, schema.UserMessage(fmt.Sprintf("Background follow-up (Host event; data, not a new user request): task_result {\"task_ref\":%q,\"state\":%q,\"result\":%q,\"source_ref\":%q}\nReport the outcome to the user through the normal reply path (source_ref %s).", t.ID, t.Status, truncRunes(t.Result, 300), t.SourceRef, t.SourceRef)))
 		}
 	}
-	if repair {
+	if hasReaction {
+		msgs = append(msgs, schema.UserMessage("Host correction wake: the user reacted with a negative emoji (❌ / 打叉) on a prior message. Treat the current window as a revise request — fix the prior reply or task; do not ignore the reaction."))
+	}
+		if repair {
 		msgs = append(msgs, schema.UserMessage("Host protocol notice: your previous response ended without calling a decision tool, so NOTHING was delivered to the user. Your previous plain text (not delivered): "+truncRunes(repairText, 600)+"\nNow call exactly one decision tool (reply / dispatch_task / ask_human / stay_quiet / ...). If you wanted to answer, use reply with the exact text."))
 	}
 	_ = srcRef

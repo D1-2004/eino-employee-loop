@@ -27,7 +27,7 @@ Eino port: `core.Runtime.genInput` builds analogous sections with ConvTokens/Mem
 
 ## Gaps still open
 
-- Explicit MaxModelCalls=3 budget like Multica (today: MaxIterations=8)
+- MaxModelRoundsPerTurn=4 + BudgetFallbackDispatch (Host auto-dispatch when exhausted)
 - Structured `conversation_turns_v1` history presentation (we use free-text nearby/window)
 - Full ToolProvider injection replacing Case.Tools hardcoding in DemoCase
 - Field kinds beyond conversation (enterprise / ticket) need adapters

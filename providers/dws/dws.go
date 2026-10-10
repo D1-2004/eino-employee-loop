@@ -38,6 +38,9 @@ type DWSConfig struct {
 	// messages newer than now-CatchUp instead of seeding them away. Default 10m.
 	// Fixes the case where the consumer was stuck/deadlocked while Hi already arrived.
 	CatchUp time.Duration
+	// Transport: "stream" (default) uses `dws event +listen-im` (DingTalk Stream).
+	// "poll" keeps the legacy chat +chat-messages ticker (fallback / tests).
+	Transport string
 }
 
 // DWSProvider polls dws chat +chat-messages and sends via +messages-send.
@@ -66,6 +69,9 @@ func NewDWSProvider(cfg DWSConfig) *DWSProvider {
 	}
 	if cfg.CatchUp <= 0 {
 		cfg.CatchUp = 10 * time.Minute
+	}
+	if cfg.Transport == "" {
+		cfg.Transport = "stream"
 	}
 	return &DWSProvider{
 		cfg:  cfg,
@@ -252,26 +258,44 @@ func (p *DWSProvider) Subscribe(ctx context.Context, convID string) (<-chan Inbo
 		close(ch)
 		return nil, fmt.Errorf("dws subscribe seed: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "dws: subscribe ok cid=%s kind=%s seeded_or_new=%d had_seen=%d\n",
-		trunc(convID, 40), p.cfg.Kind, seeded, hadSeen)
+	fmt.Fprintf(os.Stderr, "dws: subscribe ok transport=%s cid=%s kind=%s seeded_or_new=%d had_seen=%d\n",
+		p.cfg.Transport, trunc(convID, 40), p.cfg.Kind, seeded, hadSeen)
 
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
 		defer close(ch)
-		t := time.NewTicker(p.cfg.PollEvery)
-		defer t.Stop()
+		if p.cfg.Transport == "poll" {
+			t := time.NewTicker(p.cfg.PollEvery)
+			defer t.Stop()
+			for {
+				select {
+				case <-runCtx.Done():
+					return
+				case <-t.C:
+					n, err := p.pollOnce(runCtx, convID, false, 0)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "dws poll: %v\n", err)
+					} else if n > 0 {
+						fmt.Fprintf(os.Stderr, "dws poll: +%d new\n", n)
+					}
+				}
+			}
+		}
+		// Default: DingTalk Stream via `dws event +listen-im` (message + reaction).
 		for {
+			if runCtx.Err() != nil {
+				return
+			}
+			err := p.startEventStream(runCtx, convID, ch)
+			if runCtx.Err() != nil {
+				return
+			}
+			fmt.Fprintf(os.Stderr, "dws stream exited: %v — restart in 3s\n", err)
 			select {
 			case <-runCtx.Done():
 				return
-			case <-t.C:
-				n, err := p.pollOnce(runCtx, convID, false, 0)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "dws poll: %v\n", err)
-				} else if n > 0 {
-					fmt.Fprintf(os.Stderr, "dws poll: +%d new\n", n)
-				}
+			case <-time.After(3 * time.Second):
 			}
 		}
 	}()

@@ -21,10 +21,13 @@ type Actor struct {
 
 // Trigger classifies why the Host woke the loop.
 type Trigger struct {
-	Kind   string // user_message | task_result | follow_up | schedule | repair
-	Ref    string // source_ref / message id / task id
-	Field  Field
-	Actor  Actor
-	AtMs   int64
-	Text   string // human-visible utterance when Kind=user_message
+	Kind  string // user_message | reaction | task_result | follow_up | schedule | repair
+	Ref   string // source_ref / message id / task id / reaction event id
+	Field Field
+	Actor Actor
+	AtMs  int64
+	Text  string // human-visible utterance when Kind=user_message; correction brief when reaction
+	// Reaction is set when Kind=reaction (emoji name, e.g. "打叉").
+	Reaction    string
+	TargetMsgID string
 }

@@ -67,6 +67,14 @@ type Config struct {
 
 	// ToolTimeouts maps tool name → budget. 0 / missing uses TimeoutFor defaults.
 	ToolTimeouts map[string]time.Duration
+
+	// MaxModelRoundsPerTurn caps model↔tool rounds inside one ChatModelAgent run
+	// (Eino MaxIterations). Default 4. Soft overall wakes are unlimited; this is
+	// the per-turn budget so one wake cannot spin forever.
+	MaxModelRoundsPerTurn int
+	// BudgetFallbackDispatch: when the per-turn budget is exhausted without a
+	// terminal tool, Host auto-dispatches the window text instead of stalling/asking again.
+	BudgetFallbackDispatch bool
 }
 
 type Item struct {
@@ -172,7 +180,11 @@ func NewRuntime(ctx context.Context, cfg Config, ts TaskStore, ms MemoryStore, k
 	for _, in := range cfg.Case.Tools {
 		tools = append(tools, &rtTool{info: in, r: r})
 	}
-	ac := &adk.ChatModelAgentConfig{Name: "employee", Description: "employee decision loop", Model: r.cmodel, MaxIterations: 8,
+	maxR := cfg.MaxModelRoundsPerTurn
+	if maxR <= 0 {
+		maxR = 4
+	}
+	ac := &adk.ChatModelAgentConfig{Name: "employee", Description: "employee decision loop", Model: r.cmodel, MaxIterations: maxR,
 		ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: tools}}}
 	ac.ToolsConfig.ReturnDirectly = cfg.Case.Terminal
 	if r.agent, err = adk.NewChatModelAgent(ctx, ac); err != nil {
@@ -226,6 +238,68 @@ func (r *Runtime) UserMessage(ctx context.Context, speaker, text string, atMs in
 		atomic.AddInt32(&r.inflight, -1)
 	}
 	return m
+}
+
+// ReactionFeedback wakes the loop for a negative emoji reaction (❌ / 打叉).
+// Kind=reaction Trigger; Host synthesizes a correction utterance from the target message.
+func (r *Runtime) ReactionFeedback(ctx context.Context, in Inbound) Msg {
+	if in.AtMs > 0 {
+		r.setVirtual(in.AtMs)
+	}
+	preview := r.previewTarget(ctx, in.TargetMsgID)
+	emoji := in.Reaction
+	if emoji == "" {
+		emoji = "❌"
+	}
+	who := in.Speaker
+	if who == "" {
+		who = "用户"
+	}
+	text := fmt.Sprintf("【纠正信号】%s 对一条消息打了「%s」。请据此修正上一回复或相关任务：不要重复同样的错误；若任务在跑可 stop 后按新理解重派；若只是措辞问题用 reply 给正确版本。\n被打叉的消息摘要：%s",
+		who, emoji, truncRunes(preview, 240))
+	ref := in.MsgID
+	if ref == "" {
+		ref = "react:" + in.TargetMsgID
+	}
+	m, _ := r.conv.Append(ctx, r.cfg.Tenant, r.cfg.Scene, Msg{
+		Role: "user", Speaker: who, Text: text, Kind: "reaction",
+		SourceRef: ref, AtMs: r.vnow(),
+	})
+	r.mu.Lock()
+	r.out = append(r.out, OutEv{TMs: r.now(), Kind: "reaction_in", Text: emoji + " → " + truncRunes(preview, 80)})
+	r.mu.Unlock()
+	r.count("reaction_correction")
+	r.emitProcess(EvProgress, "", "", "reaction:"+emoji)
+	var opts []adk.PushOption[Item, *schema.Message]
+	if atomic.LoadInt32(&r.activeTurn) == 1 {
+		opts = append(opts, adk.WithPreempt[Item, *schema.Message](adk.AnySafePoint))
+		r.count("preempt_pushes")
+	}
+	atomic.AddInt32(&r.inflight, 1)
+	if ok, _ := r.loop.Push(Item{Kind: "reaction", Msg: m, Trigger: "reaction"}, opts...); !ok {
+		atomic.AddInt32(&r.inflight, -1)
+	}
+	return m
+}
+
+func (r *Runtime) previewTarget(ctx context.Context, msgID string) string {
+	if msgID == "" {
+		return "（未定位到原消息）"
+	}
+	ms, _ := r.conv.Recent(ctx, r.cfg.Tenant, r.cfg.Scene, 0, 40)
+	for i := len(ms) - 1; i >= 0; i-- {
+		m := ms[i]
+		if m.SourceRef == msgID || strings.Contains(m.SourceRef, msgID) {
+			return m.Text
+		}
+	}
+	// fall back to last assistant outbound
+	for i := len(ms) - 1; i >= 0; i-- {
+		if ms[i].Role == "assistant" {
+			return ms[i].Text
+		}
+	}
+	return "（未定位到原消息，请对照最近一条回复纠正）"
 }
 
 func (r *Runtime) pushResult(taskID string) {

@@ -55,6 +55,8 @@ func DefaultConfig(tenant, scene string, models ModelProvider, caseData CaseData
 		JobDelay: 4 * time.Second, Models: models,
 		Registry: true, Ack: true, AckMode: "auto", DedupWindow: 90 * time.Second,
 		ConvTokens: 2200, MemTokens: 700, RegTokens: 450,
+		MaxModelRoundsPerTurn:  4,
+		BudgetFallbackDispatch: true,
 	}
 }
 

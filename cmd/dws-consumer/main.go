@@ -35,6 +35,7 @@ func main() {
 	ocModel := flag.String("opencode-model", os.Getenv("OPENCODE_MODEL"), "optional OpenCode model")
 	instr := flag.String("instruction", "", "override system instruction")
 	seedHist := flag.Int("seed-history", 40, "seed recent DWS messages on first run (0=off)")
+	transport := flag.String("transport", envOr("DWS_TRANSPORT", "stream"), "stream (dws event listen-im) | poll")
 	flag.Parse()
 	_ = godotenv.Load(*dotenv)
 
@@ -77,6 +78,7 @@ func main() {
 	prov := dws.NewDWSProvider(dws.DWSConfig{
 		Profile: *profile, PollEvery: *poll, Kind: *kind,
 		SelfNames: selfNames, SelfIDs: selfIDs,
+		Transport: *transport,
 	})
 	defer prov.Close()
 
@@ -88,7 +90,7 @@ func main() {
 		Field: field, Instruction: *instr,
 		JobDelay: time.Duration(*jobMs) * time.Millisecond,
 		OnOutbound: func(ctx context.Context, kind, text string) {
-			if kind == "ack_latency" || kind == "user_in" || kind == "suppressed_ack_dup" || kind == "stay_quiet" {
+			if kind == "ack_latency" || kind == "user_in" || kind == "reaction_in" || kind == "suppressed_ack_dup" || kind == "stay_quiet" {
 				return
 			}
 			if err := prov.Send(ctx, *cid, text); err != nil {
@@ -100,8 +102,8 @@ func main() {
 	must(err)
 	defer rt.Stop()
 
-	fmt.Printf("dws-consumer starting\n  field=%s locator=%s kind=%s profile=%q\n  db=%s checkpoint=%s|%s\n  markdown_send=true ai_tag=false ack_mode=auto\n",
-		field.ID, trunc(*cid, 40), *kind, *profile, *db, *tenant, *scene)
+	fmt.Printf("dws-consumer starting\n  field=%s locator=%s kind=%s profile=%q\n  db=%s checkpoint=%s|%s\n  markdown_send=true ai_tag=false ack_mode=auto transport=%s\n",
+		field.ID, trunc(*cid, 40), *kind, *profile, *db, *tenant, *scene, *transport)
 
 	if *seedHist > 0 {
 		existing, _ := stack.Conv.Recent(ctx, *tenant, *scene, 0, 20)
@@ -130,6 +132,15 @@ func main() {
 			if !ok {
 				fmt.Println("inbound closed")
 				return
+			}
+			if in.Kind == "reaction" {
+				fmt.Printf("← reaction %s by %s on %s\n", in.Reaction, in.Speaker, trunc(in.TargetMsgID, 24))
+				if core.NegativeReaction(in.Reaction, in.Text) {
+					rt.ReactionFeedback(ctx, in)
+				} else {
+					fmt.Printf("  (ignored non-negative reaction)\n")
+				}
+				continue
 			}
 			fmt.Printf("← %s: %s\n", in.Speaker, trunc(in.Text, 120))
 			rt.UserMessage(ctx, in.Speaker, in.Text, in.AtMs)

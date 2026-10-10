@@ -453,6 +453,13 @@ func (r *Runtime) onEvents(ctx context.Context, tc *adk.TurnContext[Item, *schem
 			hasTerm = true
 		}
 	}
+	maxR := r.cfg.MaxModelRoundsPerTurn
+	if maxR <= 0 {
+		maxR = 4
+	}
+	budgetExhausted := round >= maxR
+	canFallback := r.cfg.BudgetFallbackDispatch && (turn.Trigger == "user" || turn.Trigger == "reaction")
+
 	if !turn.Canceled && !hasTerm && !turn.Repair {
 		prev := ""
 		for _, c := range turn.Contents {
@@ -460,7 +467,10 @@ func (r *Runtime) onEvents(ctx context.Context, tc *adk.TurnContext[Item, *schem
 				prev = c
 			}
 		}
-		if len(tc.Consumed) > 0 {
+		if canFallback && budgetExhausted {
+			r.count("budget_exhausted")
+			r.hostAutoDispatch(ctx, turn)
+		} else if len(tc.Consumed) > 0 {
 			var tid string
 			for _, it := range tc.Consumed {
 				if it.Kind == "task_result" || it.Kind == "repair" && it.TaskID != "" {
@@ -475,6 +485,10 @@ func (r *Runtime) onEvents(ctx context.Context, tc *adk.TurnContext[Item, *schem
 		}
 	} else if !turn.Canceled && !hasTerm && turn.Repair {
 		r.count("protocol_failures")
+		if canFallback {
+			r.count("budget_exhausted")
+			r.hostAutoDispatch(ctx, turn)
+		}
 	}
 	atomic.StoreInt32(&r.activeTurn, 0)
 	atomic.AddInt32(&r.inflight, -int32(len(tc.Consumed)))
@@ -490,6 +504,33 @@ func hasTermEarly(t *Turn, r *Runtime) bool {
 	return false
 }
 
+
+// hostAutoDispatch is the Host fallback when a turn burns its model-round budget
+// without calling a terminal tool. Prefer dispatching the window text over stalling.
+func (r *Runtime) hostAutoDispatch(ctx context.Context, turn *Turn) {
+	goal := strings.TrimSpace(turn.winText)
+	if goal == "" {
+		r.deliver("reply", "这轮没谈拢，你再说具体一点我再办。")
+		return
+	}
+	if isGreetingOrAckSkip(goal) {
+		r.deliver("reply", "这轮没谈拢，你再说具体一点我再办。")
+		r.count("budget_fallback_skip")
+		return
+	}
+	if turn.Trigger == "reaction" {
+		// Correction wake without a clean terminal — ask for the intended fix once.
+		r.deliver("reply", "收到叉，我按你的纠正改。你再补一句期望结果，我马上重做。")
+		r.count("budget_fallback_ask")
+		return
+	}
+	r.count("budget_fallback_dispatch")
+	_ = r.dispatch(ctx, map[string]any{
+		"goal":   goal,
+		"prompt": goal,
+		"reply":  "这轮时间到了，我先按原话派出去办，有结果再回你。",
+	}, turn.WindowSeq)
+}
 
 func (r *Runtime) emitProcess(kind, taskID, receipt, text string) {
 	if r.cfg.Events == nil {
