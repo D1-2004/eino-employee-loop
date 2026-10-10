@@ -377,6 +377,7 @@ func (r *Runtime) onEvents(ctx context.Context, tc *adk.TurnContext[Item, *schem
 	turn := r.cur
 	r.mu.Unlock()
 	round := 0
+	exceededBudget := false
 	byID := map[string]int{}
 	for {
 		ev, ok := events.Next()
@@ -387,6 +388,11 @@ func (r *Runtime) onEvents(ctx context.Context, tc *adk.TurnContext[Item, *schem
 			var ce *adk.CancelError
 			if errors.As(ev.Err, &ce) {
 				turn.Canceled = true
+			} else if errors.Is(ev.Err, adk.ErrExceedMaxIterations) {
+				// Eino stops before the next model call when MaxIterations is hit.
+				exceededBudget = true
+				r.count("max_iterations")
+				turn.Contents = append(turn.Contents, "ERR:"+ev.Err.Error())
 			} else {
 				r.count("agent_errors")
 				turn.Contents = append(turn.Contents, "ERR:"+ev.Err.Error())
@@ -466,7 +472,7 @@ func (r *Runtime) onEvents(ctx context.Context, tc *adk.TurnContext[Item, *schem
 	if maxR <= 0 {
 		maxR = 4
 	}
-	budgetExhausted := round >= maxR
+	budgetExhausted := round >= maxR || exceededBudget
 	canFallback := r.cfg.BudgetFallbackDispatch && (turn.Trigger == "user" || turn.Trigger == "reaction")
 
 	if !turn.Canceled && !hasTerm && !turn.Repair {
@@ -514,32 +520,38 @@ func hasTermEarly(t *Turn, r *Runtime) bool {
 }
 
 
-// hostAutoDispatch is the Host fallback when a turn burns its model-round budget
-// without calling a terminal tool. Prefer dispatching the window text over stalling.
+// hostAutoDispatch is Host policy when a wake burns its model-round budget
+// without a terminal tool. Prefer dispatching actionable window text over stalling.
+// Channel-specific signals (emoji, etc.) belong in adapters; Core only sees Trigger.
 func (r *Runtime) hostAutoDispatch(ctx context.Context, turn *Turn) {
 	goal := strings.TrimSpace(turn.winText)
 	if goal == "" {
 		r.deliver("reply", "这轮没谈拢，你再说具体一点我再办。")
+		r.emitProcess(EvBudget, "", "", "empty_goal")
 		return
 	}
 	if isGreeting(goal) || isTrivialQA(goal) || isStatusLookup(goal) {
 		// Should have been a direct reply; do not invent a background job.
 		r.deliver("reply", "这轮没谈拢，你再说具体一点我再办。")
 		r.count("budget_fallback_skip")
+		r.emitProcess(EvBudget, "", "", "skip_non_actionable")
 		return
 	}
 	if isAmbiguousShort(goal) {
 		r.deliver("ask", "你具体想办哪件事？补一句对象或目标我再动手。")
 		r.count("budget_fallback_ask")
+		r.emitProcess(EvBudget, "", "", "ask_ambiguous")
 		return
 	}
 	if turn.Trigger == "reaction" {
-		// Correction wake without a clean terminal — ask for the intended fix once.
-		r.deliver("reply", "收到叉，我按你的纠正改。你再补一句期望结果，我马上重做。")
+		// Correction wake without a clean terminal — ask once for the intended fix.
+		r.deliver("reply", "收到纠正。补一句期望结果，我马上按你的意思重做。")
 		r.count("budget_fallback_ask")
+		r.emitProcess(EvBudget, "", "", "ask_correction")
 		return
 	}
 	r.count("budget_fallback_dispatch")
+	r.emitProcess(EvBudget, "", "", "auto_dispatch")
 	_ = r.dispatch(ctx, map[string]any{
 		"goal":   goal,
 		"prompt": goal,

@@ -3,6 +3,9 @@ package local
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/adk"
@@ -129,5 +132,24 @@ func (s *Stack) WireRuntime(ctx context.Context, opts RuntimeOpts) (*core.Runtim
 	if opts.AckMode != "" {
 		cfg.AckMode = opts.AckMode
 	}
+	applyHostBudgetEnv(&cfg)
 	return core.NewRuntime(ctx, cfg, s.SQL, s.SQL, s.KV, s.Conv, core.NewStats())
+}
+
+// applyHostBudgetEnv lets an assembly override Core Host turn-budget policy via env
+// (MAX_MODEL_ROUNDS_PER_TURN, BUDGET_FALLBACK_DISPATCH). Empty = keep DefaultConfig.
+func applyHostBudgetEnv(cfg *core.Config) {
+	if v := strings.TrimSpace(os.Getenv("MAX_MODEL_ROUNDS_PER_TURN")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.MaxModelRoundsPerTurn = n
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("BUDGET_FALLBACK_DISPATCH")); v != "" {
+		switch strings.ToLower(v) {
+		case "0", "false", "off", "no":
+			cfg.BudgetFallbackDispatch = false
+		case "1", "true", "on", "yes":
+			cfg.BudgetFallbackDispatch = true
+		}
+	}
 }

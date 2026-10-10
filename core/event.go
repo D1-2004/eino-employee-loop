@@ -11,6 +11,7 @@ const (
 	EvDone     = "done"     // finished with result
 	EvFailed   = "failed"   // failed with reason
 	EvQuiet    = "quiet"    // wake ended with no user-facing message
+	EvBudget   = "budget_fallback" // Host auto-acted after per-turn model-round budget
 )
 
 // ProcessEvent is one Host-owned lifecycle signal.
