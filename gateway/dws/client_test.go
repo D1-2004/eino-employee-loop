@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	"unicode"
 )
 
 func fakeBin(t *testing.T, script string) string {
@@ -126,6 +127,36 @@ func TestLexiconMatchesExactNamesByDefault(t *testing.T) {
 		if l.Negative(name, "") || l.Negative("", name) {
 			t.Errorf("%q is not an exact negative identifier", name)
 		}
+	}
+	locales := ReactionLocales()
+	if len(locales) < 2 || locales[0] != "default" {
+		t.Fatalf("reaction files: %v", locales)
+	}
+	for _, name := range locales[1:] {
+		c, err := LexiconConfigFor(name)
+		if err != nil || len(c.NegativeNames) == 0 {
+			t.Fatalf("%s: %+v %v", name, c, err)
+		}
+		// Every locale file is part of the default policy.
+		for _, n := range c.NegativeNames {
+			if !l.Negative(n, "") {
+				t.Errorf("%s name %q missing from the default lexicon", name, n)
+			}
+		}
+	}
+	neutral, err := LexiconConfigFor("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range neutral.NegativeNames {
+		for _, r := range n {
+			if unicode.Is(unicode.Han, r) {
+				t.Errorf("default.json is locale-neutral; %q belongs in a locale file", n)
+			}
+		}
+	}
+	if _, err := LexiconConfigFor("xx-missing"); err == nil {
+		t.Fatal("an unknown reaction file is an error")
 	}
 	custom := NewLexicon(LexiconConfig{NegativeNames: []string{"nope"}, NegativeSubstrings: []string{"bad"}})
 	if !custom.Negative("NOPE", "") || !custom.Negative("", "too bad") || custom.Negative("thumbsdown", "") {

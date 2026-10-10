@@ -14,7 +14,7 @@
 //     through the Client (contract.Deliverer).
 //
 // Which reactions count as negative is gateway configuration
-// (reactions.json, LexiconConfig), not localized text.
+// (reactions/*.json, LexiconConfig), not localized text.
 //
 // The package imports contract only; it never imports loop, task-manager
 // or prototype packages.

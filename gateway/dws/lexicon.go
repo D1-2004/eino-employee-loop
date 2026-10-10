@@ -1,19 +1,26 @@
 package dws
 
 import (
-	_ "embed"
+	"embed"
 	"encoding/json"
+	"fmt"
+	"io/fs"
+	"sort"
 	"strings"
 	"sync"
 )
 
-// reactionsJSON is the gateway's default reaction policy: the provider
-// identifiers of negative (correction / rejection) reactions. It is
-// recognition data, not localized text, so it lives with the gateway and
-// not in an i18n pack. Non-ASCII identifiers are JSON escapes.
+// reactionFiles hold the gateway's default reaction policy: the provider
+// identifiers of negative (correction / rejection) reactions. They are
+// recognition data owned by the gateway, not localized output, so they live
+// here and not in an i18n pack. default.json holds locale-neutral
+// identifiers (ASCII names, emoji); <locale>.json holds the display names
+// the provider uses in that locale. The provider reports reactions by the
+// name the reacting user saw, whose locale the gateway cannot know, so the
+// default policy is the union of every file.
 //
-//go:embed reactions.json
-var reactionsJSON []byte
+//go:embed reactions/*.json
+var reactionFiles embed.FS
 
 // LexiconConfig is the reaction policy of a gateway.
 type LexiconConfig struct {
@@ -25,13 +32,42 @@ type LexiconConfig struct {
 	NegativeSubstrings []string `json:"negative_substrings,omitempty"`
 }
 
-// DefaultLexiconConfig decodes the embedded reactions.json.
+// ReactionLocales lists the embedded reaction files by name without the
+// extension ("default" plus one entry per locale), sorted.
+func ReactionLocales() []string {
+	entries, _ := fs.ReadDir(reactionFiles, "reactions")
+	var out []string
+	for _, e := range entries {
+		out = append(out, strings.TrimSuffix(e.Name(), ".json"))
+	}
+	sort.Strings(out)
+	return out
+}
+
+// LexiconConfigFor decodes the named embedded reaction files (see
+// ReactionLocales) and merges them.
+func LexiconConfigFor(names ...string) (LexiconConfig, error) {
+	var merged LexiconConfig
+	for _, name := range names {
+		raw, err := reactionFiles.ReadFile("reactions/" + name + ".json")
+		if err != nil {
+			return LexiconConfig{}, fmt.Errorf("dws: reaction file %q: %w", name, err)
+		}
+		var c LexiconConfig
+		dec := json.NewDecoder(strings.NewReader(string(raw)))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&c); err != nil {
+			return LexiconConfig{}, fmt.Errorf("dws: reaction file %q: %w", name, err)
+		}
+		merged.NegativeNames = append(merged.NegativeNames, c.NegativeNames...)
+		merged.NegativeSubstrings = append(merged.NegativeSubstrings, c.NegativeSubstrings...)
+	}
+	return merged, nil
+}
+
+// DefaultLexiconConfig merges every embedded reaction file.
 func DefaultLexiconConfig() (LexiconConfig, error) {
-	var c LexiconConfig
-	dec := json.NewDecoder(strings.NewReader(string(reactionsJSON)))
-	dec.DisallowUnknownFields()
-	err := dec.Decode(&c)
-	return c, err
+	return LexiconConfigFor(ReactionLocales()...)
 }
 
 // Lexicon recognises negative reactions.

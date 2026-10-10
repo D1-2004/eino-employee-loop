@@ -102,6 +102,13 @@ topologies: [services](docs/services.md).
 
 ## Quick start
 
+**As a library** (embed the kernel, the scene hub or the contract in your own
+host; see [docs/integration.md](docs/integration.md)):
+
+```bash
+go get github.com/D1-2004/eino-employee-loop@v0.1.0
+```
+
 Requirements: Go 1.26. A chat model is configured from the environment
 (`LLM_API_KEY`, optional `LLM_PROVIDER` = `deepseek` | `dashscope` |
 `openai`, `LLM_MODEL`, `LLM_BASE_URL`); see `.env.example`.

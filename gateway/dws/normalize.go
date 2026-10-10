@@ -165,7 +165,7 @@ type Normalizer struct {
 	// Own lists messages the employee sent (see Deliverer.Own).
 	Own *RecentIDs
 	// Negative classifies reactions; nil uses DefaultLexicon().Negative
-	// (the embedded reactions.json). Pass NewLexicon(cfg).Negative to use
+	// (the embedded reactions/*.json). Pass NewLexicon(cfg).Negative to use
 	// another reaction policy.
 	Negative func(name, text string) bool
 	// Employee addresses the events (contract.Event.Employee); empty leaves

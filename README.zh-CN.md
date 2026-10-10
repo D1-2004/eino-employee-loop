@@ -84,6 +84,12 @@ Event Gateway ──Event──► Employee Loop ──DispatchRequest──► 
 <a id="quick-start"></a>
 ## 快速开始
 
+**作为库使用**（在你自己的 Host 中嵌入内核、场域 Hub 或合同；见 [docs/integration.zh-CN.md](docs/integration.zh-CN.md)）：
+
+```bash
+go get github.com/D1-2004/eino-employee-loop@v0.1.0
+```
+
 需要 Go 1.26。聊天模型从环境变量配置（`LLM_API_KEY`，可选 `LLM_PROVIDER` = `deepseek` | `dashscope` | `openai`、`LLM_MODEL`、`LLM_BASE_URL`）；见 `.env.example`。
 
 **单进程**（stdin 场域，进程内 Task Manager 加 echo 执行器）：
