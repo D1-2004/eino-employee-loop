@@ -1,0 +1,17 @@
+{
+  "negative_names": [
+    "wrong",
+    "sayno",
+    "thumbsdown",
+    "dislike",
+    "thumbs down",
+    "reject",
+    "\u6253\u53c9",
+    "\u62d2\u7edd",
+    "\u5f31",
+    "\u9119\u89c6",
+    "\u274c",
+    "\ud83d\udc4e"
+  ],
+  "negative_substrings": []
+}

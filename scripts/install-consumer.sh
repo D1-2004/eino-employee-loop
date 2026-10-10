@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${1:-$HOME/.local/bin/eino-dws-consumer}"
 mkdir -p "$(dirname "$OUT")"
 cd "$ROOT"
-GOTOOLCHAIN=auto go build -o "$OUT" ./cmd/dws-consumer
+GOTOOLCHAIN=auto go build -o "$OUT" ./prototype/cmd/dws-consumer
 echo "installed: $OUT"
 echo
 echo "Example (placeholders — use your env / dotenv, not committed values):"

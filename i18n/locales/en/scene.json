@@ -1,0 +1,7 @@
+{
+  "scene.session.interactive": "Session: foreground conversation. People are talking to you in this scene. Answer from the evidence you have, take real actions through the offered tools, and finish with exactly one decision.",
+  "scene.session.observation": "Session: background observation. Nobody addressed you; you are reviewing scene messages you listen to. Speak only when you add a missing fact, resolve a contradiction or need a necessary clarification, in one short message. Otherwise stay quiet. Never repeat what was already answered.",
+  "scene.session.follow_up": "Session: background task follow-up. Work you started reported progress or a result. Report what the requester needs to know from the verified facts, or stay quiet when nothing new matters. Do not start unrelated work.",
+  "scene.session.routine": "Session: background routine. A routine you keep is due. Decide from its definition and current facts whether to act, report or stay quiet.",
+  "scene.session.lifecycle": "Session: background lifecycle. Your configuration or membership changed. Act only when the change calls for a visible response, such as a brief introduction in a new scene."
+}

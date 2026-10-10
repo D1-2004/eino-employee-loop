@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/D1-2004/eino-employee-loop/schema/event.schema.json",
+  "title": "Event",
+  "description": "The single envelope every input arrives in (contract.Event). Published to POST /v1/events. Replaying the same (source, id) must carry the same content.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "source",
+    "type",
+    "occurred_at"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable per producer."
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Producer namespace, for example chat.im or task-manager."
+    },
+    "employee": {
+      "type": "string",
+      "description": "The employee whose loop receives the event. Producers that serve several employees (a shared Task Manager) must set it; a loop treats an empty value as addressed to itself and rejects another employee's event (unknown_employee)."
+    },
+    "type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Event type registered in the loop's catalog, for example message.addressed."
+    },
+    "class": {
+      "description": "Filled from the catalog on admission; a mismatch is rejected.",
+      "anyOf": [
+        {
+          "$ref": "defs.schema.json#/$defs/Class"
+        },
+        {
+          "const": ""
+        }
+      ]
+    },
+    "mode": {
+      "description": "Filled from the catalog on admission; a mismatch is rejected.",
+      "anyOf": [
+        {
+          "$ref": "defs.schema.json#/$defs/Mode"
+        },
+        {
+          "const": ""
+        }
+      ]
+    },
+    "scene": {
+      "$ref": "defs.schema.json#/$defs/SceneRef"
+    },
+    "actor": {
+      "$ref": "defs.schema.json#/$defs/Actor"
+    },
+    "occurred_at": {
+      "$ref": "defs.schema.json#/$defs/Timestamp"
+    },
+    "locale": {
+      "type": "string",
+      "description": "BCP 47 tag of human content."
+    },
+    "refs": {
+      "type": "object",
+      "description": "Correlation references: task, run, routine, reply_to, window, plan, ...",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "text": {
+      "type": "string",
+      "description": "Human-visible content."
+    },
+    "payload_schema": {
+      "type": "string",
+      "description": "Names the schema of payload, for example taskmgr.execution/v1."
+    },
+    "payload": {
+      "description": "Producer-specific JSON value."
+    }
+  }
+}
