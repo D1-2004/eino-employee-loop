@@ -14,7 +14,7 @@
 //	opencode run --title <title> --format json <prompt>     // create
 //	opencode run -s <sessionID> --format json <prompt>     // resume
 //	opencode session list
-package opencode
+package local
 
 import (
 	"bytes"

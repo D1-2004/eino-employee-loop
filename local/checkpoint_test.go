@@ -1,4 +1,4 @@
-package checkpoint
+package local
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 func TestSQLiteCheckPointStore(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "cp.db")
-	s, err := Open(path)
+	s, err := OpenCheckpoint(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,12 +52,12 @@ func TestSQLiteCheckPointStore(t *testing.T) {
 func TestAttachSameDB(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "shared.db")
-	s1, err := Open(path)
+	s1, err := OpenCheckpoint(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s1.Close()
-	s2, err := Attach(s1.DB())
+	s2, err := AttachCheckpoint(s1.DB())
 	if err != nil {
 		t.Fatal(err)
 	}

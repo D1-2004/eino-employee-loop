@@ -1,9 +1,4 @@
-// Local demo: SQLite stores + SQLite CheckPointStore + stdin IM + MockExecutor.
-//
-//	DEEPSEEK_API_KEY=... go run ./cmd/demo
-//	DEEPSEEK_API_KEY=... go run ./cmd/demo -script
-//
-// Never commit a .env with a real key.
+// Local demo: local.Stack (SQLite + checkpoint + stdin + mock) wired into core.Runtime.
 package main
 
 import (
@@ -15,68 +10,52 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dingtalk-fde/eino-employee-loop/checkpoint"
 	"github.com/dingtalk-fde/eino-employee-loop/core"
-	"github.com/dingtalk-fde/eino-employee-loop/providers/im"
-	"github.com/dingtalk-fde/eino-employee-loop/providers/llm"
-	"github.com/dingtalk-fde/eino-employee-loop/providers/store"
-	"github.com/dingtalk-fde/eino-employee-loop/providers/tools"
+	"github.com/dingtalk-fde/eino-employee-loop/local"
 	"github.com/joho/godotenv"
 )
 
 func main() {
 	script := flag.Bool("script", false, "run the built-in multi-message script instead of interactive stdin")
-	db := flag.String("db", filepath.Join(os.TempDir(), "eino-employee-loop-demo.db"), "SQLite path (tasks, memory, conversation, checkpoints)")
+	db := flag.String("db", filepath.Join(os.TempDir(), "eino-employee-loop-demo.db"), "SQLite path")
 	dotenv := flag.String("dotenv", ".env", "optional dotenv (gitignored)")
 	jobMs := flag.Int("job-ms", 4000, "Host pacing before JobExecutor runs")
-	cpID := flag.String("checkpoint-id", "demo|scene-demo", "TurnLoop CheckpointID")
+	cpID := flag.String("checkpoint-id", "local|demo", "TurnLoop CheckpointID")
 	flag.Parse()
 	_ = godotenv.Load(*dotenv)
-	lcfg, lerr := llm.FromEnv()
-	if lerr != nil {
-		fmt.Fprintln(os.Stderr, lerr)
+	lcfg, err := local.FromEnv()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
 	ctx := context.Background()
-	sq, err := store.OpenSQLite(*db)
+	stack, err := local.Open(ctx, local.StackOpts{DBPath: *db, LLM: lcfg, Executor: "mock", StdinSpeaker: "冬翔", Scene: "demo"})
 	must(err)
-	defer sq.Close()
-	cps, err := checkpoint.Attach(sq.DB())
-	must(err)
-	conv, err := store.NewConvStore(sq, false)
-	must(err)
-	stats := core.NewStats()
-	cd := core.DemoCase("")
-	cfg := core.DefaultConfig("demo", "scene-demo", llm.New(lcfg), cd)
-	cfg.JobDelay = time.Duration(*jobMs) * time.Millisecond
-	cfg.CheckPointStore = cps
-	cfg.CheckpointID = *cpID
-	cfg.Executor = tools.MockExecutor{}
+	defer stack.Close()
 
-	prov := im.NewStdinProvider("stdin", "冬翔")
-	cfg.OnOutbound = func(_ context.Context, kind, text string) {
-		if kind == "ack_latency" || kind == "user_in" {
-			return
-		}
-		_ = prov.Send(context.Background(), "stdin", fmt.Sprintf("(%s) %s", kind, text))
-	}
-
-	rt, err := core.NewRuntime(ctx, cfg, sq, sq, store.NewMemKV(), conv, stats)
+	rt, err := stack.WireRuntime(ctx, local.RuntimeOpts{
+		Field:        core.Field{ID: "demo", Kind: "conversation", Title: "local demo", Provider: "local"},
+		JobDelay:     time.Duration(*jobMs) * time.Millisecond,
+		CheckpointID: *cpID,
+		OnOutbound: func(_ context.Context, kind, text string) {
+			if kind == "ack_latency" || kind == "user_in" {
+				return
+			}
+			_ = stack.IM.Send(context.Background(), "stdin", fmt.Sprintf("(%s) %s", kind, text))
+		},
+	})
 	must(err)
 	defer rt.Stop()
 
-	fmt.Printf("Eino Employee Loop demo\n  db=%s\n  checkpoint=%s (table checkpoints)\n", *db, *cpID)
-
+	fmt.Printf("Eino Employee Loop demo\n  db=%s\n  checkpoint=%s\n", *db, *cpID)
 	if *script {
 		runScript(ctx, rt)
 		return
 	}
-
 	fmt.Println("Type a message, or /quit /tasks /memory /stats /checkpoint")
-	ch, err := prov.Subscribe(ctx, "stdin")
+	ch, err := stack.IM.Subscribe(ctx, "stdin")
 	must(err)
-	defer prov.Close()
-
+	defer stack.IM.Close()
 	for in := range ch {
 		line := strings.TrimSpace(in.Text)
 		switch {
@@ -96,7 +75,7 @@ func main() {
 		case line == "/stats":
 			fmt.Printf("  counters=%v\n  store=%v\n", rt.Counters(), rt.StoreStats())
 		case line == "/checkpoint":
-			blob, ok, err := cps.Get(ctx, *cpID)
+			blob, ok, err := stack.Checkpoint.Get(ctx, *cpID)
 			fmt.Printf("  id=%s ok=%v bytes=%d err=%v\n", *cpID, ok, len(blob), err)
 		default:
 			rt.UserMessage(ctx, in.Speaker, line, in.AtMs)

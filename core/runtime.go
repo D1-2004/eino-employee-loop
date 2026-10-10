@@ -30,14 +30,19 @@ type CaseData struct {
 }
 
 type Config struct {
+	// Field is the abstract work locus. Tenant/Scene remain as storage keys
+	// (typically Field.Provider / Field.ID) for backward compatibility.
+	Field         Field
 	Tenant, Scene string
 	Case          CaseData
 	JobDelay      time.Duration
-	// Models injects the decision and ack chat models (see providers/llm).
+	// Models injects the decision and ack chat models (see local.New / providers).
 	Models      ModelProvider
 	Registry    bool // registry + memory store injected and tool-backed (treatment); false = control
 	Ack         bool
 	NoThinkAck  bool
+	// AckMode: "auto" (default) | "off" | "always". auto skips greetings + status lookups.
+	AckMode     string
 	DedupWindow time.Duration
 	ConvTokens  int // token budgets of dynamic context
 	MemTokens   int
@@ -49,15 +54,19 @@ type Config struct {
 	CheckpointID    string
 
 	// OnOutbound is called for every user-facing delivery (ack/reply/ask/…).
-	// Used by IM providers (stdin / DWS) so Host outbox and channel stay in sync.
 	OnOutbound func(ctx context.Context, kind, text string)
 
+	// Events receives Host process lifecycle signals (accepted/progress/done/…).
+	Events EventSink
+
 	// Executor runs background jobs after dispatch (required for treat mode).
-	// Inject providers/tools.MockExecutor or an OpenCode-backed executor.
 	Executor JobExecutor
 
 	// Session is optional durable coding/agent session (e.g. local OpenCode).
 	Session Session
+
+	// ToolTimeouts maps tool name → budget. 0 / missing uses TimeoutFor defaults.
+	ToolTimeouts map[string]time.Duration
 }
 
 type Item struct {
@@ -281,19 +290,19 @@ func (r *Runtime) deliver(kind, text string) {
 }
 
 // ---------------- ack path (thinking off, no tools) ----------------
-const ackSystem = `你是钉钉同事的「秒回」通道。决策在另一条通道进行。结合最近几轮的发言人与顺序，用一句自然中文（不超过 24 字）让对方知道你在看。
+const ackSystem = `你是钉钉同事的「秒回」通道。主决策在另一通道。仅在用户发起**需要后台执行或较长等待**的新工作时，用一句自然中文（≤20字）点头；否则输出 <none>。
 硬性规则：
-1. 只表达「在看/去办/去查」这类动作意图；绝不给结论、事实、数字、结果或承诺。
-2. 绝不说已完成/已发送/已建好。
-3. 问进度时说「我看下进度」一类即可。
-4. 纯寒暄（Hi/你好/在吗/谢谢）、表情、不需要回应、或明显不是对你说的 → 只输出 <none>（主循环会自然回复）。
-5. 不要机械重复「收到」；可带一点语境（对象/事项），但仍保持短。
+1. 只表达动作意图（去办/去查）；绝不给结论、数字、结果或承诺「已完成」。
+2. 禁止套话：「我看下」「我看下进度」「我看下记忆这块」「我看下XX」一律改为 <none>（主循环会直接答）。
+3. 问进度、问记忆、总结、澄清选项、寒暄、纠正上一句 → <none>。
+4. 只有明确的新派活（查天气/跑命令/写代码并执行等）才秒回一句带语境的确认。
 只输出这句话本身，或 <none>。`
 
-// isGreetingOrAckSkip detects pure greetings / thanks that should skip the stiff ack path.
+// isGreetingOrAckSkip detects utterances that should skip the stiff ack path
+// (greetings, status/memory lookups, summaries — Host answers these in the decision turn).
 func isGreetingOrAckSkip(text string) bool {
 	t := strings.TrimSpace(strings.ToLower(text))
-	t = strings.Trim(t, "！!。.~～、，,")
+	t = strings.Trim(t, "！!。.?？~～、，,")
 	if t == "" {
 		return true
 	}
@@ -316,11 +325,29 @@ func isGreetingOrAckSkip(text string) bool {
 		"谢谢", "多谢", "感谢", "thx", "thanks", "thank you", "ok", "okay", "好的", "好", "嗯", "哦", "收到":
 		return true
 	}
+	// Status / memory / summary questions — no ack; decision turn replies once.
+	statusHints := []string{
+		"有哪些任务", "哪些任务在执行", "任务在执行", "还在查吗", "进度",
+		"有哪些记忆", "有什么记忆", "记忆呢", "当前会话有哪些记忆",
+		"刚才都做了啥", "总结", "聊天记录", "你有什么能力", "定时任务",
+	}
+	for _, h := range statusHints {
+		if strings.Contains(t, h) {
+			return true
+		}
+	}
 	return false
 }
 
 func (r *Runtime) doAck(ctx context.Context, m Msg) {
-	if isGreetingOrAckSkip(m.Text) {
+	mode := r.cfg.AckMode
+	if mode == "" {
+		mode = "auto"
+	}
+	if mode == "off" || !r.cfg.Ack {
+		return
+	}
+	if mode == "auto" && isGreetingOrAckSkip(m.Text) {
 		r.count("ack_skipped_greeting")
 		return
 	}

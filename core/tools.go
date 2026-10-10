@@ -43,6 +43,19 @@ func (t *rtTool) InvokableRun(ctx context.Context, args string, _ ...tool.Option
 	r := t.r
 	name := t.info.Name
 	cfg := r.cfg
+	budget := DefaultToolTimeout
+	if cfg.ToolTimeouts != nil {
+		if d, ok := cfg.ToolTimeouts[name]; ok && d > 0 {
+			budget = d
+		} else if !readOnly[name] {
+			budget = DefaultEffectTimeout
+		}
+	} else if !readOnly[name] {
+		budget = DefaultEffectTimeout
+	}
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, budget)
+	defer cancel()
 	var a map[string]any
 	_ = json.Unmarshal([]byte(args), &a)
 	str := func(k string) string { s, _ := a[k].(string); return s }
@@ -298,6 +311,7 @@ func (r *Runtime) dispatch(ctx context.Context, a map[string]any, winSeq []int64
 	}
 	r.count("tasks_created")
 	_ = r.ts.AddEvent(ctx, cfg.Tenant, id, "queued", "")
+	r.emitProcess(EvAccepted, id, t.Receipt, str("reply"))
 	// the model's own specific confirmation is delivered even when a generic ack was sent
 	r.deliver("dispatch_reply", str("reply"))
 	r.startJob(cur)
@@ -336,11 +350,13 @@ func (r *Runtime) startJob(t *Task) {
 		if err != nil {
 			_, _ = r.ts.Transition(ctx, r.cfg.Tenant, t.ID, []string{StRunning}, StFailed, err.Error())
 			_ = r.ts.AddEvent(ctx, r.cfg.Tenant, t.ID, "failed", err.Error())
+			r.emitProcess(EvFailed, t.ID, t.Receipt, err.Error())
 			r.pushResult(t.ID)
 			return
 		}
 		if ok, _ := r.ts.Transition(ctx, r.cfg.Tenant, t.ID, []string{StRunning}, StDone, res); ok {
 			_ = r.ts.AddEvent(ctx, r.cfg.Tenant, t.ID, "done", "")
+			r.emitProcess(EvDone, t.ID, t.Receipt, res)
 			r.pushResult(t.ID)
 		}
 	}()
@@ -472,4 +488,18 @@ func hasTermEarly(t *Turn, r *Runtime) bool {
 		}
 	}
 	return false
+}
+
+
+func (r *Runtime) emitProcess(kind, taskID, receipt, text string) {
+	if r.cfg.Events == nil {
+		return
+	}
+	fieldID := r.cfg.Field.ID
+	if fieldID == "" {
+		fieldID = r.cfg.Scene
+	}
+	_ = r.cfg.Events.Emit(context.Background(), ProcessEvent{
+		Kind: kind, FieldID: fieldID, TaskID: taskID, Receipt: receipt, Text: text, AtMs: NowMs(),
+	})
 }

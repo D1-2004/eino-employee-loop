@@ -1,6 +1,6 @@
 // Package llm builds core.ModelProvider implementations for DeepSeek-native and
 // OpenAI-compatible endpoints (e.g. Alibaba Cloud Bailian / DashScope).
-package llm
+package local
 
 import (
 	"context"

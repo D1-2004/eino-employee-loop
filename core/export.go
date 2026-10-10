@@ -50,9 +50,10 @@ func (r *Runtime) StoreStats() map[string]map[string]float64 { return r.stats.Su
 // DefaultConfig builds a treat-mode Config (registry+memory+ack) for the demo.
 func DefaultConfig(tenant, scene string, models ModelProvider, caseData CaseData) Config {
 	return Config{
+		Field: Field{ID: scene, Kind: "conversation", Provider: tenant},
 		Tenant: tenant, Scene: scene, Case: caseData,
 		JobDelay: 4 * time.Second, Models: models,
-		Registry: true, Ack: true, DedupWindow: 90 * time.Second,
+		Registry: true, Ack: true, AckMode: "auto", DedupWindow: 90 * time.Second,
 		ConvTokens: 2200, MemTokens: 700, RegTokens: 450,
 	}
 }

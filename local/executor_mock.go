@@ -1,5 +1,5 @@
 // Package tools provides injectable JobExecutor backends for the employee loop.
-package tools
+package local
 
 import (
 	"context"

@@ -4,92 +4,82 @@ Grok Bot–style **employee decision loop** on [CloudWeGo Eino](https://github.c
 
 > **Repo:** [dingtalk-fde/eino-employee-loop](https://github.com/dingtalk-fde/eino-employee-loop). Intended org home is `D1-2004` once an admin creates/transfers the public repo.
 
-## Architecture
+## Layout (keep Core clean & simple)
 
 ```
-core/                         Runtime, TurnLoop wiring, context, Host tool orchestration
-                              Ports only: TaskStore · MemoryStore · KV · Conversation ·
-                              IMProvider · Session · JobExecutor  (NO concrete backends)
-checkpoint/                   Eino CheckPointStore on SQLite (Get/Set/Delete)
-providers/store/              SQLite/Postgres + MemKV/RedisKV + ConvStore
-providers/im/                 StdinProvider · DWSProvider (poll + send)
-providers/session/opencode/   Local OpenCode CLI adapter (core.Session)
-providers/tools/              MockExecutor (injectable JobExecutor)
-cmd/demo/                     Local runnable demo
-cmd/dws-consumer/             Long-running DWS conversation consumer
-cloud/                        PG DDL · Redis key design notes
-docs/                         Architecture & cost notes
-scripts/                      install-consumer.sh
+core/                 Ports + runtime orchestration only
+                      Field · Actor · Trigger · ProcessEvent · ToolSpec/Timeout
+                      TaskStore · MemoryStore · KV · Conversation · IMProvider
+                      Session · JobExecutor · ModelProvider · EventSink
+                      NO DWS / DingTalk / SQLite / OpenCode imports
+
+local/                All-in-one local stack implementing Core ports
+                      SQLite store + checkpoint · MemKV · stdin IM
+                      LLM (DeepSeek/DashScope/OpenAI) · OpenCode · MockExecutor
+                      Stack.Open / WireRuntime
+
+providers/dws/        DingTalk Workspace IM adapter (poll + send + mark-read)
+
+cmd/demo/             Local runnable demo
+cmd/dws-consumer/     Long-running DWS conversation consumer
+cloud/                PG DDL · Redis key notes
+docs/                 Architecture & Multica mapping notes
 ```
 
-Core never imports providers. Commands wire providers through constructor injection.
+Core never imports `local` or `providers/*`. Commands wire them in.
 
-## Quick start (local demo)
+## Quick start (local)
 
 ```bash
-export DEEPSEEK_API_KEY=sk-...
-go test ./providers/store/ ./checkpoint/
+export LLM_API_KEY=...          # or DEEPSEEK_API_KEY / DASHSCOPE_API_KEY
+# optional: LLM_PROVIDER=dashscope LLM_MODEL=deepseek-v4.1-flash
+
+go test ./local/
 go run ./cmd/demo -script
-go run ./cmd/demo   # interactive; /tasks /memory /stats /checkpoint /quit
+go run ./cmd/demo               # interactive; /tasks /memory /stats /checkpoint /quit
 ```
 
-SQLite (default under `$TMPDIR`) holds `tasks`, `task_events`, `memory_facts` (+FTS5), `conversation`, `checkpoints`.
-
-## DWS consumer
+## DWS consumer (Mac / dxxh)
 
 ```bash
-export DEEPSEEK_API_KEY=sk-...
+export LLM_PROVIDER=dashscope LLM_API_KEY=...
 export DWS_PROFILE='corpId:userId'   # optional
 
 go run ./cmd/dws-consumer \
   --cid 'cid...' \
-  --kind dm \
-  --db ./data/employee.db \
-  --profile "$DWS_PROFILE" \
-  --self-name 'dxxh' \
-  --poll 8s
+  --kind group \
+  --db ~/.local/share/eino-employee-loop/employee.db \
+  --executor opencode \
+  --opencode-dir ~/eino-employee-loop-workspace
 ```
-
-## OpenCode session (optional)
-
-`providers/session/opencode` shells out to local `opencode`:
-
-- binary: `opencode` on PATH (e.g. nvm)
-- data: `~/.local/share/opencode/`
-- CLI: `opencode run -s <id> …`, `opencode session list`
-
-Wire it on `core.Config.Session` from a command when you want durable coding sessions behind `dispatch_task` (pair with a custom `JobExecutor`).
 
 ## How the loop works
 
 ```
-IM Provider (stdin | DWS)
-  └─► core.Runtime.UserMessage
-        ├─► ack (DeepSeek, thinking OFF) ──► OnOutbound → IM.Send
-        └─► TurnLoop.Push (+ preempt)     [CheckPointStore]
-              └─► ChatModelAgent
-                    ├─ find_tasks / memory_*  ← injected stores
-                    ├─ dispatch_task          → TaskStore + JobExecutor
-                    └─ reply / ask / …        → OnOutbound
+Trigger (user_message | task_result | …) on Field
+  └─► core.Runtime
+        ├─► optional ack (AckMode=auto skips greetings/status lookups)
+        └─► Eino TurnLoop + ChatModelAgent
+              ├─ tools via Host (timeout budget per call)
+              ├─ dispatch_task → TaskStore + JobExecutor + ProcessEvent(accepted)
+              └─ reply / ask → OnOutbound → IM.Send
+        └─► job done → ProcessEvent(done|failed) → Push task_result
 ```
 
-## Model providers (env)
+## Multica lessons we ported
 
-`providers/llm` injects the models into Core (`core.ModelProvider`). Env:
+| Multica (`dt-fde-multica` employeeloop) | Eino Employee Loop |
+| --- | --- |
+| `scene.Ref` + Identity never from model text | `core.Field` + `Actor` / `Trigger` |
+| Host owns effects + receipts | TaskStore receipts; `EventSink` for accepted/progress/done/failed |
+| Context: system persona → memory → tasks → history → window | `genInput` sections + token budgets |
+| Terminal tools + dispatch.reply in one shot | Terminal map + `dispatch_task.reply` |
+| Max 3 model calls / wake | Eino MaxIterations (8) + Host dedup (tighten later) |
+| Tool registry from Host | `ToolSpec` + per-call timeout budgets |
 
-```
-LLM_PROVIDER=dashscope            # deepseek (default) | dashscope | openai
-LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-LLM_API_KEY=...                   # never commit
-LLM_MODEL=deepseek-v4.1-flash     # LLM_ACK_MODEL optional
-```
-Ack path runs with thinking off (`enable_thinking=false` on DashScope, `thinking: disabled` on DeepSeek).
-`dws-consumer --executor opencode --opencode-dir <sandbox>` runs dispatched tasks in a local OpenCode session.
+## Dialogue defaults
 
-## DingTalk consumer UX defaults
-
-- System instruction: Chinese colleague prompt (`core.DefaultColleagueInstruction`); override with `--instruction` or `SYSTEM_INSTRUCTION`.
-- Outbound: `dws chat +messages-send --as user --markdown ... --ai-tag=false` (human profile, no AI badge).
-- After each inbound: `+conversation-mark-read` + `+conversation-clear-red-point`.
-- Startup: seeds recent DWS history into local SQLite conversation so the first reply sees speakers/order.
-- Ack: skips pure greetings (Hi/你好/…); otherwise short natural ack with recent context.
+- Chinese colleague system instruction (`core.DefaultColleagueInstruction`)
+- Markdown send, no AI badge, mark-read after inbound
+- AckMode=auto: skip Hi/谢谢 and 「有哪些任务/记忆/进度」 — no more 「我看下…」 spam
+- Prefer one accept line via `dispatch_task.reply`; Host events for lifecycle

@@ -1,10 +1,4 @@
-// DWS conversation consumer: poll one openConversationId via dws, feed the employee Runtime,
-// send replies back with +messages-send (markdown, no AI badge). Intended to run on a machine
-// that has `dws` logged in (e.g. the user's dxxh host). Does not hardcode secrets.
-//
-//	export LLM_API_KEY=...   # or DEEPSEEK_API_KEY / DASHSCOPE_API_KEY via providers/llm
-//	export DWS_PROFILE='corpId:userId'   // optional; default = current dws profile
-//	go run ./cmd/dws-consumer --cid 'cid...' --db ./data/employee.db
+// DWS conversation consumer — DingTalk adapter + local stack + core.Runtime.
 package main
 
 import (
@@ -18,13 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dingtalk-fde/eino-employee-loop/checkpoint"
 	"github.com/dingtalk-fde/eino-employee-loop/core"
-	"github.com/dingtalk-fde/eino-employee-loop/providers/im"
-	"github.com/dingtalk-fde/eino-employee-loop/providers/llm"
-	"github.com/dingtalk-fde/eino-employee-loop/providers/session/opencode"
-	"github.com/dingtalk-fde/eino-employee-loop/providers/store"
-	"github.com/dingtalk-fde/eino-employee-loop/providers/tools"
+	"github.com/dingtalk-fde/eino-employee-loop/local"
+	"github.com/dingtalk-fde/eino-employee-loop/providers/dws"
 	"github.com/joho/godotenv"
 )
 
@@ -36,15 +26,15 @@ func main() {
 	dotenv := flag.String("dotenv", ".env", "optional dotenv")
 	poll := flag.Duration("poll", 8*time.Second, "DWS poll interval")
 	self := flag.String("self-name", os.Getenv("DWS_SELF_NAME"), "skip inbound from these display names (comma-separated)")
-	selfID := flag.String("self-id", os.Getenv("DWS_SELF_ID"), "skip inbound from these senderId/openDingTalkId (comma-separated)")
-	tenant := flag.String("tenant", "dws", "tenant id")
-	scene := flag.String("scene", "", "scene id (default = cid)")
-	jobMs := flag.Int("job-ms", 4000, "simulated background job duration")
+	selfID := flag.String("self-id", os.Getenv("DWS_SELF_ID"), "skip inbound from these senderId (comma-separated)")
+	tenant := flag.String("tenant", "dws", "Field.Provider / storage tenant")
+	scene := flag.String("scene", "", "Field.ID (default = sanitized cid)")
+	jobMs := flag.Int("job-ms", 4000, "Host pacing before JobExecutor")
 	execName := flag.String("executor", envOr("EXECUTOR", "mock"), "mock | opencode")
-	ocDir := flag.String("opencode-dir", os.Getenv("OPENCODE_DIR"), "OpenCode working dir (sandbox) for --executor opencode")
-	ocModel := flag.String("opencode-model", os.Getenv("OPENCODE_MODEL"), "optional OpenCode provider/model")
-	instr := flag.String("instruction", "", "override system instruction (else SYSTEM_INSTRUCTION env, else default Chinese colleague prompt)")
-	seedHist := flag.Int("seed-history", 40, "seed this many recent DWS messages into local context on start (0=off)")
+	ocDir := flag.String("opencode-dir", os.Getenv("OPENCODE_DIR"), "OpenCode working dir")
+	ocModel := flag.String("opencode-model", os.Getenv("OPENCODE_MODEL"), "optional OpenCode model")
+	instr := flag.String("instruction", "", "override system instruction")
+	seedHist := flag.Int("seed-history", 40, "seed recent DWS messages on first run (0=off)")
 	flag.Parse()
 	_ = godotenv.Load(*dotenv)
 
@@ -52,9 +42,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "required: --cid or DWS_CID")
 		os.Exit(2)
 	}
-	lcfg, lerr := llm.FromEnv()
-	if lerr != nil {
-		fmt.Fprintln(os.Stderr, lerr)
+	lcfg, err := local.FromEnv()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
 	if *scene == "" {
@@ -63,72 +53,58 @@ func main() {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
-
 	_ = os.MkdirAll(filepath.Dir(*db), 0o755)
 
-	sq, err := store.OpenSQLite(*db)
+	stack, err := local.Open(ctx, local.StackOpts{
+		DBPath: *db, LLM: lcfg, Executor: *execName,
+		OpenCodeDir: *ocDir, OpenCodeModel: *ocModel, Scene: *scene,
+	})
 	must(err)
-	defer sq.Close()
-	cps, err := checkpoint.Attach(sq.DB())
-	must(err)
-	conv, err := store.NewConvStore(sq, false)
-	must(err)
+	defer stack.Close()
 
-	var selfNames []string
+	var selfNames, selfIDs []string
 	for _, n := range strings.Split(*self, ",") {
-		n = strings.TrimSpace(n)
-		if n != "" {
+		if n = strings.TrimSpace(n); n != "" {
 			selfNames = append(selfNames, n)
 		}
 	}
-	var selfIDs []string
 	for _, n := range strings.Split(*selfID, ",") {
-		n = strings.TrimSpace(n)
-		if n != "" {
+		if n = strings.TrimSpace(n); n != "" {
 			selfIDs = append(selfIDs, n)
 		}
 	}
 
-	prov := im.NewDWSProvider(im.DWSConfig{
-		Profile:   *profile,
-		PollEvery: *poll,
-		Kind:      *kind,
-		SelfNames: selfNames,
-		SelfIDs:   selfIDs,
+	prov := dws.NewDWSProvider(dws.DWSConfig{
+		Profile: *profile, PollEvery: *poll, Kind: *kind,
+		SelfNames: selfNames, SelfIDs: selfIDs,
 	})
 	defer prov.Close()
 
-	cd := core.DemoCase(*instr)
-	cfg := core.DefaultConfig(*tenant, *scene, llm.New(lcfg), cd)
-	cfg.JobDelay = time.Duration(*jobMs) * time.Millisecond
-	cfg.CheckPointStore = cps
-	cfg.CheckpointID = *tenant + "|" + *scene
-	switch *execName {
-	case "opencode":
-		cfg.Executor = tools.OpenCodeExecutor{Session: &opencode.Session{WorkDir: *ocDir, Model: *ocModel}, Scene: *scene}
-	default:
-		cfg.Executor = tools.MockExecutor{}
+	field := core.Field{
+		ID: *scene, Kind: "conversation", Locator: *cid,
+		Provider: *tenant, Title: "dws:" + *kind,
 	}
-	cfg.OnOutbound = func(ctx context.Context, kind, text string) {
-		if kind == "ack_latency" || kind == "user_in" || kind == "suppressed_ack_dup" || kind == "stay_quiet" {
-			return
-		}
-		if err := prov.Send(ctx, *cid, text); err != nil {
-			fmt.Fprintf(os.Stderr, "dws send: %v\n", err)
-		}
-	}
-
-	rt, err := core.NewRuntime(ctx, cfg, sq, sq, store.NewMemKV(), conv, statsOrNil())
+	rt, err := stack.WireRuntime(ctx, local.RuntimeOpts{
+		Field: field, Instruction: *instr,
+		JobDelay: time.Duration(*jobMs) * time.Millisecond,
+		OnOutbound: func(ctx context.Context, kind, text string) {
+			if kind == "ack_latency" || kind == "user_in" || kind == "suppressed_ack_dup" || kind == "stay_quiet" {
+				return
+			}
+			if err := prov.Send(ctx, *cid, text); err != nil {
+				fmt.Fprintf(os.Stderr, "dws send: %v\n", err)
+			}
+		},
+		Events: logEvents{},
+	})
 	must(err)
 	defer rt.Stop()
 
-	fmt.Printf("dws-consumer starting\n  cid=%s kind=%s profile=%q\n  db=%s checkpoint=%s\n  instruction_chars=%d markdown_send=true ai_tag=false\n",
-		*cid, *kind, *profile, *db, cfg.CheckpointID, len([]rune(cd.System)))
+	fmt.Printf("dws-consumer starting\n  field=%s locator=%s kind=%s profile=%q\n  db=%s checkpoint=%s|%s\n  markdown_send=true ai_tag=false ack_mode=auto\n",
+		field.ID, trunc(*cid, 40), *kind, *profile, *db, *tenant, *scene)
 
-	// Seed recent DWS history only when the local log is thin (first run / new scene),
-	// so we do not duplicate already-tracked turns after a restart.
 	if *seedHist > 0 {
-		existing, _ := conv.Recent(ctx, *tenant, *scene, 0, 20)
+		existing, _ := stack.Conv.Recent(ctx, *tenant, *scene, 0, 20)
 		if len(existing) >= 8 {
 			fmt.Printf("skip history seed: local conv already has %d msgs\n", len(existing))
 		} else if hist, err := prov.FetchHistory(ctx, *cid, *seedHist); err != nil {
@@ -143,12 +119,8 @@ func main() {
 	ch, err := prov.Subscribe(ctx, *cid)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "subscribe failed: %v\n", err)
-		fmt.Fprintln(os.Stderr, "hint: dws auth may be expired — run:")
-		fmt.Fprintln(os.Stderr, "  python3 $HOME/.agents/skills/dws-env/scripts/dws_env.py as <identity> -- auth login --device")
-		fmt.Fprintln(os.Stderr, "  or: dws --profile <corpId:userId> auth login --device")
 		os.Exit(1)
 	}
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -161,13 +133,19 @@ func main() {
 			}
 			fmt.Printf("← %s: %s\n", in.Speaker, trunc(in.Text, 120))
 			rt.UserMessage(ctx, in.Speaker, in.Text, in.AtMs)
-			// Mark read + clear red point after accepting the message (best-effort).
 			go markHandled(prov, *cid, in.MsgID)
 		}
 	}
 }
 
-func markHandled(prov *im.DWSProvider, cid, msgID string) {
+type logEvents struct{}
+
+func (logEvents) Emit(_ context.Context, ev core.ProcessEvent) error {
+	fmt.Printf("event kind=%s task=%s receipt=%s text=%s\n", ev.Kind, ev.TaskID, ev.Receipt, trunc(ev.Text, 80))
+	return nil
+}
+
+func markHandled(prov *dws.DWSProvider, cid, msgID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := prov.MarkRead(ctx, cid, msgID); err != nil {
@@ -178,15 +156,12 @@ func markHandled(prov *im.DWSProvider, cid, msgID string) {
 	}
 }
 
-func statsOrNil() *core.Stats { return core.NewStats() }
-
 func envOr(k, def string) string {
 	if v := os.Getenv(k); v != "" {
 		return v
 	}
 	return def
 }
-
 func sanitizeScene(cid string) string {
 	var b strings.Builder
 	for _, r := range cid {
@@ -205,7 +180,6 @@ func sanitizeScene(cid string) string {
 	}
 	return s
 }
-
 func must(err error) {
 	if err != nil {
 		panic(err)

@@ -1,4 +1,4 @@
-package im
+package local
 
 import (
 	"bufio"
@@ -10,10 +10,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/dingtalk-fde/eino-employee-loop/core"
 )
 
 // StdinProvider reads lines from stdin as inbound messages and prints outbound to stdout.
-// Used by cmd/demo for local testing without DingTalk.
 type StdinProvider struct {
 	In      io.Reader
 	Out     io.Writer
@@ -21,7 +22,7 @@ type StdinProvider struct {
 	Speaker string
 	mu      sync.Mutex
 	closed  atomic.Bool
-	ch      chan Inbound
+	ch      chan core.Inbound
 	seq     int64
 }
 
@@ -32,13 +33,10 @@ func NewStdinProvider(convID, speaker string) *StdinProvider {
 	if speaker == "" {
 		speaker = "you"
 	}
-	return &StdinProvider{
-		In: os.Stdin, Out: os.Stdout,
-		ConvID: convID, Speaker: speaker,
-	}
+	return &StdinProvider{In: os.Stdin, Out: os.Stdout, ConvID: convID, Speaker: speaker}
 }
 
-func (p *StdinProvider) Subscribe(ctx context.Context, convID string) (<-chan Inbound, error) {
+func (p *StdinProvider) Subscribe(ctx context.Context, convID string) (<-chan core.Inbound, error) {
 	if convID != "" {
 		p.ConvID = convID
 	}
@@ -47,7 +45,7 @@ func (p *StdinProvider) Subscribe(ctx context.Context, convID string) (<-chan In
 	if p.ch != nil {
 		return p.ch, nil
 	}
-	p.ch = make(chan Inbound, 8)
+	p.ch = make(chan core.Inbound, 8)
 	go p.readLoop(ctx)
 	return p.ch, nil
 }
@@ -65,7 +63,6 @@ func (p *StdinProvider) readLoop(ctx context.Context) {
 			return
 		default:
 		}
-		// Prompt on Out so interactive demos feel natural.
 		fmt.Fprint(p.Out, "> ")
 		if !sc.Scan() {
 			return
@@ -78,12 +75,9 @@ func (p *StdinProvider) readLoop(ctx context.Context) {
 			return
 		}
 		id := atomic.AddInt64(&p.seq, 1)
-		msg := Inbound{
-			ConvID:  p.ConvID,
-			MsgID:   fmt.Sprintf("stdin-%d", id),
-			Speaker: p.Speaker,
-			Text:    line,
-			AtMs:    time.Now().UnixMilli(),
+		msg := core.Inbound{
+			ConvID: p.ConvID, MsgID: fmt.Sprintf("stdin-%d", id),
+			Speaker: p.Speaker, Text: line, AtMs: time.Now().UnixMilli(),
 		}
 		select {
 		case p.ch <- msg:
@@ -105,3 +99,5 @@ func (p *StdinProvider) Close() error {
 	p.closed.Store(true)
 	return nil
 }
+
+var _ core.IMProvider = (*StdinProvider)(nil)

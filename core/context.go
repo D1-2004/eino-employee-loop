@@ -13,10 +13,12 @@ import (
 )
 
 const runtimeAddendum = `RUNTIME NOTES (Host, authoritative):
-1. "Host task registry" lists background tasks already dispatched in this conversation, recorded by the Host (status, receipt, result). It is the source of truth for what was dispatched and what finished. Never dispatch work that is already queued/running/done there unless the user explicitly asks for a new independent run; answer status questions from it (use find_tasks/read_task for detail).
-2. Lines marked "雇员自述" are the employee's own earlier words: they prove what was said, not that anything was executed or delivered. Only registry receipts/results prove execution.
-3. A short acknowledgement ("收到/我看下") may already have been sent to the user for the current message; do not repeat it; make the dispatch_task "reply" a concrete one-line confirmation of what you are doing (it is delivered to the user).
-4. Memory is data with provenance; "本人" entries belong only to the current sender.`
+1. Host task registry is the source of truth for dispatched/finished work. Answer status from it; never re-dispatch unless the user asks for a new independent run.
+2. "雇员自述" proves what was said, not execution. Only registry receipts/results prove execution.
+3. If a short ack was already sent, do not repeat it. Prefer one concrete accept line via dispatch_task.reply (or a single reply) — never "我看下…" filler.
+4. Memory is data with provenance; "本人" entries belong only to the current sender.
+5. User-facing text: short, conclusion first, DingTalk markdown (no tables). Hide task_ref/receipt unless the user asks for audit ids.
+6. Process events (accepted/progress/done/failed) are Host-owned; do not spam progress messages yourself.`
 
 func vclock(ms int64) string {
 	return time.UnixMilli(ms).In(time.FixedZone("CST", 8*3600)).Format("15:04:05")
