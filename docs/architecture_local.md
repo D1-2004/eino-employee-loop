@@ -1,29 +1,30 @@
 # Local architecture
 
+## Packages
+
+| Path | Role |
+|------|------|
+| `core/` | Runtime, TurnLoop, context builder, Host tool orchestration. **Ports only** — no DWS, SQLite, OpenCode, or mock executor imports. |
+| `checkpoint/` | Eino `CheckPointStore` on SQLite (`checkpoints` table). |
+| `providers/store/` | SQLite/Postgres Task+Memory, MemKV/RedisKV, ConvStore. |
+| `providers/im/` | Stdin + DWS poll/send. |
+| `providers/session/opencode/` | `core.Session` via local `opencode` CLI. |
+| `providers/tools/` | `MockExecutor` (`core.JobExecutor`). |
+| `cmd/demo` | Wires SQLite + stdin + MockExecutor. |
+| `cmd/dws-consumer` | Wires SQLite + DWS + MockExecutor. |
+
+## Injection
+
+```go
+cfg := core.DefaultConfig(...)
+cfg.CheckPointStore = cps          // checkpoint.Attach(db)
+cfg.Executor = tools.MockExecutor{}
+cfg.Session = &opencode.Session{}  // optional
+cfg.OnOutbound = func(ctx, kind, text) { _ = im.Send(...) }
+
+rt, err := core.NewRuntime(ctx, cfg, tasks, memory, kv, conv, stats)
 ```
-cmd/demo ──┐
-           ├─► loop.Runtime ──► store (SQLite) + checkpoint (SQLite) + MemKV
-cmd/dws-   │         ▲
-consumer ──┘         │ OnOutbound
-                     ▼
-              im.Provider (stdin | DWS poll/send)
-```
 
-## Checkpoint table
+## Data (SQLite)
 
-```sql
-CREATE TABLE checkpoints(
-  id TEXT PRIMARY KEY,
-  blob BLOB NOT NULL,
-  updated_at BIGINT NOT NULL
-);
-```
-
-Wired as `adk.TurnLoopConfig{Store, CheckpointID}`. Implements `Get` / `Set` / `Delete` (`CheckPointDeleter`) so clean exits delete stale blobs.
-
-## DWS poll
-
-1. Seed: first `+chat-messages` marks current IDs seen (no replay).
-2. Every `--poll`: fetch newest page, emit unseen non-self messages as `Inbound`.
-3. Persist seen set under `~/.local/share/eino-employee-loop/seen-*.json`.
-4. Outbound: `+messages-send --as user --group|--open-dingtalk-id --text --uuid`.
+`tasks`, `task_events`, `memory_facts` (+ FTS5), `conversation`, `checkpoints`.

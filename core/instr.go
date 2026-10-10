@@ -1,12 +1,10 @@
-package loop
+package core
 
 import (
 	"context"
 	"sort"
 	"sync"
 	"time"
-
-	"github.com/dingtalk-fde/eino-employee-loop/store"
 )
 
 // Stats collects per-operation latencies of the storage layer (microseconds).
@@ -46,19 +44,19 @@ func (s *Stats) Summary() map[string]map[string]float64 {
 }
 
 type timedTasks struct {
-	store.TaskStore
+	TaskStore
 	s *Stats
 }
 
-func (t timedTasks) Create(ctx context.Context, x *store.Task, w time.Duration) (*store.Task, bool, error) {
+func (t timedTasks) Create(ctx context.Context, x *Task, w time.Duration) (*Task, bool, error) {
 	defer t.s.rec("task.create", time.Now())
 	return t.TaskStore.Create(ctx, x, w)
 }
-func (t timedTasks) Get(ctx context.Context, a, b string) (*store.Task, error) {
+func (t timedTasks) Get(ctx context.Context, a, b string) (*Task, error) {
 	defer t.s.rec("task.get", time.Now())
 	return t.TaskStore.Get(ctx, a, b)
 }
-func (t timedTasks) Find(ctx context.Context, a, b, c string, n int) ([]*store.Task, error) {
+func (t timedTasks) Find(ctx context.Context, a, b, c string, n int) ([]*Task, error) {
 	defer t.s.rec("task.find", time.Now())
 	return t.TaskStore.Find(ctx, a, b, c, n)
 }
@@ -68,25 +66,25 @@ func (t timedTasks) Transition(ctx context.Context, a, b string, f []string, to,
 }
 
 type timedMem struct {
-	store.MemoryStore
+	MemoryStore
 	s *Stats
 }
 
-func (t timedMem) Put(ctx context.Context, f *store.Fact, o string) (*store.Fact, bool, error) {
+func (t timedMem) Put(ctx context.Context, f *Fact, o string) (*Fact, bool, error) {
 	defer t.s.rec("mem.put", time.Now())
 	return t.MemoryStore.Put(ctx, f, o)
 }
-func (t timedMem) Search(ctx context.Context, a, b, c, d, q string, n int) ([]*store.Fact, error) {
+func (t timedMem) Search(ctx context.Context, a, b, c, d, q string, n int) ([]*Fact, error) {
 	defer t.s.rec("mem.search", time.Now())
 	return t.MemoryStore.Search(ctx, a, b, c, d, q, n)
 }
-func (t timedMem) Recent(ctx context.Context, a, b, c, d string, n int) ([]*store.Fact, error) {
+func (t timedMem) Recent(ctx context.Context, a, b, c, d string, n int) ([]*Fact, error) {
 	defer t.s.rec("mem.recent", time.Now())
 	return t.MemoryStore.Recent(ctx, a, b, c, d, n)
 }
 
 type timedKV struct {
-	store.KV
+	KV
 	s *Stats
 }
 

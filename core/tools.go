@@ -1,13 +1,13 @@
-package loop
+package core
 
 import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"errors"
 	"regexp"
 	"strings"
 	"sync/atomic"
@@ -16,7 +16,6 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
-	"github.com/dingtalk-fde/eino-employee-loop/store"
 )
 
 var readOnly = map[string]bool{"find_tasks": true, "read_task": true, "read_context": true, "read_collection": true, "memory_lookup": true, "scene_config_get": true, "read_task_history": true, "get_supervisor": true, "read_human_cards": true, "describe_capabilities": true, "prepare_background": true}
@@ -28,11 +27,17 @@ type rtTool struct {
 
 func (t *rtTool) Info(ctx context.Context) (*schema.ToolInfo, error) { return t.info, nil }
 
-func rid(p string) string { b := make([]byte, 3); _, _ = rand.Read(b); return p + hex.EncodeToString(b) }
+func rid(p string) string {
+	b := make([]byte, 3)
+	_, _ = rand.Read(b)
+	return p + hex.EncodeToString(b)
+}
 
 var rerunRe = regexp.MustCompile(`重新|再(跑|查|建|来|执行)|重跑|重做|重试|again|rerun`)
 
-func idemKey(goal string) string { return store.NormHash(regexp.MustCompile(`[\s\p{P}]+`).ReplaceAllString(strings.ToLower(goal), "")) }
+func idemKey(goal string) string {
+	return NormHash(regexp.MustCompile(`[\s\p{P}]+`).ReplaceAllString(strings.ToLower(goal), ""))
+}
 
 func (t *rtTool) InvokableRun(ctx context.Context, args string, _ ...tool.Option) (string, error) {
 	r := t.r
@@ -59,7 +64,7 @@ func (t *rtTool) InvokableRun(ctx context.Context, args string, _ ...tool.Option
 		ts, _ := r.ts.Find(ctx, cfg.Tenant, cfg.Scene, str("query"), 8)
 		c := []map[string]any{}
 		for _, x := range ts {
-			c = append(c, map[string]any{"task_ref": x.ID, "goal": truncRunes(x.Goal, 120), "state_at_snapshot": x.Status, "age_s": (store.NowMs() - x.CreatedMs) / 1000, "receipt": x.Receipt, "source_ref": x.SourceRef})
+			c = append(c, map[string]any{"task_ref": x.ID, "goal": truncRunes(x.Goal, 120), "state_at_snapshot": x.Status, "age_s": (NowMs() - x.CreatedMs) / 1000, "receipt": x.Receipt, "source_ref": x.SourceRef})
 		}
 		out = map[string]any{"candidates": c, "registry": "host", "note": "Host-recorded tasks of this conversation; empty list means none matched"}
 	case "read_task":
@@ -76,7 +81,7 @@ func (t *rtTool) InvokableRun(ctx context.Context, args string, _ ...tool.Option
 		if x.DoneMs > 0 {
 			evs = fmt.Sprintf("finished %ds after dispatch", (x.DoneMs-x.CreatedMs)/1000)
 		}
-		out = map[string]any{"task_ref": x.ID, "execution_state": x.Status, "goal": x.Goal, "receipt": x.Receipt, "result": x.Result, "timing": evs, "age_s": (store.NowMs() - x.CreatedMs) / 1000, "registry": "host"}
+		out = map[string]any{"task_ref": x.ID, "execution_state": x.Status, "goal": x.Goal, "receipt": x.Receipt, "result": x.Result, "timing": evs, "age_s": (NowMs() - x.CreatedMs) / 1000, "registry": "host"}
 	case "dispatch_task":
 		out = r.dispatch(ctx, a, winSeq)
 	case "stop_task":
@@ -85,7 +90,7 @@ func (t *rtTool) InvokableRun(ctx context.Context, args string, _ ...tool.Option
 			break
 		}
 		id := str("task_ref")
-		ok, _ := r.ts.Transition(ctx, cfg.Tenant, id, []string{store.StQueued, store.StRunning}, store.StCancelled, "stopped on user request")
+		ok, _ := r.ts.Transition(ctx, cfg.Tenant, id, []string{StQueued, StRunning}, StCancelled, "stopped on user request")
 		r.mu.Lock()
 		if c := r.jobCancel[id]; c != nil {
 			c()
@@ -118,17 +123,17 @@ func (t *rtTool) InvokableRun(ctx context.Context, args string, _ ...tool.Option
 		}
 		aud := str("audience")
 		sub := r.lastSpeaker()
-		f := &store.Fact{Tenant: cfg.Tenant, Scene: cfg.Scene, Subject: sub, Audience: aud, Kind: str("type"), Text: str("subject") + "：" + str("quote"), Quote: str("quote"),
-			Speaker: sub, SpeakerRole: "user", EvidenceScope: store.ScopeUserSaid, SourceRef: str("source_ref"), SaidMs: r.vnow()}
+		f := &Fact{Tenant: cfg.Tenant, Scene: cfg.Scene, Subject: sub, Audience: aud, Kind: str("type"), Text: str("subject") + "：" + str("quote"), Quote: str("quote"),
+			Speaker: sub, SpeakerRole: "user", EvidenceScope: ScopeUserSaid, SourceRef: str("source_ref"), SaidMs: r.vnow()}
 		if f.Kind == "" {
 			f.Kind = "fact"
 		}
 		cur, created, err := r.ms.Put(ctx, f, winText)
 		switch {
-		case errors.Is(err, store.ErrBadQuote):
+		case errors.Is(err, ErrBadQuote):
 			r.count("memory_bad_quote_rejected")
 			out = map[string]any{"saved": false, "error": "quote must be a verbatim excerpt of the sender's current message"}
-		case errors.Is(err, store.ErrQuota):
+		case errors.Is(err, ErrQuota):
 			n, did, _ := r.ms.Compact(ctx, cfg.Tenant, cfg.Scene, sub, aud)
 			r.count("memory_compactions")
 			cur, created, err = r.ms.Put(ctx, f, winText)
@@ -213,7 +218,7 @@ func (r *Runtime) lastSpeaker() string {
 func (r *Runtime) markReported(ctx context.Context) {
 	ts, _ := r.ts.Find(ctx, r.cfg.Tenant, r.cfg.Scene, "", 40)
 	for _, t := range ts {
-		if t.Status == store.StDone {
+		if t.Status == StDone {
 			_ = r.kv.Set(ctx, "reported:"+t.ID, "1", 24*time.Hour)
 		}
 	}
@@ -241,10 +246,10 @@ func (r *Runtime) dispatch(ctx context.Context, a map[string]any, winSeq []int64
 		rerun := rerunRe.MatchString(winText)
 		// 1. KV fast path: in-flight claim of the idempotency key (Redis SET NX in the cloud)
 		claimed, _ := r.kv.SetNX(ctx, "dedup:"+cfg.Scene+":"+idem, id, cfg.DedupWindow)
-		var existing *store.Task
+		var existing *Task
 		if !claimed {
 			if prev, ok, _ := r.kv.Get(ctx, "dedup:"+cfg.Scene+":"+idem); ok {
-				if x, err := r.ts.Get(ctx, cfg.Tenant, prev); err == nil && (store.ActiveStatus(x.Status) || (x.Status == store.StDone && !rerun)) {
+				if x, err := r.ts.Get(ctx, cfg.Tenant, prev); err == nil && (ActiveStatus(x.Status) || (x.Status == StDone && !rerun)) {
 					existing = x
 				}
 			}
@@ -253,8 +258,8 @@ func (r *Runtime) dispatch(ctx context.Context, a map[string]any, winSeq []int64
 		if existing == nil {
 			ts, _ := r.ts.Find(ctx, cfg.Tenant, cfg.Scene, "", 12)
 			for _, x := range ts {
-				recentDone := x.Status == store.StDone && time.Since(time.UnixMilli(x.DoneMs)) < cfg.DedupWindow && !rerun
-				if (store.ActiveStatus(x.Status) || recentDone) && (x.IdemKey == idem || jaccard(x.Goal, goal) >= 0.6) {
+				recentDone := x.Status == StDone && time.Since(time.UnixMilli(x.DoneMs)) < cfg.DedupWindow && !rerun
+				if (ActiveStatus(x.Status) || recentDone) && (x.IdemKey == idem || jaccard(x.Goal, goal) >= 0.6) {
 					existing = x
 					break
 				}
@@ -262,8 +267,8 @@ func (r *Runtime) dispatch(ctx context.Context, a map[string]any, winSeq []int64
 		}
 		if existing != nil {
 			r.count("dispatch_deduplicated")
-			msg := fmt.Sprintf("这件事已经在登记里了，不重复派发：「%s」（任务 %s，状态 %s，%d 秒前派出）。", truncRunes(existing.Goal, 40), existing.ID, existing.Status, (store.NowMs()-existing.CreatedMs)/1000)
-			if existing.Status == store.StDone {
+			msg := fmt.Sprintf("这件事已经在登记里了，不重复派发：「%s」（任务 %s，状态 %s，%d 秒前派出）。", truncRunes(existing.Goal, 40), existing.ID, existing.Status, (NowMs()-existing.CreatedMs)/1000)
+			if existing.Status == StDone {
 				msg = fmt.Sprintf("这件事刚做完，不重复派发：「%s」（任务 %s）。结果：%s", truncRunes(existing.Goal, 40), existing.ID, truncRunes(existing.Result, 120))
 			}
 			r.deliver("dedup_notice", msg)
@@ -281,7 +286,7 @@ func (r *Runtime) dispatch(ctx context.Context, a map[string]any, winSeq []int64
 			}
 		}
 	}
-	t := &store.Task{ID: id, Tenant: cfg.Tenant, Scene: cfg.Scene, SourceRef: src, Requester: r.lastSpeaker(), Goal: goal, Prompt: str("prompt"), IdemKey: idem, Receipt: "rcpt_" + id[4:], Status: store.StQueued}
+	t := &Task{ID: id, Tenant: cfg.Tenant, Scene: cfg.Scene, SourceRef: src, Requester: r.lastSpeaker(), Goal: goal, Prompt: str("prompt"), IdemKey: idem, Receipt: "rcpt_" + id[4:], Status: StQueued}
 	cur, created, err := r.ts.Create(ctx, t, cfg.DedupWindow)
 	if err != nil {
 		return map[string]any{"accepted": false, "error": err.Error()}
@@ -299,7 +304,13 @@ func (r *Runtime) dispatch(ctx context.Context, a map[string]any, winSeq []int64
 	return map[string]any{"accepted": true, "task_ref": id, "state": "queued", "receipt": t.Receipt, "note": "async receipt: the result arrives later as a Host event, not in this turn"}
 }
 
-func (r *Runtime) startJob(t *store.Task) {
+func (r *Runtime) startJob(t *Task) {
+	exec := r.cfg.Executor
+	if exec == nil {
+		r.count("executor_missing")
+		_, _ = r.ts.Transition(context.Background(), r.cfg.Tenant, t.ID, []string{StQueued, StRunning}, StFailed, "no JobExecutor configured")
+		return
+	}
 	jctx, cancel := context.WithCancel(context.Background())
 	r.mu.Lock()
 	r.jobCancel[t.ID] = cancel
@@ -309,14 +320,26 @@ func (r *Runtime) startJob(t *store.Task) {
 		defer r.jobs.Done()
 		defer func() { r.mu.Lock(); delete(r.jobCancel, t.ID); r.mu.Unlock() }()
 		ctx := context.Background()
-		_, _ = r.ts.Transition(ctx, r.cfg.Tenant, t.ID, []string{store.StQueued}, store.StRunning, "")
-		select {
-		case <-time.After(r.cfg.JobDelay):
-		case <-jctx.Done():
+		_, _ = r.ts.Transition(ctx, r.cfg.Tenant, t.ID, []string{StQueued}, StRunning, "")
+		// honour JobDelay as a Host-side pacing hint before calling the executor
+		if r.cfg.JobDelay > 0 {
+			select {
+			case <-time.After(r.cfg.JobDelay):
+			case <-jctx.Done():
+				return
+			}
+		}
+		res, err := exec.Execute(jctx, t)
+		if jctx.Err() != nil {
 			return
 		}
-		res := "[模拟执行器] 已完成：" + truncRunes(t.Goal, 50) + "（演示结果，非真实业务数据）"
-		if ok, _ := r.ts.Transition(ctx, r.cfg.Tenant, t.ID, []string{store.StRunning}, store.StDone, res); ok {
+		if err != nil {
+			_, _ = r.ts.Transition(ctx, r.cfg.Tenant, t.ID, []string{StRunning}, StFailed, err.Error())
+			_ = r.ts.AddEvent(ctx, r.cfg.Tenant, t.ID, "failed", err.Error())
+			r.pushResult(t.ID)
+			return
+		}
+		if ok, _ := r.ts.Transition(ctx, r.cfg.Tenant, t.ID, []string{StRunning}, StDone, res); ok {
 			_ = r.ts.AddEvent(ctx, r.cfg.Tenant, t.ID, "done", "")
 			r.pushResult(t.ID)
 		}

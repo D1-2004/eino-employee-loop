@@ -2,10 +2,9 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
+	"github.com/dingtalk-fde/eino-employee-loop/core"
 	"strings"
 	"time"
 
@@ -20,12 +19,12 @@ const (
 	Postgres Dialect = "postgres"
 )
 
-// SQLStore implements TaskStore and MemoryStore on database/sql for both SQLite and PostgreSQL.
+// SQLStore implements core.TaskStore and core.MemoryStore on database/sql for both SQLite and PostgreSQL.
 // Only placeholders, FTS and the schema pragmas differ; all queries are otherwise portable.
 type SQLStore struct {
 	db  *sql.DB
 	d   Dialect
-	lim MemoryLimits
+	lim core.MemoryLimits
 	FTS bool // SQLite FTS5(trigram) available
 }
 
@@ -36,7 +35,7 @@ func OpenSQLite(path string) (*SQLStore, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(8)
-	s := &SQLStore{db: db, d: SQLite, lim: DefaultLimits}
+	s := &SQLStore{db: db, d: SQLite, lim: core.DefaultLimits}
 	return s, s.migrate()
 }
 
@@ -46,13 +45,13 @@ func OpenPostgres(dsn string) (*SQLStore, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(10)
-	s := &SQLStore{db: db, d: Postgres, lim: DefaultLimits}
+	s := &SQLStore{db: db, d: Postgres, lim: core.DefaultLimits}
 	return s, s.migrate()
 }
 
-func (s *SQLStore) SetLimits(l MemoryLimits) { s.lim = l }
-func (s *SQLStore) DB() *sql.DB             { return s.db }
-func (s *SQLStore) Close() error            { return s.db.Close() }
+func (s *SQLStore) SetLimits(l core.MemoryLimits) { s.lim = l }
+func (s *SQLStore) DB() *sql.DB                   { return s.db }
+func (s *SQLStore) Close() error                  { return s.db.Close() }
 
 func (s *SQLStore) q(query string) string {
 	if s.d != Postgres {
@@ -106,18 +105,18 @@ func (s *SQLStore) migrate() error {
 	return nil
 }
 
-// ---------------- TaskStore ----------------
+// ---------------- core.TaskStore ----------------
 const taskCols = `id,tenant,scene,COALESCE(source_ref,''),COALESCE(requester,''),goal,COALESCE(prompt,''),status,idem_key,COALESCE(receipt,''),COALESCE(result,''),created_ms,updated_ms,COALESCE(done_ms,0),attempts`
 
 type scanner interface{ Scan(...any) error }
 
-func scanTask(r scanner) (*Task, error) {
-	t := &Task{}
+func scanTask(r scanner) (*core.Task, error) {
+	t := &core.Task{}
 	return t, r.Scan(&t.ID, &t.Tenant, &t.Scene, &t.SourceRef, &t.Requester, &t.Goal, &t.Prompt, &t.Status, &t.IdemKey, &t.Receipt, &t.Result, &t.CreatedMs, &t.UpdatedMs, &t.DoneMs, &t.Attempts)
 }
 
-func (s *SQLStore) Create(ctx context.Context, t *Task, win time.Duration) (*Task, bool, error) {
-	now := NowMs()
+func (s *SQLStore) Create(ctx context.Context, t *core.Task, win time.Duration) (*core.Task, bool, error) {
+	now := core.NowMs()
 	// 1. recent finished duplicate inside dedup window, or an active one
 	row := s.db.QueryRowContext(ctx, s.q(`SELECT `+taskCols+` FROM tasks WHERE tenant=? AND scene=? AND idem_key=? AND (status IN ('queued','running') OR (status='done' AND done_ms>?)) ORDER BY created_ms DESC LIMIT 1`),
 		t.Tenant, t.Scene, t.IdemKey, now-win.Milliseconds())
@@ -126,7 +125,7 @@ func (s *SQLStore) Create(ctx context.Context, t *Task, win time.Duration) (*Tas
 	}
 	t.CreatedMs, t.UpdatedMs = now, now
 	if t.Status == "" {
-		t.Status = StQueued
+		t.Status = core.StQueued
 	}
 	_, err := s.db.ExecContext(ctx, s.q(`INSERT INTO tasks(id,tenant,scene,source_ref,requester,goal,prompt,status,idem_key,receipt,result,created_ms,updated_ms,done_ms,attempts) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,0)`),
 		t.ID, t.Tenant, t.Scene, t.SourceRef, t.Requester, t.Goal, t.Prompt, t.Status, t.IdemKey, t.Receipt, t.Result, now, now)
@@ -140,10 +139,10 @@ func (s *SQLStore) Create(ctx context.Context, t *Task, win time.Duration) (*Tas
 	return t, true, nil
 }
 
-func (s *SQLStore) Get(ctx context.Context, tenant, id string) (*Task, error) {
+func (s *SQLStore) Get(ctx context.Context, tenant, id string) (*core.Task, error) {
 	t, err := scanTask(s.db.QueryRowContext(ctx, s.q(`SELECT `+taskCols+` FROM tasks WHERE tenant=? AND id=?`), tenant, id))
 	if err == sql.ErrNoRows {
-		return nil, ErrNotFound
+		return nil, core.ErrNotFound
 	}
 	return t, err
 }
@@ -153,7 +152,7 @@ func likeEscape(q string) string {
 	return r.Replace(q)
 }
 
-func (s *SQLStore) Find(ctx context.Context, tenant, scene, query string, limit int) ([]*Task, error) {
+func (s *SQLStore) Find(ctx context.Context, tenant, scene, query string, limit int) ([]*core.Task, error) {
 	args := []any{tenant, scene}
 	w := `tenant=? AND scene=?`
 	if query != "" {
@@ -166,7 +165,7 @@ func (s *SQLStore) Find(ctx context.Context, tenant, scene, query string, limit 
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*Task
+	var out []*core.Task
 	for rows.Next() {
 		t, err := scanTask(rows)
 		if err != nil {
@@ -180,16 +179,16 @@ func (s *SQLStore) Find(ctx context.Context, tenant, scene, query string, limit 
 func (s *SQLStore) Transition(ctx context.Context, tenant, id string, from []string, to, result string) (bool, error) {
 	ph := strings.TrimRight(strings.Repeat("?,", len(from)), ",")
 	set := "status=?, updated_ms=?"
-	args := []any{to, NowMs()}
+	args := []any{to, core.NowMs()}
 	if result != "" {
 		set += ", result=?"
 		args = append(args, result)
 	}
-	if to == StDone || to == StFailed || to == StCancelled {
+	if to == core.StDone || to == core.StFailed || to == core.StCancelled {
 		set += ", done_ms=?"
-		args = append(args, NowMs())
+		args = append(args, core.NowMs())
 	}
-	if to == StRunning {
+	if to == core.StRunning {
 		set += ", attempts=attempts+1"
 	}
 	args = append(args, tenant, id)
@@ -210,12 +209,12 @@ func anyStrs(a []string) []any {
 }
 
 func (s *SQLStore) AddEvent(ctx context.Context, tenant, id, kind, detail string) error {
-	_, err := s.db.ExecContext(ctx, s.q(`INSERT INTO task_events(task_id,tenant,ts_ms,kind,detail) VALUES(?,?,?,?,?)`), id, tenant, NowMs(), kind, detail)
+	_, err := s.db.ExecContext(ctx, s.q(`INSERT INTO task_events(task_id,tenant,ts_ms,kind,detail) VALUES(?,?,?,?,?)`), id, tenant, core.NowMs(), kind, detail)
 	return err
 }
 
 func (s *SQLStore) FailOrphans(ctx context.Context, tenant, reason string) (int, error) {
-	res, err := s.db.ExecContext(ctx, s.q(`UPDATE tasks SET status='failed', result=?, updated_ms=?, done_ms=? WHERE tenant=? AND status IN ('queued','running')`), reason, NowMs(), NowMs(), tenant)
+	res, err := s.db.ExecContext(ctx, s.q(`UPDATE tasks SET status='failed', result=?, updated_ms=?, done_ms=? WHERE tenant=? AND status IN ('queued','running')`), reason, core.NowMs(), core.NowMs(), tenant)
 	if err != nil {
 		return 0, err
 	}
@@ -223,18 +222,12 @@ func (s *SQLStore) FailOrphans(ctx context.Context, tenant, reason string) (int,
 	return int(n), nil
 }
 
-// ---------------- MemoryStore ----------------
+// ---------------- core.MemoryStore ----------------
 const factCols = `id,tenant,scene,subject,audience,kind,text,COALESCE(quote,''),COALESCE(speaker,''),COALESCE(speaker_role,''),COALESCE(evidence_scope,''),COALESCE(source_ref,''),COALESCE(said_ms,0),created_ms,status,COALESCE(archived_by,''),text_hash`
 
-func scanFact(r scanner) (*Fact, error) {
-	f := &Fact{}
+func scanFact(r scanner) (*core.Fact, error) {
+	f := &core.Fact{}
 	return f, r.Scan(&f.ID, &f.Tenant, &f.Scene, &f.Subject, &f.Audience, &f.Kind, &f.Text, &f.Quote, &f.Speaker, &f.SpeakerRole, &f.EvidenceScope, &f.SourceRef, &f.SaidMs, &f.CreatedMs, &f.Status, &f.ArchivedBy, &f.TextHash)
-}
-
-func NormHash(s string) string {
-	s = strings.ToLower(strings.Join(strings.Fields(s), " "))
-	h := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(h[:8])
 }
 
 func (s *SQLStore) CountActive(ctx context.Context, tenant, scene, subject, audience string) (int, int, error) {
@@ -243,9 +236,9 @@ func (s *SQLStore) CountActive(ctx context.Context, tenant, scene, subject, audi
 	return n, b, err
 }
 
-func (s *SQLStore) Put(ctx context.Context, f *Fact, originalMsg string) (*Fact, bool, error) {
+func (s *SQLStore) Put(ctx context.Context, f *core.Fact, originalMsg string) (*core.Fact, bool, error) {
 	if originalMsg != "" && !strings.Contains(originalMsg, strings.TrimSpace(f.Quote)) {
-		return nil, false, ErrBadQuote
+		return nil, false, core.ErrBadQuote
 	}
 	if f.Quote == "" {
 		f.Quote = f.Text
@@ -261,10 +254,10 @@ func (s *SQLStore) Put(ctx context.Context, f *Fact, originalMsg string) (*Fact,
 		return nil, false, err
 	}
 	if n >= s.lim.MaxActivePerBag || b+len(f.Text) > s.lim.MaxBytesPerBag {
-		return nil, false, ErrQuota
+		return nil, false, core.ErrQuota
 	}
-	f.TextHash = NormHash(f.Text)
-	f.CreatedMs, f.Status = NowMs(), "active"
+	f.TextHash = core.NormHash(f.Text)
+	f.CreatedMs, f.Status = core.NowMs(), "active"
 	if f.ID == "" {
 		f.ID = "mem_" + newToken()
 	}
@@ -302,20 +295,20 @@ func truncBytes(s string, n int) string {
 	return string(r)
 }
 
-func (s *SQLStore) GetFact(ctx context.Context, tenant, id string) (*Fact, error) {
+func (s *SQLStore) GetFact(ctx context.Context, tenant, id string) (*core.Fact, error) {
 	f, err := scanFact(s.db.QueryRowContext(ctx, s.q(`SELECT `+factCols+` FROM memory_facts WHERE tenant=? AND id=?`), tenant, id))
 	if err == sql.ErrNoRows {
-		return nil, ErrNotFound
+		return nil, core.ErrNotFound
 	}
 	return f, err
 }
 
 // bag filter: audience=me -> subject's private facts; audience=scene -> shared facts.
-func (s *SQLStore) Recent(ctx context.Context, tenant, scene, subject, audience string, limit int) ([]*Fact, error) {
+func (s *SQLStore) Recent(ctx context.Context, tenant, scene, subject, audience string, limit int) ([]*core.Fact, error) {
 	return s.queryFacts(ctx, `SELECT `+factCols+` FROM memory_facts WHERE tenant=? AND scene=? AND audience=? AND subject=? AND status='active' ORDER BY created_ms DESC LIMIT ?`, tenant, scene, audience, subject, limit)
 }
 
-func (s *SQLStore) Search(ctx context.Context, tenant, scene, subject, audience, query string, limit int) ([]*Fact, error) {
+func (s *SQLStore) Search(ctx context.Context, tenant, scene, subject, audience, query string, limit int) ([]*core.Fact, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return s.Recent(ctx, tenant, scene, subject, audience, limit)
@@ -328,13 +321,13 @@ func (s *SQLStore) Search(ctx context.Context, tenant, scene, subject, audience,
 		tenant, scene, audience, subject, "%"+likeEscape(strings.ToLower(query))+"%", limit)
 }
 
-func (s *SQLStore) queryFacts(ctx context.Context, q string, args ...any) ([]*Fact, error) {
+func (s *SQLStore) queryFacts(ctx context.Context, q string, args ...any) ([]*core.Fact, error) {
 	rows, err := s.db.QueryContext(ctx, s.q(q), args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*Fact
+	var out []*core.Fact
 	for rows.Next() {
 		f, err := scanFact(rows)
 		if err != nil {
@@ -366,7 +359,7 @@ func (s *SQLStore) Compact(ctx context.Context, tenant, scene, subject, audience
 	if err != nil {
 		return 0, "", err
 	}
-	var cand []*Fact
+	var cand []*core.Fact
 	for _, f := range all {
 		if f.Kind != "preference" && f.Kind != "decision" && f.Kind != "digest" { // pinned kinds survive compaction
 			cand = append(cand, f)
@@ -382,11 +375,11 @@ func (s *SQLStore) Compact(ctx context.Context, tenant, scene, subject, audience
 		lines = append(lines, fmt.Sprintf("[%s] %s", f.ID, truncBytes(f.Text, 80)))
 		ids = append(ids, f.ID)
 	}
-	d := &Fact{Tenant: tenant, Scene: scene, Subject: subject, Audience: audience, Kind: "digest", Speaker: "host", SpeakerRole: "host", EvidenceScope: ScopeHostDigest,
+	d := &core.Fact{Tenant: tenant, Scene: scene, Subject: subject, Audience: audience, Kind: "digest", Speaker: "host", SpeakerRole: "host", EvidenceScope: core.ScopeHostDigest,
 		Text: truncBytes(fmt.Sprintf("已归档 %d 条较早记忆（原文仍可按 id 取回）：\n%s", len(old), strings.Join(lines, "\n")), 2000)}
 	d.Quote = d.Text
-	d.TextHash = NormHash(d.Text)
-	d.ID, d.CreatedMs, d.Status = "mem_"+newToken(), NowMs(), "active"
+	d.TextHash = core.NormHash(d.Text)
+	d.ID, d.CreatedMs, d.Status = "mem_"+newToken(), core.NowMs(), "active"
 	// digest bypasses quota (it replaces many facts) but is written before archiving so a crash loses nothing
 	if _, err = s.db.ExecContext(ctx, s.q(`INSERT INTO memory_facts(id,tenant,scene,subject,audience,kind,text,quote,speaker,speaker_role,evidence_scope,source_ref,said_ms,created_ms,status,archived_by,text_hash,bytes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?)`),
 		d.ID, tenant, scene, subject, audience, d.Kind, d.Text, d.Quote, d.Speaker, d.SpeakerRole, d.EvidenceScope, "", 0, d.CreatedMs, d.Status, d.TextHash, len(d.Text)); err != nil {
@@ -395,3 +388,8 @@ func (s *SQLStore) Compact(ctx context.Context, tenant, scene, subject, audience
 	n, err := s.Archive(ctx, tenant, ids, d.ID)
 	return n, d.ID, err
 }
+
+var (
+	_ core.TaskStore   = (*SQLStore)(nil)
+	_ core.MemoryStore = (*SQLStore)(nil)
+)

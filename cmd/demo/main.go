@@ -1,4 +1,4 @@
-// Local demo: SQLite TaskStore/MemoryStore/conversation + SQLite CheckPointStore + stdin IM.
+// Local demo: SQLite stores + SQLite CheckPointStore + stdin IM + MockExecutor.
 //
 //	DEEPSEEK_API_KEY=... go run ./cmd/demo
 //	DEEPSEEK_API_KEY=... go run ./cmd/demo -script
@@ -16,9 +16,10 @@ import (
 	"time"
 
 	"github.com/dingtalk-fde/eino-employee-loop/checkpoint"
-	"github.com/dingtalk-fde/eino-employee-loop/im"
-	"github.com/dingtalk-fde/eino-employee-loop/loop"
-	"github.com/dingtalk-fde/eino-employee-loop/store"
+	"github.com/dingtalk-fde/eino-employee-loop/core"
+	"github.com/dingtalk-fde/eino-employee-loop/providers/im"
+	"github.com/dingtalk-fde/eino-employee-loop/providers/store"
+	"github.com/dingtalk-fde/eino-employee-loop/providers/tools"
 	"github.com/joho/godotenv"
 )
 
@@ -26,7 +27,7 @@ func main() {
 	script := flag.Bool("script", false, "run the built-in multi-message script instead of interactive stdin")
 	db := flag.String("db", filepath.Join(os.TempDir(), "eino-employee-loop-demo.db"), "SQLite path (tasks, memory, conversation, checkpoints)")
 	dotenv := flag.String("dotenv", ".env", "optional dotenv (gitignored)")
-	jobMs := flag.Int("job-ms", 4000, "simulated background job duration")
+	jobMs := flag.Int("job-ms", 4000, "Host pacing before JobExecutor runs")
 	cpID := flag.String("checkpoint-id", "demo|scene-demo", "TurnLoop CheckpointID")
 	flag.Parse()
 	_ = godotenv.Load(*dotenv)
@@ -41,14 +42,15 @@ func main() {
 	defer sq.Close()
 	cps, err := checkpoint.Attach(sq.DB())
 	must(err)
-	conv, err := loop.NewConvStore(sq, false)
+	conv, err := store.NewConvStore(sq, false)
 	must(err)
-	stats := loop.NewStats()
-	cd := loop.DemoCase("")
-	cfg := loop.DefaultConfig("demo", "scene-demo", key, base, cd)
+	stats := core.NewStats()
+	cd := core.DemoCase("")
+	cfg := core.DefaultConfig("demo", "scene-demo", key, base, cd)
 	cfg.JobDelay = time.Duration(*jobMs) * time.Millisecond
 	cfg.CheckPointStore = cps
 	cfg.CheckpointID = *cpID
+	cfg.Executor = tools.MockExecutor{}
 
 	prov := im.NewStdinProvider("stdin", "冬翔")
 	cfg.OnOutbound = func(_ context.Context, kind, text string) {
@@ -58,7 +60,7 @@ func main() {
 		_ = prov.Send(context.Background(), "stdin", fmt.Sprintf("(%s) %s", kind, text))
 	}
 
-	rt, err := loop.NewRuntime(ctx, cfg, sq, sq, store.NewMemKV(), conv, stats)
+	rt, err := core.NewRuntime(ctx, cfg, sq, sq, store.NewMemKV(), conv, stats)
 	must(err)
 	defer rt.Stop()
 
@@ -102,7 +104,7 @@ func main() {
 	}
 }
 
-func runScript(ctx context.Context, rt *loop.Runtime) {
+func runScript(ctx context.Context, rt *core.Runtime) {
 	steps := []struct{ who, text string }{
 		{"冬翔", "记住：以后查天气都用摄氏度，而且只要一句话"},
 		{"冬翔", "查一下今天杭州的天气"},

@@ -15,14 +15,14 @@ import (
 // StdinProvider reads lines from stdin as inbound messages and prints outbound to stdout.
 // Used by cmd/demo for local testing without DingTalk.
 type StdinProvider struct {
-	In       io.Reader
-	Out      io.Writer
-	ConvID   string
-	Speaker  string
-	mu       sync.Mutex
-	closed   atomic.Bool
-	ch       chan Inbound
-	seq      int64
+	In      io.Reader
+	Out     io.Writer
+	ConvID  string
+	Speaker string
+	mu      sync.Mutex
+	closed  atomic.Bool
+	ch      chan Inbound
+	seq     int64
 }
 
 func NewStdinProvider(convID, speaker string) *StdinProvider {

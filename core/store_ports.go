@@ -1,7 +1,5 @@
-// Package store defines the storage interfaces of the employee runtime (TaskStore, MemoryStore, KV)
-// and local/cloud-shaped implementations: SQL (SQLite or PostgreSQL via one dialect-aware impl),
-// in-process KV and Redis KV. Every method takes a tenant so multi-tenant migration is a no-op.
-package store
+// Store ports: TaskStore, MemoryStore, KV. Concrete backends live under providers/store.
+package core
 
 import (
 	"context"
@@ -24,7 +22,7 @@ const (
 )
 
 func ActiveStatus(s string) bool { return s == StQueued || s == StRunning }
-func NowMs() int64              { return time.Now().UnixMilli() }
+func NowMs() int64               { return time.Now().UnixMilli() }
 
 type Task struct {
 	ID        string `json:"task_ref"`

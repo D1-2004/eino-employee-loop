@@ -1,4 +1,4 @@
-package loop
+package core
 
 import (
 	"encoding/json"

@@ -1,25 +1,15 @@
-package loop
+package store
 
 import (
 	"context"
 	"database/sql"
 	"sync"
 
-	"github.com/dingtalk-fde/eino-employee-loop/store"
+	"github.com/dingtalk-fde/eino-employee-loop/core"
 )
 
-// ConvStore: conversation log (the "nearby conversation" source). Backed by the same SQL DB.
+// ConvStore: conversation log backed by the same SQL DB as Task/Memory.
 // Cloud: PostgreSQL table (same DDL) + Redis list as hot cache of the last N messages.
-type Msg struct {
-	Seq       int64  `json:"seq"`
-	Role      string `json:"role"` // user | assistant | host
-	Speaker   string `json:"speaker"`
-	Text      string `json:"text"`
-	Kind      string `json:"kind"` // msg | ack | reply | dispatch_reply | result_reply | imported
-	SourceRef string `json:"source_ref"`
-	AtMs      int64  `json:"at_ms"` // virtual (frozen-clock) ms
-}
-
 type ConvStore struct {
 	db  *sql.DB
 	pg  bool
@@ -29,10 +19,11 @@ type ConvStore struct {
 
 const convDDL = `CREATE TABLE IF NOT EXISTS conversation(tenant TEXT NOT NULL, scene TEXT NOT NULL, seq BIGINT NOT NULL, role TEXT NOT NULL, speaker TEXT, text TEXT NOT NULL, kind TEXT, source_ref TEXT, at_ms BIGINT, PRIMARY KEY(tenant,scene,seq))`
 
-func NewConvStore(s *store.SQLStore, pg bool) (*ConvStore, error) {
+func NewConvStore(s *SQLStore, pg bool) (*ConvStore, error) {
 	_, err := s.DB().Exec(convDDL)
 	return &ConvStore{db: s.DB(), pg: pg, seq: map[string]int64{}}, err
 }
+
 func (c *ConvStore) q(s string) string {
 	if !c.pg {
 		return s
@@ -49,6 +40,7 @@ func (c *ConvStore) q(s string) string {
 	}
 	return string(out)
 }
+
 func itoa(n int) string {
 	if n == 0 {
 		return "0"
@@ -60,7 +52,8 @@ func itoa(n int) string {
 	}
 	return s
 }
-func (c *ConvStore) Append(ctx context.Context, tenant, scene string, m Msg) (Msg, error) {
+
+func (c *ConvStore) Append(ctx context.Context, tenant, scene string, m core.Msg) (core.Msg, error) {
 	c.mu.Lock()
 	k := tenant + "|" + scene
 	if _, ok := c.seq[k]; !ok {
@@ -76,7 +69,7 @@ func (c *ConvStore) Append(ctx context.Context, tenant, scene string, m Msg) (Ms
 }
 
 // Recent returns up to n newest messages with seq < beforeSeq (0 = no bound), oldest first.
-func (c *ConvStore) Recent(ctx context.Context, tenant, scene string, beforeSeq int64, n int) ([]Msg, error) {
+func (c *ConvStore) Recent(ctx context.Context, tenant, scene string, beforeSeq int64, n int) ([]core.Msg, error) {
 	if beforeSeq == 0 {
 		beforeSeq = 1 << 60
 	}
@@ -85,13 +78,15 @@ func (c *ConvStore) Recent(ctx context.Context, tenant, scene string, beforeSeq 
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Msg
+	var out []core.Msg
 	for rows.Next() {
-		var m Msg
+		var m core.Msg
 		if err := rows.Scan(&m.Seq, &m.Role, &m.Speaker, &m.Text, &m.Kind, &m.SourceRef, &m.AtMs); err != nil {
 			return nil, err
 		}
-		out = append([]Msg{m}, out...)
+		out = append([]core.Msg{m}, out...)
 	}
 	return out, rows.Err()
 }
+
+var _ core.Conversation = (*ConvStore)(nil)

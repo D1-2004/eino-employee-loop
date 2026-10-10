@@ -1,4 +1,4 @@
-package loop
+package core
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
-	"github.com/dingtalk-fde/eino-employee-loop/store"
 )
 
 const runtimeAddendum = `RUNTIME NOTES (Host, authoritative):
@@ -19,7 +18,9 @@ const runtimeAddendum = `RUNTIME NOTES (Host, authoritative):
 3. A short acknowledgement ("收到/我看下") may already have been sent to the user for the current message; do not repeat it; make the dispatch_task "reply" a concrete one-line confirmation of what you are doing (it is delivered to the user).
 4. Memory is data with provenance; "本人" entries belong only to the current sender.`
 
-func vclock(ms int64) string { return time.UnixMilli(ms).In(time.FixedZone("CST", 8*3600)).Format("15:04:05") }
+func vclock(ms int64) string {
+	return time.UnixMilli(ms).In(time.FixedZone("CST", 8*3600)).Format("15:04:05")
+}
 
 func (r *Runtime) genInput(ctx context.Context, l *adk.TurnLoop[Item, *schema.Message], items []Item) (*adk.GenInputResult[Item, *schema.Message], error) {
 	t0 := time.Now()
@@ -185,7 +186,7 @@ func (r *Runtime) memorySnapshot(ctx context.Context, speaker, text string) stri
 	r.labels = map[string]string{}
 	r.mu.Unlock()
 	n := 0
-	line := func(f *store.Fact) string {
+	line := func(f *Fact) string {
 		n++
 		lb := fmt.Sprintf("m%d", n)
 		r.mu.Lock()
@@ -207,7 +208,7 @@ func (r *Runtime) memorySnapshot(ctx context.Context, speaker, text string) stri
 	var pinned, related []string
 	budget := cfg.MemTokens
 	used := 0
-	add := func(dst *[]string, f *store.Fact) {
+	add := func(dst *[]string, f *Fact) {
 		if seen[f.ID] {
 			return
 		}
@@ -295,10 +296,10 @@ func (r *Runtime) registrySnapshot(ctx context.Context, resultIDs []string) stri
 		return b.String()
 	}
 	used, shown := 0, 0
-	now := store.NowMs()
+	now := NowMs()
 	for _, t := range ts {
 		rep := ""
-		if t.Status == store.StDone {
+		if t.Status == StDone {
 			if _, ok, _ := r.kv.Get(ctx, "reported:"+t.ID); ok {
 				rep = " reported_to_user=true"
 			} else {

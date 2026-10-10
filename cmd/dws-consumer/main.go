@@ -19,9 +19,10 @@ import (
 	"time"
 
 	"github.com/dingtalk-fde/eino-employee-loop/checkpoint"
-	"github.com/dingtalk-fde/eino-employee-loop/im"
-	"github.com/dingtalk-fde/eino-employee-loop/loop"
-	"github.com/dingtalk-fde/eino-employee-loop/store"
+	"github.com/dingtalk-fde/eino-employee-loop/core"
+	"github.com/dingtalk-fde/eino-employee-loop/providers/im"
+	"github.com/dingtalk-fde/eino-employee-loop/providers/store"
+	"github.com/dingtalk-fde/eino-employee-loop/providers/tools"
 	"github.com/joho/godotenv"
 )
 
@@ -65,7 +66,7 @@ func main() {
 	defer sq.Close()
 	cps, err := checkpoint.Attach(sq.DB())
 	must(err)
-	conv, err := loop.NewConvStore(sq, false)
+	conv, err := store.NewConvStore(sq, false)
 	must(err)
 
 	var selfNames []string
@@ -84,11 +85,12 @@ func main() {
 	})
 	defer prov.Close()
 
-	cd := loop.DemoCase("")
-	cfg := loop.DefaultConfig(*tenant, *scene, key, base, cd)
+	cd := core.DemoCase("")
+	cfg := core.DefaultConfig(*tenant, *scene, key, base, cd)
 	cfg.JobDelay = time.Duration(*jobMs) * time.Millisecond
 	cfg.CheckPointStore = cps
 	cfg.CheckpointID = *tenant + "|" + *scene
+	cfg.Executor = tools.MockExecutor{}
 	cfg.OnOutbound = func(ctx context.Context, kind, text string) {
 		if kind == "ack_latency" || kind == "user_in" || kind == "suppressed_ack_dup" {
 			return
@@ -102,7 +104,7 @@ func main() {
 		}
 	}
 
-	rt, err := loop.NewRuntime(ctx, cfg, sq, sq, store.NewMemKV(), conv, statsOrNil())
+	rt, err := core.NewRuntime(ctx, cfg, sq, sq, store.NewMemKV(), conv, statsOrNil())
 	must(err)
 	defer rt.Stop()
 
@@ -134,7 +136,7 @@ func main() {
 	}
 }
 
-func statsOrNil() *loop.Stats { return loop.NewStats() }
+func statsOrNil() *core.Stats { return core.NewStats() }
 
 func envOr(k, def string) string {
 	if v := os.Getenv(k); v != "" {

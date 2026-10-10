@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"github.com/dingtalk-fde/eino-employee-loop/core"
 	"strconv"
 	"sync"
 	"time"
@@ -13,7 +14,7 @@ import (
 
 func newToken() string { b := make([]byte, 8); _, _ = rand.Read(b); return hex.EncodeToString(b) }
 
-// ---------------- in-process KV ----------------
+// ---------------- in-process core.KV ----------------
 type MemKV struct {
 	mu sync.Mutex
 	m  map[string]memEnt
@@ -93,7 +94,7 @@ func (k *MemKV) Incr(_ context.Context, key string, ttl time.Duration) (int64, e
 }
 func (k *MemKV) Close() error { return nil }
 
-// ---------------- Redis KV (cloud shape) ----------------
+// ---------------- Redis core.KV (cloud shape) ----------------
 type RedisKV struct {
 	c      *redis.Client
 	prefix string
@@ -136,3 +137,8 @@ func (r *RedisKV) Incr(ctx context.Context, key string, ttl time.Duration) (int6
 	return incrLua.Run(ctx, r.c, []string{r.k(key)}, ttl.Milliseconds()).Int64()
 }
 func (r *RedisKV) Close() error { return r.c.Close() }
+
+var (
+	_ core.KV = (*MemKV)(nil)
+	_ core.KV = (*RedisKV)(nil)
+)

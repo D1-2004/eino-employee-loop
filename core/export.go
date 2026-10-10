@@ -1,10 +1,8 @@
-package loop
+package core
 
 import (
 	"context"
 	"time"
-
-	"github.com/dingtalk-fde/eino-employee-loop/store"
 )
 
 // Outbox returns a copy of delivered user-facing events (ack / reply / dispatch_reply / result_reply / ask / dedup_notice).
@@ -37,12 +35,12 @@ func (r *Runtime) Counters() map[string]int {
 }
 
 // ListTasks returns the Host task registry for this scene.
-func (r *Runtime) ListTasks(ctx context.Context) ([]*store.Task, error) {
+func (r *Runtime) ListTasks(ctx context.Context) ([]*Task, error) {
 	return r.ts.Find(ctx, r.cfg.Tenant, r.cfg.Scene, "", 200)
 }
 
 // ListMemory returns active memory facts for a subject+audience.
-func (r *Runtime) ListMemory(ctx context.Context, subject, audience string) ([]*store.Fact, error) {
+func (r *Runtime) ListMemory(ctx context.Context, subject, audience string) ([]*Fact, error) {
 	return r.ms.Recent(ctx, r.cfg.Tenant, r.cfg.Scene, subject, audience, 100)
 }
 

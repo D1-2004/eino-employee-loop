@@ -1,4 +1,4 @@
-package loop
+package core
 
 import (
 	"context"
@@ -17,7 +17,6 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
-	"github.com/dingtalk-fde/eino-employee-loop/store"
 )
 
 // CaseData: the frozen, UNMODIFIED parts of a real eval case that the runtime reuses.
@@ -48,9 +47,16 @@ type Config struct {
 	CheckPointStore adk.CheckPointStore
 	CheckpointID    string
 
-	// OnOutbound is called for every user-facing delivery (ack/reply/ask/…)。
+	// OnOutbound is called for every user-facing delivery (ack/reply/ask/…).
 	// Used by IM providers (stdin / DWS) so Host outbox and channel stay in sync.
 	OnOutbound func(ctx context.Context, kind, text string)
+
+	// Executor runs background jobs after dispatch (required for treat mode).
+	// Inject providers/tools.MockExecutor or an OpenCode-backed executor.
+	Executor JobExecutor
+
+	// Session is optional durable coding/agent session (e.g. local OpenCode).
+	Session Session
 }
 
 type Item struct {
@@ -76,50 +82,50 @@ type CallRec struct {
 }
 type Usage struct{ Prompt, Completion, CacheHit int }
 type Turn struct {
-	No        int      `json:"turn"`
-	Trigger   string   `json:"trigger"`
-	StartMs   float64  `json:"start_ms"`
-	EndMs     float64  `json:"end_ms"`
-	Canceled  bool     `json:"canceled"`
-	Calls     []CallRec `json:"calls"`
-	Contents  []string `json:"round_contents"`
-	Usage     []Usage  `json:"usage"`
-	WindowSeq []int64  `json:"window_seq"`
-	FirstTerminalMs float64 `json:"first_terminal_ms"`
-	Sections  map[string]int `json:"ctx_tokens_est"`
-	BuildUs   float64 `json:"ctx_build_us"`
-	winText   string
-	WinText   string `json:"win_text,omitempty"`
-	Repair    bool   `json:"repair,omitempty"`
-	AckText   string `json:"ack_text,omitempty"`
+	No              int            `json:"turn"`
+	Trigger         string         `json:"trigger"`
+	StartMs         float64        `json:"start_ms"`
+	EndMs           float64        `json:"end_ms"`
+	Canceled        bool           `json:"canceled"`
+	Calls           []CallRec      `json:"calls"`
+	Contents        []string       `json:"round_contents"`
+	Usage           []Usage        `json:"usage"`
+	WindowSeq       []int64        `json:"window_seq"`
+	FirstTerminalMs float64        `json:"first_terminal_ms"`
+	Sections        map[string]int `json:"ctx_tokens_est"`
+	BuildUs         float64        `json:"ctx_build_us"`
+	winText         string
+	WinText         string `json:"win_text,omitempty"`
+	Repair          bool   `json:"repair,omitempty"`
+	AckText         string `json:"ack_text,omitempty"`
 }
 
 type Runtime struct {
-	cfg   Config
-	ts    store.TaskStore
-	ms    store.MemoryStore
-	kv    store.KV
-	conv  *ConvStore
-	stats *Stats
-	t0    time.Time
-	loop  *adk.TurnLoop[Item, *schema.Message]
-	agent adk.TypedAgent[*schema.Message]
-	mu    sync.Mutex
-	out   []OutEv
-	turns []*Turn
-	cur   *Turn
-	ack   map[int64]string // user seq -> ack text
+	cfg          Config
+	ts           TaskStore
+	ms           MemoryStore
+	kv           KV
+	conv         Conversation
+	stats        *Stats
+	t0           time.Time
+	loop         *adk.TurnLoop[Item, *schema.Message]
+	agent        adk.TypedAgent[*schema.Message]
+	mu           sync.Mutex
+	out          []OutEv
+	turns        []*Turn
+	cur          *Turn
+	ack          map[int64]string // user seq -> ack text
 	answeredUpTo int64
-	inflight int32
-	activeTurn int32
-	jobs  sync.WaitGroup
-	jobCancel map[string]context.CancelFunc
-	ackWG sync.WaitGroup
-	counters map[string]int
-	labels map[string]string // memory label (m1) -> id for last snapshot
-	cmodel *deepseek.ChatModel
-	ackModel *deepseek.ChatModel
-	ackUsage []Usage
+	inflight     int32
+	activeTurn   int32
+	jobs         sync.WaitGroup
+	jobCancel    map[string]context.CancelFunc
+	ackWG        sync.WaitGroup
+	counters     map[string]int
+	labels       map[string]string // memory label (m1) -> id for last snapshot
+	cmodel       *deepseek.ChatModel
+	ackModel     *deepseek.ChatModel
+	ackUsage     []Usage
 	vbase, vwall int64
 }
 
@@ -139,7 +145,7 @@ func (r *Runtime) setVirtual(atMs int64) {
 }
 func (r *Runtime) count(k string) { r.mu.Lock(); r.counters[k]++; r.mu.Unlock() }
 
-func NewRuntime(ctx context.Context, cfg Config, ts store.TaskStore, ms store.MemoryStore, kv store.KV, conv *ConvStore, st *Stats) (*Runtime, error) {
+func NewRuntime(ctx context.Context, cfg Config, ts TaskStore, ms MemoryStore, kv KV, conv Conversation, st *Stats) (*Runtime, error) {
 	r := &Runtime{cfg: cfg, ts: timedTasks{ts, st}, ms: timedMem{ms, st}, kv: timedKV{kv, st}, conv: conv, stats: st, t0: time.Now(),
 		ack: map[int64]string{}, jobCancel: map[string]context.CancelFunc{}, counters: map[string]int{}, labels: map[string]string{}}
 	mk := func(think bool) (*deepseek.ChatModel, error) {
@@ -189,7 +195,6 @@ func NewRuntime(ctx context.Context, cfg Config, ts store.TaskStore, ms store.Me
 	r.loop.Run(ctx)
 	return r, nil
 }
-
 
 // ---------------- inbound ----------------
 // UserMessage appends the message to the log (durable first), starts the ack path and pushes to the loop,
@@ -294,7 +299,7 @@ func (r *Runtime) doAck(ctx context.Context, m Msg) {
 		if ts, _ := r.ts.Find(ctx, r.cfg.Tenant, r.cfg.Scene, "", 4); len(ts) > 0 {
 			b.WriteString("当前登记的任务（Host 数据）：\n")
 			for _, t := range ts {
-				if store.ActiveStatus(t.Status) {
+				if ActiveStatus(t.Status) {
 					fmt.Fprintf(&b, "- 进行中：%s\n", truncRunes(t.Goal, 40))
 				}
 			}
