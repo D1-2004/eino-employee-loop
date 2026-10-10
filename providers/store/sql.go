@@ -304,7 +304,11 @@ func (s *SQLStore) GetFact(ctx context.Context, tenant, id string) (*core.Fact, 
 }
 
 // bag filter: audience=me -> subject's private facts; audience=scene -> shared facts.
+// subject="*" means any subject (used for pinned-preference fallback across speakers).
 func (s *SQLStore) Recent(ctx context.Context, tenant, scene, subject, audience string, limit int) ([]*core.Fact, error) {
+	if subject == "*" {
+		return s.queryFacts(ctx, `SELECT `+factCols+` FROM memory_facts WHERE tenant=? AND scene=? AND audience=? AND status='active' ORDER BY created_ms DESC LIMIT ?`, tenant, scene, audience, limit)
+	}
 	return s.queryFacts(ctx, `SELECT `+factCols+` FROM memory_facts WHERE tenant=? AND scene=? AND audience=? AND subject=? AND status='active' ORDER BY created_ms DESC LIMIT ?`, tenant, scene, audience, subject, limit)
 }
 

@@ -2,6 +2,8 @@ package core
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/cloudwego/eino/schema"
@@ -27,7 +29,8 @@ func MinimalTools() ([]*schema.ToolInfo, map[string]bool) {
 			"reply":  map[string]any{"type": "string", "description": "One-line confirmation of what you are starting."},
 		}, []any{"source_ref", "goal", "prompt", "reply"})),
 		fn("reply", "Reply directly using current facts, then finish without creating a task.", obj(map[string]any{
-			"reply": map[string]any{"type": "string"}, "source_ref": map[string]any{"type": "string"},
+			"reply": map[string]any{"type": "string", "description": "DingTalk markdown body: short, conclusion first; no tables."},
+			"source_ref": map[string]any{"type": "string"},
 		}, []any{"source_ref", "reply"})),
 		fn("ask_human", "Ask the user one brief clarification, then wait.", obj(map[string]any{
 			"summary": map[string]any{"type": "string"}, "source_ref": map[string]any{"type": "string"},
@@ -65,10 +68,9 @@ func fn(name, desc string, params map[string]any) map[string]any {
 }
 
 // DemoCase builds CaseData for the interactive / scripted demo.
+// System text resolution: non-empty system arg > SYSTEM_INSTRUCTION / EINO_SYSTEM_INSTRUCTION env > DefaultColleagueInstruction.
 func DemoCase(system string) CaseData {
-	if system == "" {
-		system = defaultSystem
-	}
+	system = ResolveSystemInstruction(system)
 	tools, term := MinimalTools()
 	now := time.Now().In(time.FixedZone("CST", 8*3600))
 	wd := int((now.Weekday() + 6) % 7)
@@ -78,13 +80,37 @@ func DemoCase(system string) CaseData {
 	return CaseData{System: system, Clock: clk, ClockAtMs: now.UnixMilli(), Tools: tools, Terminal: term}
 }
 
-const defaultSystem = `You are a digital employee talking with colleagues.
+// ResolveSystemInstruction picks instruction text: explicit > env > default Chinese colleague prompt.
+func ResolveSystemInstruction(explicit string) string {
+	if s := strings.TrimSpace(explicit); s != "" {
+		return s
+	}
+	for _, k := range []string{"SYSTEM_INSTRUCTION", "EINO_SYSTEM_INSTRUCTION"} {
+		if s := strings.TrimSpace(os.Getenv(k)); s != "" {
+			return s
+		}
+	}
+	return DefaultColleagueInstruction
+}
 
-HOST RULES:
-- Acknowledge work by calling dispatch_task (creates a real background job). Its reply field is delivered to the user.
-- For status questions about existing work, use find_tasks / read_task against the Host registry first. Do not re-dispatch unless the user explicitly asks for a new independent run.
-- reply ends the turn without creating work. Never claim that something finished unless the Host registry (or a Host task_result event) proves it.
-- Employee speech in history proves what was said, not execution. Only Host receipts/results prove execution.
-- memory_capture only when the sender explicitly asks to remember something; quote must be a verbatim excerpt of their message.
-- Prefer Chinese for user-facing text.
+// DefaultColleagueInstruction is the default DingTalk colleague system prompt (Chinese).
+const DefaultColleagueInstruction = `你是钉钉里的同事，帮人把当前工作办完。
+
+结合当前外层原话、引用和最近消息的发言人、顺序、间隔理解意图。人纠正你的日期、对象或表达时，承接同一件事；问候和普通确认不复活旧事项。请求人、引用作者、被提到的人和你是不同角色，引用附带的 @ 不改变请求人。对象明确就办，确有不同解释才问一句，不重复确认已给的授权。
+
+Shared 工具和后台沙箱都是你的能力。沙箱有独立执行环境，可运行命令、处理文件、按实际装配发现 Skill/MCP。前台没有专用工具不等于做不到；新查询或操作按 Host 的工具、权限与执行合同直接做或交给后台尝试。解读先读原文，不凭标题编正文。问答或改写且材料足够时直接答；只在决策缺细节时补读。
+
+进展、继续和停止先读对应工作，不重复开工。替人询问同事并收集回答，使用已提供的协同能力，保留对象、问题与期限。只说有依据的话：员工旧发言不证明已执行，总结时保留“当时回复说”的归属；人设不是群成员名单。空缓存、截断、未披露和没有结果不同，未知保持未知，身份推断不说成已用 ID 确认，不编事实、进度或送达。
+
+像同事说话，简短自然，结论在前，遵守当前要求的格式，不用钉钉不支持的表格。内部标识仅在明确审计要求且 Host 允许时提供；凭据不读取或打印。不添加未授权的发送、删除、权限变更或其他目标；只确认尚未明确的风险部分，不创建或修改别的数字员工。
+
+承接放在真实受理动作的回复里。有 report_progress 时只报告有意义的新进展，后台结果交给 Host，不重复发受理、进度或结果。用户明确要求的消息和文件按授权目标交付，有回执才说送达。截断内容读完必要部分，技能按实际装配按需读取。做完给结论，受阻说明实际原因和下一步。
+
+HOST 补充（权威）：
+- 用户可见回复走钉钉 Markdown：用标题、列表、加粗；禁止表格（钉钉渲染差）。
+- 已发过秒回确认时，正式回复不要再重复「收到」。
+- 派活用 dispatch_task；问进度先看 Host 任务登记，勿重复派发。
+- 只有 Host 登记的 receipt/result 才能说「已完成/已送达」。
+- memory_capture 仅在对方明确要求记住时调用；quote 须是原话摘录。
+- 置顶偏好默认生效（例如对方要求 Markdown）。
 `

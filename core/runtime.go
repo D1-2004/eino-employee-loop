@@ -281,29 +281,68 @@ func (r *Runtime) deliver(kind, text string) {
 }
 
 // ---------------- ack path (thinking off, no tools) ----------------
-const ackSystem = `你是数字员工的「秒回」通道。用户刚发来一条消息，完整的决策正在另一条通道里进行。你只需要用一句很短的中文（不超过20个字）让对方知道你收到了、在看。
+const ackSystem = `你是钉钉同事的「秒回」通道。决策在另一条通道进行。结合最近几轮的发言人与顺序，用一句自然中文（不超过 24 字）让对方知道你在看。
 硬性规则：
-1. 只说「收到/我看下/我去查一下/我确认下」这一类动作意图；绝不给出任何结论、事实、数字、结果。
-2. 绝不说已经完成/已经发送/已经建好之类的话，也不做任何承诺的结果。
-3. 如果上下文里列出了正在进行的任务，且用户是在问进度，只说「我看下进度」。
-4. 如果消息只是寒暄、致谢、表情、不需要任何回应、或不是对你说的，只输出 <none>。
+1. 只表达「在看/去办/去查」这类动作意图；绝不给结论、事实、数字、结果或承诺。
+2. 绝不说已完成/已发送/已建好。
+3. 问进度时说「我看下进度」一类即可。
+4. 纯寒暄（Hi/你好/在吗/谢谢）、表情、不需要回应、或明显不是对你说的 → 只输出 <none>（主循环会自然回复）。
+5. 不要机械重复「收到」；可带一点语境（对象/事项），但仍保持短。
 只输出这句话本身，或 <none>。`
 
+// isGreetingOrAckSkip detects pure greetings / thanks that should skip the stiff ack path.
+func isGreetingOrAckSkip(text string) bool {
+	t := strings.TrimSpace(strings.ToLower(text))
+	t = strings.Trim(t, "！!。.~～、，,")
+	if t == "" {
+		return true
+	}
+	rs := []rune(t)
+	if len(rs) <= 2 {
+		hasWord := false
+		for _, r := range rs {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r > 0x2e80 {
+				hasWord = true
+				break
+			}
+		}
+		if !hasWord {
+			return true
+		}
+	}
+	switch t {
+	case "hi", "hello", "hey", "yo", "sup",
+		"你好", "您好", "嗨", "哈喽", "哈罗", "在吗", "在不在", "早上好", "中午好", "下午好", "晚上好", "晚安",
+		"谢谢", "多谢", "感谢", "thx", "thanks", "thank you", "ok", "okay", "好的", "好", "嗯", "哦", "收到":
+		return true
+	}
+	return false
+}
+
 func (r *Runtime) doAck(ctx context.Context, m Msg) {
+	if isGreetingOrAckSkip(m.Text) {
+		r.count("ack_skipped_greeting")
+		return
+	}
 	var b strings.Builder
+	b.WriteString("最近对话（发言人 + 顺序，供你措辞，不要复述整段）：\n")
+	recent, _ := r.conv.Recent(ctx, r.cfg.Tenant, r.cfg.Scene, m.Seq, 8)
+	for _, x := range recent {
+		who := x.Speaker
+		if who == "" {
+			who = x.Role
+		}
+		fmt.Fprintf(&b, "- %s · %s: %s\n", vclock(x.AtMs), who, truncRunes(x.Text, 80))
+	}
 	if r.cfg.Registry {
 		if ts, _ := r.ts.Find(ctx, r.cfg.Tenant, r.cfg.Scene, "", 4); len(ts) > 0 {
-			b.WriteString("当前登记的任务（Host 数据）：\n")
+			b.WriteString("当前登记任务：\n")
 			for _, t := range ts {
 				if ActiveStatus(t.Status) {
 					fmt.Fprintf(&b, "- 进行中：%s\n", truncRunes(t.Goal, 40))
 				}
 			}
 		}
-	}
-	recent, _ := r.conv.Recent(ctx, r.cfg.Tenant, r.cfg.Scene, m.Seq, 3)
-	for _, x := range recent {
-		fmt.Fprintf(&b, "[%s] %s\n", x.Role, truncRunes(x.Text, 60))
 	}
 	fmt.Fprintf(&b, "新消息（%s）：%s", m.Speaker, truncRunes(m.Text, 300))
 	t0 := time.Now()

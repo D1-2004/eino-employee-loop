@@ -1,8 +1,8 @@
 // DWS conversation consumer: poll one openConversationId via dws, feed the employee Runtime,
-// send replies back with +messages-send. Intended to run on a machine that has `dws` logged in
-// (e.g. the user's dxxh host). Does not hardcode secrets — pass --profile / DWS_PROFILE.
+// send replies back with +messages-send (markdown, no AI badge). Intended to run on a machine
+// that has `dws` logged in (e.g. the user's dxxh host). Does not hardcode secrets.
 //
-//	export DEEPSEEK_API_KEY=...
+//	export LLM_API_KEY=...   # or DEEPSEEK_API_KEY / DASHSCOPE_API_KEY via providers/llm
 //	export DWS_PROFILE='corpId:userId'   // optional; default = current dws profile
 //	go run ./cmd/dws-consumer --cid 'cid...' --db ./data/employee.db
 package main
@@ -43,6 +43,8 @@ func main() {
 	execName := flag.String("executor", envOr("EXECUTOR", "mock"), "mock | opencode")
 	ocDir := flag.String("opencode-dir", os.Getenv("OPENCODE_DIR"), "OpenCode working dir (sandbox) for --executor opencode")
 	ocModel := flag.String("opencode-model", os.Getenv("OPENCODE_MODEL"), "optional OpenCode provider/model")
+	instr := flag.String("instruction", "", "override system instruction (else SYSTEM_INSTRUCTION env, else default Chinese colleague prompt)")
+	seedHist := flag.Int("seed-history", 40, "seed this many recent DWS messages into local context on start (0=off)")
 	flag.Parse()
 	_ = godotenv.Load(*dotenv)
 
@@ -62,9 +64,6 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	if err := os.MkdirAll(filepath.Dir(*db), 0o755); err != nil && filepath.Dir(*db) != "." {
-		// ok if Dir is "."
-	}
 	_ = os.MkdirAll(filepath.Dir(*db), 0o755)
 
 	sq, err := store.OpenSQLite(*db)
@@ -99,7 +98,7 @@ func main() {
 	})
 	defer prov.Close()
 
-	cd := core.DemoCase("")
+	cd := core.DemoCase(*instr)
 	cfg := core.DefaultConfig(*tenant, *scene, llm.New(lcfg), cd)
 	cfg.JobDelay = time.Duration(*jobMs) * time.Millisecond
 	cfg.CheckPointStore = cps
@@ -111,11 +110,7 @@ func main() {
 		cfg.Executor = tools.MockExecutor{}
 	}
 	cfg.OnOutbound = func(ctx context.Context, kind, text string) {
-		if kind == "ack_latency" || kind == "user_in" || kind == "suppressed_ack_dup" {
-			return
-		}
-		// Skip stay_quiet / internal-only kinds that should not hit the group.
-		if kind == "stay_quiet" {
+		if kind == "ack_latency" || kind == "user_in" || kind == "suppressed_ack_dup" || kind == "stay_quiet" {
 			return
 		}
 		if err := prov.Send(ctx, *cid, text); err != nil {
@@ -127,8 +122,19 @@ func main() {
 	must(err)
 	defer rt.Stop()
 
-	fmt.Printf("dws-consumer starting\n  cid=%s kind=%s profile=%q\n  db=%s checkpoint=%s\n",
-		*cid, *kind, *profile, *db, cfg.CheckpointID)
+	fmt.Printf("dws-consumer starting\n  cid=%s kind=%s profile=%q\n  db=%s checkpoint=%s\n  instruction_chars=%d markdown_send=true ai_tag=false\n",
+		*cid, *kind, *profile, *db, cfg.CheckpointID, len([]rune(cd.System)))
+
+	// Seed recent DWS history so the first turn already sees speakers/order.
+	if *seedHist > 0 {
+		if hist, err := prov.FetchHistory(ctx, *cid, *seedHist); err != nil {
+			fmt.Fprintf(os.Stderr, "seed history: %v\n", err)
+		} else if n, err := rt.SeedFromHistory(ctx, hist, selfNames, selfIDs); err != nil {
+			fmt.Fprintf(os.Stderr, "seed history append: %v\n", err)
+		} else {
+			fmt.Printf("seeded %d history msgs from DWS (fetched %d)\n", n, len(hist))
+		}
+	}
 
 	ch, err := prov.Subscribe(ctx, *cid)
 	if err != nil {
@@ -151,7 +157,20 @@ func main() {
 			}
 			fmt.Printf("← %s: %s\n", in.Speaker, trunc(in.Text, 120))
 			rt.UserMessage(ctx, in.Speaker, in.Text, in.AtMs)
+			// Mark read + clear red point after accepting the message (best-effort).
+			go markHandled(prov, *cid, in.MsgID)
 		}
+	}
+}
+
+func markHandled(prov *im.DWSProvider, cid, msgID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := prov.MarkRead(ctx, cid, msgID); err != nil {
+		fmt.Fprintf(os.Stderr, "mark-read: %v\n", err)
+	}
+	if err := prov.ClearRedPoint(ctx, cid); err != nil {
+		fmt.Fprintf(os.Stderr, "clear-red-point: %v\n", err)
 	}
 }
 

@@ -53,6 +53,55 @@ func DefaultConfig(tenant, scene string, models ModelProvider, caseData CaseData
 		Tenant: tenant, Scene: scene, Case: caseData,
 		JobDelay: 4 * time.Second, Models: models,
 		Registry: true, Ack: true, DedupWindow: 90 * time.Second,
-		ConvTokens: 1200, MemTokens: 500, RegTokens: 450,
+		ConvTokens: 2200, MemTokens: 700, RegTokens: 450,
 	}
+}
+
+// SeedFromHistory appends prior channel messages into the local conversation log when the
+// log is empty or thin, so the first decision turn already sees nearby speakers/order.
+// Skips messages already present by SourceRef (msg id). Does not trigger the loop.
+func (r *Runtime) SeedFromHistory(ctx context.Context, items []Inbound, selfNames, selfIDs []string) (int, error) {
+	if len(items) == 0 {
+		return 0, nil
+	}
+	existing, _ := r.conv.Recent(ctx, r.cfg.Tenant, r.cfg.Scene, 0, 200)
+	have := map[string]bool{}
+	for _, m := range existing {
+		if m.SourceRef != "" {
+			have[m.SourceRef] = true
+		}
+	}
+	selfN := map[string]bool{}
+	for _, n := range selfNames {
+		if n != "" {
+			selfN[n] = true
+		}
+	}
+	_ = selfIDs // reserved: match by openDingTalkId when history carries it
+	n := 0
+	for _, in := range items {
+		if in.MsgID != "" && have[in.MsgID] {
+			continue
+		}
+		role := "user"
+		speaker := in.Speaker
+		kind := "history"
+		if selfN[in.Speaker] {
+			role = "assistant"
+			speaker = "employee"
+			kind = "history_self"
+		}
+		_, err := r.conv.Append(ctx, r.cfg.Tenant, r.cfg.Scene, Msg{
+			Role: role, Speaker: speaker, Text: in.Text, Kind: kind,
+			SourceRef: in.MsgID, AtMs: in.AtMs,
+		})
+		if err != nil {
+			return n, err
+		}
+		if in.MsgID != "" {
+			have[in.MsgID] = true
+		}
+		n++
+	}
+	return n, nil
 }

@@ -352,6 +352,7 @@ func (p *DWSProvider) pollOnce(ctx context.Context, convID string, seedOnly bool
 	return nNew, nil
 }
 
+// Send posts as the logged-in human profile ( --as user ), Markdown body, no AI badge.
 func (p *DWSProvider) Send(ctx context.Context, convID, text string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -361,7 +362,8 @@ func (p *DWSProvider) Send(ctx context.Context, convID, text string) error {
 	args := []string{
 		"chat", "+messages-send",
 		"--as", "user",
-		"--text", text,
+		"--markdown", text,
+		"--ai-tag=false",
 		"--uuid", uuid,
 		"-y", "-f", "json",
 	}
@@ -373,6 +375,66 @@ func (p *DWSProvider) Send(ctx context.Context, convID, text string) error {
 	}
 	_, err := p.run(ctx, args...)
 	return err
+}
+
+func (p *DWSProvider) MarkRead(ctx context.Context, convID, msgID string) error {
+	if strings.TrimSpace(convID) == "" || strings.TrimSpace(msgID) == "" {
+		return nil
+	}
+	_, err := p.run(ctx, "chat", "+conversation-mark-read",
+		"--conversation-id", convID,
+		"--message-id", msgID,
+		"-y", "-f", "json")
+	return err
+}
+
+func (p *DWSProvider) ClearRedPoint(ctx context.Context, convID string) error {
+	if strings.TrimSpace(convID) == "" {
+		return nil
+	}
+	_, err := p.run(ctx, "chat", "+conversation-clear-red-point",
+		"--conversation-id", convID,
+		"-y", "-f", "json")
+	return err
+}
+
+// FetchHistory returns recent messages oldest-first (excluding empty text).
+func (p *DWSProvider) FetchHistory(ctx context.Context, convID string, limit int) ([]Inbound, error) {
+	if limit <= 0 {
+		limit = 40
+	}
+	args := []string{"chat", "+chat-messages", "--limit", fmt.Sprintf("%d", limit), "-y", "-f", "json"}
+	switch p.cfg.Kind {
+	case "dm":
+		args = append(args, "--open-dingtalk-id", convID)
+	default:
+		args = append(args, "--group", convID)
+	}
+	raw, err := p.run(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	var list dwsMsgList
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return nil, fmt.Errorf("parse chat-messages: %w", err)
+	}
+	out := make([]Inbound, 0, len(list.Messages))
+	// API newest-first → reverse to oldest-first
+	for i := len(list.Messages) - 1; i >= 0; i-- {
+		m := list.Messages[i]
+		text := strings.TrimSpace(m.Text)
+		if text == "" {
+			continue
+		}
+		out = append(out, Inbound{
+			ConvID:  convID,
+			MsgID:   m.MessageID,
+			Speaker: m.Sender,
+			Text:    text,
+			AtMs:    parseCreateTime(m.CreateTime),
+		})
+	}
+	return out, nil
 }
 
 func (p *DWSProvider) Close() error {

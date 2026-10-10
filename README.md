@@ -85,3 +85,11 @@ LLM_MODEL=deepseek-v4.1-flash     # LLM_ACK_MODEL optional
 ```
 Ack path runs with thinking off (`enable_thinking=false` on DashScope, `thinking: disabled` on DeepSeek).
 `dws-consumer --executor opencode --opencode-dir <sandbox>` runs dispatched tasks in a local OpenCode session.
+
+## DingTalk consumer UX defaults
+
+- System instruction: Chinese colleague prompt (`core.DefaultColleagueInstruction`); override with `--instruction` or `SYSTEM_INSTRUCTION`.
+- Outbound: `dws chat +messages-send --as user --markdown ... --ai-tag=false` (human profile, no AI badge).
+- After each inbound: `+conversation-mark-read` + `+conversation-clear-red-point`.
+- Startup: seeds recent DWS history into local SQLite conversation so the first reply sees speakers/order.
+- Ack: skips pure greetings (Hi/你好/…); otherwise short natural ack with recent context.

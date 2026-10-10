@@ -220,12 +220,22 @@ func (r *Runtime) memorySnapshot(ctx context.Context, speaker, text string) stri
 		seen[f.ID] = true
 		*dst = append(*dst, l)
 	}
+	// Pinned preferences/decisions: prefer current speaker's "me" bag, then any "me" in scene, then scene-shared.
 	for _, aud := range []string{"me", "scene"} {
 		sub := speaker
 		if aud == "scene" {
 			sub = ""
 		}
 		rec, _ := r.ms.Recent(ctx, cfg.Tenant, cfg.Scene, sub, aud, 30)
+		for _, f := range rec {
+			if f.Kind == "preference" || f.Kind == "decision" {
+				add(&pinned, f)
+			}
+		}
+	}
+	// Fallback: if speaker-scoped "me" bag was empty, pull recent preferences for any subject in this scene.
+	if len(pinned) == 0 {
+		rec, _ := r.ms.Recent(ctx, cfg.Tenant, cfg.Scene, "*", "me", 30)
 		for _, f := range rec {
 			if f.Kind == "preference" || f.Kind == "decision" {
 				add(&pinned, f)
