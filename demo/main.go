@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/D1-2004/eino-employee-loop/loop"
-	"github.com/D1-2004/eino-employee-loop/store"
+	"github.com/dingtalk-fde/eino-employee-loop/loop"
+	"github.com/dingtalk-fde/eino-employee-loop/store"
 	"github.com/joho/godotenv"
 )
 

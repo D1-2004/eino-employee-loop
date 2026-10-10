@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"sync"
 
-	"github.com/D1-2004/eino-employee-loop/store"
+	"github.com/dingtalk-fde/eino-employee-loop/store"
 )
 
 // ConvStore: conversation log (the "nearby conversation" source). Backed by the same SQL DB.

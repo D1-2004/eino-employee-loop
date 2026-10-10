@@ -2,6 +2,8 @@
 
 Grok Bot–style **employee decision loop** on [CloudWeGo Eino](https://github.com/cloudwego/eino) v0.9.21:
 
+> **Repo home:** currently published at [dingtalk-fde/eino-employee-loop](https://github.com/dingtalk-fde/eino-employee-loop). Intended org home is `D1-2004` once an org admin creates/transfers the public repo.
+
 1. **Instant ack** (thinking off, no tools) — ~0.7–1.5 s visible reply  
 2. **Decision turn** (thinking on, tools) — dispatch / reply / ask / stay quiet  
 3. **Background jobs** — `dispatch_task` returns a receipt immediately; result is pushed back via `TurnLoop.Push`  

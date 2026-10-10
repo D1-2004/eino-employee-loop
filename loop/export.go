@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/D1-2004/eino-employee-loop/store"
+	"github.com/dingtalk-fde/eino-employee-loop/store"
 )
 
 // Outbox returns a copy of delivered user-facing events (ack / reply / dispatch_reply / result_reply / ask / dedup_notice).

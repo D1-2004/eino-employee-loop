@@ -16,7 +16,7 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
-	"github.com/D1-2004/eino-employee-loop/store"
+	"github.com/dingtalk-fde/eino-employee-loop/store"
 )
 
 var readOnly = map[string]bool{"find_tasks": true, "read_task": true, "read_context": true, "read_collection": true, "memory_lookup": true, "scene_config_get": true, "read_task_history": true, "get_supervisor": true, "read_human_cards": true, "describe_capabilities": true, "prepare_background": true}

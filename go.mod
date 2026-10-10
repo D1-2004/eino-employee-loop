@@ -1,4 +1,4 @@
-module github.com/D1-2004/eino-employee-loop
+module github.com/dingtalk-fde/eino-employee-loop
 
 go 1.26.0
 

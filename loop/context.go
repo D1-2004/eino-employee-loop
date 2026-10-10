@@ -10,7 +10,7 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
-	"github.com/D1-2004/eino-employee-loop/store"
+	"github.com/dingtalk-fde/eino-employee-loop/store"
 )
 
 const runtimeAddendum = `RUNTIME NOTES (Host, authoritative):

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/D1-2004/eino-employee-loop/store"
+	"github.com/dingtalk-fde/eino-employee-loop/store"
 )
 
 // Stats collects per-operation latencies of the storage layer (microseconds).
