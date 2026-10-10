@@ -32,3 +32,11 @@ ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON tasks USING (tenant = current_setting('app.tenant', true));
 ALTER TABLE memory_facts ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON memory_facts USING (tenant = current_setting('app.tenant', true));
+
+-- Eino TurnLoop / Runner checkpoint blobs (local SQLite table is identical without BYTEA vs BLOB naming)
+CREATE TABLE IF NOT EXISTS checkpoints(
+  id TEXT PRIMARY KEY,
+  blob BYTEA NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+

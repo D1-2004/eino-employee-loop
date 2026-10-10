@@ -1,13 +1,12 @@
-// Demo: Grok-Bot-style employee loop — instant ack, background tasks, registry + memory.
+// Local demo: SQLite TaskStore/MemoryStore/conversation + SQLite CheckPointStore + stdin IM.
 //
-//	DEEPSEEK_API_KEY=... go run ./demo
-//	DEEPSEEK_API_KEY=... go run ./demo -script   # scripted multi-message simulation
+//	DEEPSEEK_API_KEY=... go run ./cmd/demo
+//	DEEPSEEK_API_KEY=... go run ./cmd/demo -script
 //
-// Never commit a .env with a real key. Load from the environment or a local-only file.
+// Never commit a .env with a real key.
 package main
 
 import (
-	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -16,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dingtalk-fde/eino-employee-loop/checkpoint"
+	"github.com/dingtalk-fde/eino-employee-loop/im"
 	"github.com/dingtalk-fde/eino-employee-loop/loop"
 	"github.com/dingtalk-fde/eino-employee-loop/store"
 	"github.com/joho/godotenv"
@@ -23,9 +24,10 @@ import (
 
 func main() {
 	script := flag.Bool("script", false, "run the built-in multi-message script instead of interactive stdin")
-	db := flag.String("db", filepath.Join(os.TempDir(), "eino-employee-loop-demo.db"), "SQLite path")
-	dotenv := flag.String("dotenv", ".env", "optional dotenv (gitignored); DEEPSEEK_API_KEY also accepted from the environment")
+	db := flag.String("db", filepath.Join(os.TempDir(), "eino-employee-loop-demo.db"), "SQLite path (tasks, memory, conversation, checkpoints)")
+	dotenv := flag.String("dotenv", ".env", "optional dotenv (gitignored)")
 	jobMs := flag.Int("job-ms", 4000, "simulated background job duration")
+	cpID := flag.String("checkpoint-id", "demo|scene-demo", "TurnLoop CheckpointID")
 	flag.Parse()
 	_ = godotenv.Load(*dotenv)
 	key, base := os.Getenv("DEEPSEEK_API_KEY"), os.Getenv("DEEPSEEK_BASE_URL")
@@ -37,45 +39,45 @@ func main() {
 	sq, err := store.OpenSQLite(*db)
 	must(err)
 	defer sq.Close()
+	cps, err := checkpoint.Attach(sq.DB())
+	must(err)
 	conv, err := loop.NewConvStore(sq, false)
 	must(err)
 	stats := loop.NewStats()
 	cd := loop.DemoCase("")
 	cfg := loop.DefaultConfig("demo", "scene-demo", key, base, cd)
 	cfg.JobDelay = time.Duration(*jobMs) * time.Millisecond
+	cfg.CheckPointStore = cps
+	cfg.CheckpointID = *cpID
+
+	prov := im.NewStdinProvider("stdin", "冬翔")
+	cfg.OnOutbound = func(_ context.Context, kind, text string) {
+		if kind == "ack_latency" || kind == "user_in" {
+			return
+		}
+		_ = prov.Send(context.Background(), "stdin", fmt.Sprintf("(%s) %s", kind, text))
+	}
+
 	rt, err := loop.NewRuntime(ctx, cfg, sq, sq, store.NewMemKV(), conv, stats)
 	must(err)
 	defer rt.Stop()
 
-	print := func(prefix string, evs []loop.OutEv, since float64) {
-		for _, e := range evs {
-			if e.TMs < since {
-				continue
-			}
-			if e.Kind == "user_in" || e.Kind == "ack_latency" {
-				continue
-			}
-			fmt.Printf("  [%s +%.0fms] %s\n", prefix, e.TMs, trunc(e.Text, 160))
-		}
-	}
+	fmt.Printf("Eino Employee Loop demo\n  db=%s\n  checkpoint=%s (table checkpoints)\n", *db, *cpID)
 
 	if *script {
-		runScript(ctx, rt, print)
+		runScript(ctx, rt)
 		return
 	}
-	fmt.Println("Eino Employee Loop demo (SQLite + MemKV). Type a message, or /quit /tasks /memory /stats")
-	in := bufio.NewScanner(os.Stdin)
-	for {
-		fmt.Print("> ")
-		if !in.Scan() {
-			break
-		}
-		line := strings.TrimSpace(in.Text())
-		if line == "" {
-			continue
-		}
+
+	fmt.Println("Type a message, or /quit /tasks /memory /stats /checkpoint")
+	ch, err := prov.Subscribe(ctx, "stdin")
+	must(err)
+	defer prov.Close()
+
+	for in := range ch {
+		line := strings.TrimSpace(in.Text)
 		switch {
-		case line == "/quit":
+		case line == "/quit" || line == "/exit":
 			return
 		case line == "/tasks":
 			ts, _ := rt.ListTasks(ctx)
@@ -83,44 +85,35 @@ func main() {
 				fmt.Printf("  %s [%s] %s\n", t.ID, t.Status, trunc(t.Goal, 80))
 			}
 		case line == "/memory":
-			fs, _ := rt.ListMemory(ctx, "you", "me")
+			fs, _ := rt.ListMemory(ctx, "冬翔", "me")
 			fs2, _ := rt.ListMemory(ctx, "", "scene")
 			for _, f := range append(fs, fs2...) {
 				fmt.Printf("  [%s/%s] %s\n", f.Audience, f.Kind, trunc(f.Text, 100))
 			}
 		case line == "/stats":
 			fmt.Printf("  counters=%v\n  store=%v\n", rt.Counters(), rt.StoreStats())
+		case line == "/checkpoint":
+			blob, ok, err := cps.Get(ctx, *cpID)
+			fmt.Printf("  id=%s ok=%v bytes=%d err=%v\n", *cpID, ok, len(blob), err)
 		default:
-			since := float64(time.Since(time.Time{}).Milliseconds()) // unused; use outbox watermark
-			before := len(rt.Outbox())
-			rt.UserMessage(ctx, "you", line, 0)
+			rt.UserMessage(ctx, in.Speaker, line, in.AtMs)
 			rt.WaitIdle(true, 120*time.Second)
-			print("bot", rt.Outbox()[before:], 0)
-			_ = since
 		}
 	}
 }
 
-func runScript(ctx context.Context, rt *loop.Runtime, printFn func(string, []loop.OutEv, float64)) {
-	steps := []struct {
-		who, text, wait string
-	}{
-		{"冬翔", "记住：以后查天气都用摄氏度，而且只要一句话", "turn"},
-		{"冬翔", "查一下今天杭州的天气", "turn"},
-		{"冬翔", "还在查吗", "turn"},
-		{"冬翔", "查一下今天杭州的天气", "turn"}, // should dedup if prior still active/recent
-		{"冬翔", "谢谢", "turn"},
+func runScript(ctx context.Context, rt *loop.Runtime) {
+	steps := []struct{ who, text string }{
+		{"冬翔", "记住：以后查天气都用摄氏度，而且只要一句话"},
+		{"冬翔", "查一下今天杭州的天气"},
+		{"冬翔", "还在查吗"},
+		{"冬翔", "查一下今天杭州的天气"},
+		{"冬翔", "谢谢"},
 	}
 	for _, s := range steps {
 		fmt.Printf("\nuser(%s): %s\n", s.who, s.text)
-		before := len(rt.Outbox())
 		rt.UserMessage(ctx, s.who, s.text, 0)
-		if s.wait == "turn" {
-			rt.WaitIdle(false, 90*time.Second)
-		} else {
-			rt.WaitIdle(true, 120*time.Second)
-		}
-		printFn("bot", rt.Outbox()[before:], 0)
+		rt.WaitIdle(false, 90*time.Second)
 		time.Sleep(200 * time.Millisecond)
 	}
 	rt.WaitIdle(true, 60*time.Second)

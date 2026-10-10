@@ -42,6 +42,15 @@ type Config struct {
 	ConvTokens    int // token budgets of dynamic context
 	MemTokens     int
 	RegTokens     int
+
+	// CheckPointStore + CheckpointID wire Eino TurnLoop resume (SQLite KV locally).
+	// Item must remain gob-encodable. Empty CheckpointID defaults to tenant|scene.
+	CheckPointStore adk.CheckPointStore
+	CheckpointID    string
+
+	// OnOutbound is called for every user-facing delivery (ack/reply/ask/…)。
+	// Used by IM providers (stdin / DWS) so Host outbox and channel stay in sync.
+	OnOutbound func(ctx context.Context, kind, text string)
 }
 
 type Item struct {
@@ -158,12 +167,24 @@ func NewRuntime(ctx context.Context, cfg Config, ts store.TaskStore, ms store.Me
 	if r.agent, err = adk.NewChatModelAgent(ctx, ac); err != nil {
 		return nil, err
 	}
+	cpID := cfg.CheckpointID
+	if cpID == "" && cfg.CheckPointStore != nil {
+		cpID = cfg.Tenant + "|" + cfg.Scene
+	}
 	r.loop = adk.NewTurnLoop(adk.TurnLoopConfig[Item, *schema.Message]{
 		GenInput: r.genInput,
+		GenResume: func(ctx context.Context, l *adk.TurnLoop[Item, *schema.Message], interrupted, unhandled, newItems []Item) (*adk.GenResumeResult[Item, *schema.Message], error) {
+			return &adk.GenResumeResult[Item, *schema.Message]{
+				Consumed:  interrupted,
+				Remaining: append(append([]Item{}, unhandled...), newItems...),
+			}, nil
+		},
 		PrepareAgent: func(ctx context.Context, l *adk.TurnLoop[Item, *schema.Message], c []Item) (adk.TypedAgent[*schema.Message], error) {
 			return r.agent, nil
 		},
 		OnAgentEvents: r.onEvents,
+		Store:         cfg.CheckPointStore,
+		CheckpointID:  cpID,
 	})
 	r.loop.Run(ctx)
 	return r, nil
@@ -253,6 +274,9 @@ func (r *Runtime) deliver(kind, text string) {
 	r.out = append(r.out, OutEv{TMs: r.now(), Kind: kind, Text: text, Turn: turn})
 	r.mu.Unlock()
 	_, _ = r.conv.Append(context.Background(), r.cfg.Tenant, r.cfg.Scene, Msg{Role: "assistant", Speaker: "employee", Text: text, Kind: kind, AtMs: r.vnow()})
+	if r.cfg.OnOutbound != nil {
+		r.cfg.OnOutbound(context.Background(), kind, text)
+	}
 }
 
 // ---------------- ack path (thinking off, no tools) ----------------

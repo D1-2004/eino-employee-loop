@@ -10,3 +10,6 @@
 results/
 *.log
 .DS_Store
+/data/
+/cmd/demo/demo
+/cmd/dws-consumer/dws-consumer
