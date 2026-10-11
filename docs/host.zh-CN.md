@@ -75,7 +75,7 @@ err := c.Register(spec)
 Host 传给 `loop.New` 的模型必须：
 
 - **每次 `Generate` 只发一个 provider 请求**（一次 attempt），内部绝不重试：关掉 SDK 自带的重试。循环把每次 attempt 计入 `MaxPhysicalAttempts`，并自己带修复指令重新请求；
-- 从 `WithTools` 取工具。循环在每次 attempt 之前调用它，传入本次的工具（全部，或 `TurnTools` 提供的那些）。选项里从不携带工具。`ToolInfo.Extra[loop.ExtraParameters]` 原样保存每个工具的 JSON Schema。没有工具的 attempt 使用未绑定的模型；
+- 从 `WithTools` 取工具。循环在每次 attempt 之前调用它，传入本次的工具（全部，或 `TurnTools` 提供的那些）。选项里从不携带工具。`ToolInfo.Extra[loop.ExtraParameters]` 原样保存每个工具的 JSON Schema。`ParamsOneOf` 是 Eino 类型化的副本：该类型容纳不了的 schema（draft-07 元组 `items`、draft-04 布尔 `exclusiveMinimum`）在那里只是一个空的 object schema，所以要让每个 schema 保持原样，就发送 `Extra`。没有工具的 attempt 使用未绑定的模型；
 - 当 attempt 传入 `model.WithToolChoice(schema.ToolChoiceForced)` 时强制工具调用（`RequireNativeToolCall`；OpenAI 的 `tool_choice: "required"`）。循环不传其他选项；
 - 返回 provider 自己的消息：调用 ID 用 provider 的（非空、在本次响应内唯一），type 为 `function`，参数是 JSON 对象，`finish_reason` 为 `tool_calls`、`stop` 或空（其他值走修复）。`ResponseMeta.Usage` 会被累加。从不调用 `Stream`。
 

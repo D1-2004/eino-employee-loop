@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -293,5 +294,38 @@ func TestTokenUsageIsSummed(t *testing.T) {
 	out, err := run(t, lt.New(step), &fakeHost{}, nil)
 	if err != nil || out.Usage != (loop.Usage{PromptTokens: 7, CompletionTokens: 2}) {
 		t.Fatalf("usage %+v err=%v", out.Usage, err)
+	}
+}
+
+func TestSchemasEinoCannotTypeStillRun(t *testing.T) {
+	tuple := map[string]any{"$schema": "http://json-schema.org/draft-07/schema#", "type": "object", "properties": map[string]any{
+		"range": map[string]any{"type": "array", "items": []any{map[string]any{"type": "string"}, map[string]any{"type": "string"}}},
+	}}
+	bound := map[string]any{"$schema": "http://json-schema.org/draft-04/schema#", "type": "object", "properties": map[string]any{
+		"limit": map[string]any{"type": "number", "minimum": 0, "exclusiveMinimum": true},
+	}}
+	m := lt.New(lt.Text("hello"))
+	out, err := run(t, m, &fakeHost{}, func(c *loop.Config) {
+		c.Tools = append(append([]loop.Tool(nil), tools...), loop.Tool{Name: "lookup", Schema: tuple}, loop.Tool{Name: "count", Schema: bound})
+	})
+	if err != nil || out.Reply != "hello" || out.ModelCalls != 1 {
+		t.Fatalf("out=%+v err=%v", out, err)
+	}
+	want := map[string]map[string]any{"lookup": tuple, "count": bound}
+	for _, info := range m.Tools {
+		schema, ok := want[info.Name]
+		if !ok {
+			continue
+		}
+		delete(want, info.Name)
+		if !reflect.DeepEqual(info.Extra[loop.ExtraParameters], schema) {
+			t.Fatalf("%s: Extra holds %v, want the schema as given", info.Name, info.Extra[loop.ExtraParameters])
+		}
+		if js, err := info.ToJSONSchema(); err != nil || js == nil || js.Type != "object" || js.Properties != nil {
+			t.Fatalf("%s: ParamsOneOf is %+v (%v), want a bare object schema", info.Name, js, err)
+		}
+	}
+	if len(want) != 0 {
+		t.Fatalf("tools not bound: %v", want)
 	}
 }

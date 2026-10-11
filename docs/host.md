@@ -148,7 +148,10 @@ The model the Host passes to `loop.New` must:
 - take its tools from `WithTools`, which the loop calls right before every
   attempt with that attempt's tools (all of them, or what `TurnTools` offers).
   Options never carry tools. `ToolInfo.Extra[loop.ExtraParameters]` holds each
-  tool's JSON Schema as given. An attempt with no tools uses the unbound model;
+  tool's JSON Schema as given. `ParamsOneOf` is Eino's typed copy: a schema
+  that type cannot hold (draft-07 tuple `items`, a draft-04 boolean
+  `exclusiveMinimum`) is a bare object schema there, so send `Extra` to keep
+  every schema exact. An attempt with no tools uses the unbound model;
 - force a tool call when the attempt passes
   `model.WithToolChoice(schema.ToolChoiceForced)` (`RequireNativeToolCall`;
   OpenAI `tool_choice: "required"`). The loop passes no other option;

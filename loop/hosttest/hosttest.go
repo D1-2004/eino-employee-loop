@@ -337,7 +337,8 @@ var modelTools = []loop.Tool{
 //     ResponseMeta.Usage, which the loop sums into Outcome.Usage.
 //
 // How the adapter sends each tool's schema is its own choice
-// (ToolInfo.Extra[loop.ExtraParameters] is offered, not required).
+// (ToolInfo.Extra[loop.ExtraParameters] is offered, not required; it is
+// the exact schema, see loop.ToolInfos).
 func Model(t testing.TB, m model.ToolCallingChatModel, p Provider) {
 	t.Helper()
 	if m == nil || p.Requests == nil || p.FailNext == nil {

@@ -15,6 +15,11 @@ import (
 const ExtraParameters = "employee_loop.parameters"
 
 // ToolInfos converts tools to Eino tool infos, in the given order.
+// Extra[ExtraParameters] keeps each schema as given. ParamsOneOf is Eino's
+// typed copy of it; a schema that type cannot hold, such as draft-07 tuple
+// items or a draft-04 boolean exclusiveMinimum, is a bare object schema
+// there instead of failing the wake, so an adapter that sends ParamsOneOf
+// loses only that tool's argument detail.
 func ToolInfos(tools []Tool) ([]*schema.ToolInfo, error) {
 	out := make([]*schema.ToolInfo, 0, len(tools))
 	for _, t := range tools {
@@ -27,8 +32,8 @@ func ToolInfos(tools []Tool) ([]*schema.ToolInfo, error) {
 			return nil, fmt.Errorf("employee loop: tool %s schema: %w", t.Name, err)
 		}
 		js := &jsonschema.Schema{}
-		if err := json.Unmarshal(raw, js); err != nil {
-			return nil, fmt.Errorf("employee loop: tool %s schema: %w", t.Name, err)
+		if json.Unmarshal(raw, js) != nil {
+			js = &jsonschema.Schema{Type: "object"}
 		}
 		out = append(out, &schema.ToolInfo{
 			Name:        t.Name,
