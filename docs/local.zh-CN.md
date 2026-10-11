@@ -1,0 +1,61 @@
+# 本地验证
+
+[English](local.md)
+
+`cmd/eel` 在你的机器上跑一个员工，接入真实钉钉，不部署 Host 也能端到端验证循环。它是验证用的：历史保存在内存中，不运行后台会话，工具只有 `reply` 和 `stay_quiet`。
+
+## 模型
+
+任意 OpenAI 兼容端点：
+
+```bash
+export LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+export LLM_API_KEY=...
+export LLM_MODEL=qwen3.8-max
+```
+
+## 模式一：钉钉账号（dws）
+
+员工*就是*一个已登录 [dws CLI](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli) 的账号。它订阅该账号的个人 IM 事件——全部单聊（`--kind all-direct`）和所有 @ 它的群消息（`--kind at-me`）——并以该账号回复。
+
+```bash
+go run ./cmd/eel -channel dws -profile <corpId:userId> -name <显示名> -locale zh-CN
+```
+
+注意：
+
+- 用 Ctrl-C（SIGTERM）停止：dws 会取消它创建的订阅。
+- 个人事件覆盖本组织成员的消息；跨组织单聊可能收不到。
+- 账号自己发出的回复也会以事件回来；渠道会识别这类回声并忽略。
+
+## 模式二：Stream 模式机器人
+
+员工是一个经钉钉 Stream 模式连接的应用机器人（`/v1.0/im/bot/messages/get`）。大家直接给它发消息或在群里 @ 它；它通过每条消息的 session webhook 回复。
+
+```bash
+go run ./cmd/eel -channel robot -robot-client-id <AppKey> -robot-client-secret <AppSecret>
+```
+
+请使用没有其他连接的机器人：Stream 模式会把同一应用的消息分散到它的所有连接上。
+
+## 路由
+
+每条消息都会变成 `event.Event`（单聊或 @ 员工为 `message.addressed`，否则为 `message.observed`），经过 `event.Standard().Route`。被找的消息唤醒场域的前台会话（每个会话同一时刻只有一次唤醒）；被旁听的消息只记入历史，供下一次唤醒使用。
+
+## Langfuse
+
+设置 `LANGFUSE_BASE_URL`（或 `LANGFUSE_HOST`）、`LANGFUSE_PUBLIC_KEY`、`LANGFUSE_SECRET_KEY` 后，每次唤醒成为一条 trace，命名与生产 Host 相同：
+
+| 项 | 值 |
+| --- | --- |
+| trace | `employee_loop`，session = 会话 id，tags `agent-<id>`、`engine-eino` |
+| generation | 每次模型请求一个 `employee_model`，含输入消息、输出和 token 用量 |
+| span | 每次工具调用一个（`reply`、`stay_quiet`） |
+| metadata | `employee_loop_engine=eino`、`employee_contract_event/class/mode/lane/session`、`employee_decision`、`employee_model_calls` |
+| environment | `LANGFUSE_ENVIRONMENT`，默认 `local` |
+
+当前消息以带 `message_id` 的 JSON 发送，因此按「在首个 generation 的最后一条 user 消息里找消息 id」归属 trace 的工具无需修改即可使用。
+
+## 跑评测集
+
+把评测工具指向本地员工，而不是已部署的员工：员工就是那个 dws 账号（或机器人），它的 trace 在 `local` 环境、tag `agent-<id>` 下，演员像对普通同事一样给它发消息。需要后台工作、记忆或 Host API 的用例不在本地范围内；聊天行为类用例（直接回答、严格格式、拒绝、澄清、长度限制）可以直接用。

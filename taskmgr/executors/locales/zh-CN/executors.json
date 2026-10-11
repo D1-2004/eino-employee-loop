@@ -1,6 +1,0 @@
-{
-  "taskmgr.echo.progress": "正在处理：{goal}",
-  "taskmgr.echo.report": "关于「{goal}」的报告：{prompt}",
-  "taskmgr.echo.report_corrected": "关于「{goal}」的报告：{prompt}（已按修正处理：{corrections}）",
-  "taskmgr.echo.separator": "；"
-}

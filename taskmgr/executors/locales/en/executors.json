@@ -1,6 +1,0 @@
-{
-  "taskmgr.echo.progress": "Working on: {goal}",
-  "taskmgr.echo.report": "Report on \"{goal}\": {prompt}",
-  "taskmgr.echo.report_corrected": "Report on \"{goal}\": {prompt} (corrections applied: {corrections})",
-  "taskmgr.echo.separator": "; "
-}
