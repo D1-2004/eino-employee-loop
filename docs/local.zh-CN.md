@@ -16,7 +16,7 @@ export LLM_MODEL=qwen3.8-max
 
 ## 模式一：钉钉账号（dws）
 
-员工*就是*一个已登录 [dws CLI](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli) 的账号。它订阅该账号的个人 IM 事件——全部单聊（`--kind all-direct`）和所有 @ 它的群消息（`--kind at-me`）——并以该账号回复。
+员工*就是*一个已登录 [dws CLI](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli) 的账号。它订阅该账号的个人 IM 事件——全部单聊（`--kind all-direct`）和所有 @ 它的群消息（`--kind at-me`）——并以该账号引用原消息回复。
 
 ```bash
 go run ./cmd/eel -channel dws -profile <corpId:userId> -name <显示名> -locale zh-CN
@@ -50,7 +50,7 @@ go run ./cmd/eel -channel robot -robot-client-id <AppKey> -robot-client-secret <
 | --- | --- |
 | trace | `employee_loop`，session = 会话 id，tags `agent-<id>`、`engine-eino` |
 | generation | 每次模型请求一个 `employee_model`，含输入消息、输出和 token 用量 |
-| span | 每次工具调用一个（`reply`、`stay_quiet`） |
+| tool | 每次工具调用一个（`reply`、`stay_quiet`） |
 | metadata | `employee_loop_engine=eino`、`employee_contract_event/class/mode/lane/session`、`employee_decision`、`employee_model_calls` |
 | environment | `LANGFUSE_ENVIRONMENT`，默认 `local` |
 

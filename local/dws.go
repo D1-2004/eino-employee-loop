@@ -151,10 +151,11 @@ func (d *DWS) own(m Message) bool {
 	return false
 }
 
-// Send posts a markdown message as the account: to the sender of a direct
-// message, or into the group.
+// Send answers as the account with a quote reply to m (in the direct
+// conversation with its sender, or in its group), like a colleague replying
+// to a specific message. The uuid makes a retried send idempotent.
 func (d *DWS) Send(ctx context.Context, m Message, text string) (string, error) {
-	args := []string{"chat", "+messages-send", "--as", "user", "--markdown", text, "--uuid", "eel-" + m.MessageID, "-y", "-f", "json"}
+	args := []string{"chat", "+messages-reply", "--as", "user", "--message-id", m.MessageID, "--content", text, "--ai-tag=false", "--uuid", "eel-" + m.MessageID, "-y", "-f", "json"}
 	if m.Direct {
 		args = append(args, "--open-dingtalk-id", m.SenderID)
 	} else {
