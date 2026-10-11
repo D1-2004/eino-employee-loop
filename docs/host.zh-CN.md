@@ -79,6 +79,8 @@ Host 传给 `loop.New` 的模型必须：
 - 当 attempt 传入 `model.WithToolChoice(schema.ToolChoiceForced)` 时强制工具调用（`RequireNativeToolCall`；OpenAI 的 `tool_choice: "required"`）。循环不传其他选项；
 - 返回 provider 自己的消息：调用 ID 用 provider 的（非空、在本次响应内唯一），type 为 `function`，参数是 JSON 对象，`finish_reason` 为 `tool_calls`、`stop` 或空（其他值走修复）。`ResponseMeta.Usage` 会被累加。从不调用 `Stream`。
 
+**流式。** 循环只判断完整的响应。Host 若要流式读取，或在响应完成之前就对某一帧采取行动（例如提前发出第一条反馈），就在自己的模型里做：`Generate` 从 provider 流式读取，自己检查并处理这些帧，最后返回完整消息。循环随后像对待其他响应一样判断它。接受该批次时，它会在同一轮次、用同一个原生 ID 再执行一次那个提前的调用，所以 `Execute` 要返回这个 ID 已记录的结果（§5），不重复提交。拒绝这次响应时，提前的效果仍然已经提交：只对能通过其批次所受规则的调用提前行动。
+
 ## 7. 送达
 
 在完成窗口的同一事务中把用户可见的回复写入发件箱（`outbox`）。结果未知的发送（超时）保持 `unknown`，用状态查询核对——绝不重发。`Run` 失败时也要保留 `Outcome.Receipts` 和 `ToolOutcomes`：其中可能有已提交的效果。
@@ -93,8 +95,9 @@ Host 传给 `loop.New` 的模型必须：
 | `ErrModelBudget`，并带 `ErrConsecutiveModelErrors`、`ErrModelResponseBudget` 或 `ErrPhysicalModelBudget` 之一 | 预算用尽 | 唤醒结束 |
 | `ErrToolRefused`（Host 的） | 在任何效果之前拒绝 | 模型可以纠正 |
 | `ErrToolFailed`、`ErrMissingReceipt`、`ErrTerminalConflict`、`ErrNoTerminalDecision` | 效果失败或没有凭证，或结果互相冲突 | 本批结束后唤醒结束 |
+| Host 的 `ValidateDecision` 返回的错误 | Host 结果给出的决定被 Host 拒绝 | 本批结束后唤醒结束（final text 立即结束） |
 
-Host 自己的钩子（`ValidateBatch`、`ValidateText`、provider 错误）产生的错误原样传递，用 Host 自己的哨兵分类。`ErrMissingReceipt` 总是包在 `ErrToolFailed` 里。
+Host 自己的钩子（`ValidateBatch`、`ValidateText`、`ValidateDecision`、provider 错误）产生的错误原样传递，用 Host 自己的哨兵分类。`ErrMissingReceipt` 总是包在 `ErrToolFailed` 里。
 
 有三个名字来自循环的发源地 Multica，为了让 v0.2 Host 存下的数据继续匹配而保留：错误文本的前缀 `employee loop:`、`FinalTextOrigin`（`host_final_text`）和 `ExtraParameters`（`employee_loop.parameters`）。
 

@@ -449,6 +449,9 @@ func (r *run) text(rc *adk.RetryContext, resp *schema.Message) *adk.RetryDecisio
 	if err == nil && result.Terminal == nil {
 		err = ErrNoTerminalDecision
 	}
+	if err == nil && r.cfg.ValidateDecision != nil {
+		err = r.cfg.ValidateDecision(*result.Terminal)
+	}
 	if err != nil {
 		outcome.Error = err.Error()
 	}
@@ -538,11 +541,27 @@ func (t hostTool) InvokableRun(ctx context.Context, _ string, _ ...tool.Option) 
 	if receipt != "" {
 		r.out.Receipts = append(r.out.Receipts, Receipt{NativeToolCallID: call.NativeToolCallID, ToolName: call.Name, ID: result.Receipt})
 	}
+	var refusedDecision error
+	if callErr == nil && result.Terminal != nil && r.cfg.ValidateDecision != nil {
+		refusedDecision = r.cfg.ValidateDecision(*result.Terminal)
+	}
 	if callErr == nil && t.tool.Effect && receipt == "" {
 		callErr = fmt.Errorf("%w: %s", ErrMissingReceipt, call.Name)
 	}
 	if callErr == nil && result.Terminal != nil && result.Terminal.Kind == Dispatched && receipt == "" {
 		callErr = fmt.Errorf("%w: dispatch", ErrMissingReceipt)
+	}
+	if callErr != nil {
+		refused := errors.Is(callErr, ErrToolRefused) && receipt == ""
+		if (t.tool.Effect || receipt != "" || errors.Is(callErr, ErrMissingReceipt)) && !refused {
+			b.err = errors.Join(b.err, classify(ErrToolFailed, fmt.Errorf("employee loop: tool %s failed: %w", call.Name, callErr)))
+		}
+	}
+	if refusedDecision != nil {
+		// The Host's own error: it fails the wake as it is, after the call's
+		// missing receipt.
+		callErr = errors.Join(callErr, refusedDecision)
+		b.err = errors.Join(b.err, refusedDecision)
 	}
 	content := result.Content
 	if callErr != nil {
@@ -550,10 +569,6 @@ func (t hostTool) InvokableRun(ctx context.Context, _ string, _ ...tool.Option) 
 		raw, _ := json.Marshal(map[string]string{"error": callErr.Error()})
 		content = string(raw)
 		b.noProgress = errors.Join(b.noProgress, callErr)
-		refused := errors.Is(callErr, ErrToolRefused) && receipt == ""
-		if (t.tool.Effect || receipt != "" || errors.Is(callErr, ErrMissingReceipt)) && !refused {
-			b.err = errors.Join(b.err, classify(ErrToolFailed, fmt.Errorf("employee loop: tool %s failed: %w", call.Name, callErr)))
-		}
 	} else {
 		if r.cfg.Progress == nil || r.cfg.Progress(call) {
 			b.progress = true

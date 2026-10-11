@@ -51,7 +51,8 @@ The types mirror a typical employee kernel (`Tool`, `ToolCall`, `ToolResult`,
 `Decision`, `Receipt`, `ToolOutcome`, `Outcome`, `Budget`), so an existing Host
 swaps engines by mapping fields, not concepts. Hooks keep Host policy outside the
 module: `ValidateBatch`, `ValidateText`, `ValidateArguments` (the Host's own
-argument rules in place of the built-in schema check), `TurnTools` (which tools
+argument rules in place of the built-in schema check), `ValidateDecision`
+(which terminal decisions the Host accepts), `TurnTools` (which tools
 each model call offers), `FinalTextAllowed` (which plain answers may end the
 wake), `Progress` (which successful calls reset the error streak), `RepairText`,
 `Permanent`, and observers for model calls, tool calls, accepted and rejected

@@ -33,8 +33,8 @@ var (
 // runs out. ErrTerminalConflict (above) is one too when it is found before
 // any call runs. Classify them with errors.Is: their texts are the v0.2
 // texts and carry details, not a stable API. Errors from the Host's own
-// hooks (ValidateBatch, ValidateText, provider errors) are passed on
-// unchanged.
+// hooks (ValidateBatch, ValidateText, ValidateDecision, provider errors) are
+// passed on unchanged.
 var (
 	// ErrIncompleteResponse: the provider returned no message, an empty plain
 	// reply or a finish_reason the loop does not accept (for example
@@ -300,6 +300,15 @@ type Config struct {
 	// records nothing (OnBatchAccepted does) and must not modify the calls.
 	ValidateBatch func(call int, outcomes []ToolOutcome, calls []ToolCall) error
 	ValidateText  func(string) error
+	// ValidateDecision checks every terminal decision a Host result carries
+	// without an error, from Execute and from AcceptFinalText. A refused
+	// decision fails its call: the model sees {"error": ...}, the
+	// ToolOutcome's Error holds that text and the call is no progress. Once
+	// the batch has run, the wake fails with the error unchanged (not wrapped
+	// in ErrToolFailed), joined in call order with the batch's other
+	// failures, after a missing receipt of the same call. A refused
+	// final-text decision ends the wake at once. Nil checks nothing (v0.2).
+	ValidateDecision func(Decision) error
 	// ValidateArguments replaces the built-in argument check of every call
 	// (the package function ValidateArguments over Tool.Schema), so a Host
 	// with its own argument rules rejects exactly the arguments it would

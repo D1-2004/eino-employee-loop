@@ -157,6 +157,17 @@ The model the Host passes to `loop.New` must:
   `tool_calls`, `stop` or empty (anything else is repaired). Usage in
   `ResponseMeta.Usage` is summed. `Stream` is never called.
 
+**Streaming.** The loop judges complete responses only. A Host that streams,
+or acts on a frame before its response is complete (an early first piece of
+feedback, say), does so inside its own model: `Generate` streams from the
+provider, checks and acts on the frames itself and returns the complete
+message. The loop then judges that response like any other. When it accepts
+the batch it executes the early call again, with the same native id in the
+same turn, so `Execute` returns the result recorded for that id (§5) and
+commits nothing twice. When it rejects the response, the early effect stays
+committed: act early only on a call that passes the rules its batch will
+meet.
+
 ## 7. Deliver
 
 Write user-visible replies into the outbox in the transaction that completes
@@ -175,9 +186,11 @@ texts are the v0.2 texts but carry details; they are not an API.
 | `ErrModelBudget` with `ErrConsecutiveModelErrors`, `ErrModelResponseBudget` or `ErrPhysicalModelBudget` | the budget ran out | the wake ends |
 | `ErrToolRefused` (the Host's) | refused before any effect | the model may correct it |
 | `ErrToolFailed`, `ErrMissingReceipt`, `ErrTerminalConflict`, `ErrNoTerminalDecision` | an effect failed or has no proof, or the results disagree | the wake ends after the batch |
+| the error of the Host's `ValidateDecision` | a Host result decided what the Host refuses | the wake ends after the batch (final text: at once) |
 
-Errors from the Host's own hooks (`ValidateBatch`, `ValidateText`, provider
-errors) pass through unchanged: classify them with the Host's sentinels.
+Errors from the Host's own hooks (`ValidateBatch`, `ValidateText`,
+`ValidateDecision`, provider errors) pass through unchanged: classify them
+with the Host's sentinels.
 `ErrMissingReceipt` always comes wrapped in `ErrToolFailed`.
 
 Three names come from Multica, where the loop began, and stay so that what
