@@ -1,5 +1,0 @@
-{
-  "gateway.stdin.prompt": "> ",
-  "gateway.stdin.delivery": "[{employee}] {text}",
-  "gateway.stdin.publish_failed": "（这条消息没有送达员工：{error}）"
-}

@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "types": [
+    {"type": "message.addressed", "class": "business", "mode": "triggered", "lane": "foreground", "session": "interactive", "requires_scene": true, "preempts": true, "coalesce": {"quiet_ms": 250, "max_wait_ms": 1000, "max_items": 16},
+     "summary": {"en": "A person addressed the employee: a mention, a direct message or a reply to its message.", "zh-CN": "有人找员工：@ 提及、私聊，或回复员工的消息。"}},
+    {"type": "message.follow_up", "class": "business", "mode": "triggered", "lane": "foreground", "session": "interactive", "requires_scene": true, "preempts": true, "coalesce": {"quiet_ms": 250, "max_wait_ms": 1000, "max_items": 16},
+     "summary": {"en": "The same person continued right after the employee's delivered reply, without addressing it again.", "zh-CN": "员工的回复送达后，同一个人紧接着继续说话，没有再次 @。"}},
+    {"type": "human.response", "class": "business", "mode": "triggered", "lane": "foreground", "session": "interactive", "requires_scene": true, "preempts": true,
+     "summary": {"en": "A person answered the employee's question or card.", "zh-CN": "有人回答了员工的问题或卡片。"}},
+    {"type": "reaction.added", "class": "business", "mode": "triggered", "lane": "foreground", "session": "interactive", "requires_scene": true, "preempts": true,
+     "summary": {"en": "A person reacted to the employee's message, for example to correct it.", "zh-CN": "有人对员工的消息做了表情回应，例如表示纠正。"}},
+    {"type": "message.observed", "class": "business", "mode": "listening", "lane": "background", "session": "observation", "requires_scene": true, "preemptible": true, "coalesce": {"quiet_ms": 12000, "max_wait_ms": 30000, "max_items": 20},
+     "summary": {"en": "A group message nobody addressed to the employee.", "zh-CN": "群里没有指向员工的消息。"}},
+    {"type": "member.changed", "class": "business", "mode": "listening", "lane": "background", "session": "observation", "requires_scene": true, "preemptible": true,
+     "summary": {"en": "Someone joined or left the scene.", "zh-CN": "有人加入或离开了场域。"}},
+    {"type": "resource.changed", "class": "business", "mode": "listening", "lane": "background", "session": "observation", "requires_scene": true, "preemptible": true,
+     "summary": {"en": "A provider resource in the scene changed (document, calendar, approval).", "zh-CN": "场域里的资源发生变化（文档、日程、审批）。"}},
+
+    {"type": "execution.accepted", "class": "execution", "mode": "triggered", "lane": "host", "requires_scene": true,
+     "summary": {"en": "Background work was accepted and has a receipt.", "zh-CN": "后台工作已受理并取得回执。"}},
+    {"type": "execution.started", "class": "execution", "mode": "triggered", "lane": "host", "requires_scene": true,
+     "summary": {"en": "Background work started running.", "zh-CN": "后台工作开始执行。"}},
+    {"type": "execution.progress", "class": "execution", "mode": "triggered", "lane": "background", "session": "follow_up", "session_key": "task", "requires_scene": true, "coalesce": {"quiet_ms": 250, "max_wait_ms": 1000, "max_items": 16},
+     "summary": {"en": "Background work reported meaningful progress.", "zh-CN": "后台工作上报了有意义的进展。"}},
+    {"type": "execution.steered", "class": "execution", "mode": "triggered", "lane": "host", "requires_scene": true,
+     "summary": {"en": "A correction was applied to background work in flight.", "zh-CN": "在途的后台工作被纠正。"}},
+
+    {"type": "execution.terminal", "class": "completion", "mode": "triggered", "lane": "host", "requires_scene": true,
+     "summary": {"en": "Background work reached a terminal state (fact only).", "zh-CN": "后台工作进入终态（仅记录事实）。"}},
+    {"type": "execution.result", "class": "completion", "mode": "triggered", "lane": "background", "session": "follow_up", "session_key": "task", "requires_scene": true, "coalesce": {"quiet_ms": 250, "max_wait_ms": 1000, "max_items": 16},
+     "summary": {"en": "A finished run's result is ready for the employee to report.", "zh-CN": "一次执行的结果已就绪，等待员工汇报。"}},
+
+    {"type": "routine.due", "class": "schedule", "mode": "listening", "lane": "background", "session": "routine", "session_key": "routine", "requires_scene": true,
+     "summary": {"en": "A routine occurrence is due.", "zh-CN": "例行任务到点。"}},
+    {"type": "observation.due", "class": "schedule", "mode": "listening", "lane": "background", "session": "observation", "requires_scene": true, "preemptible": true,
+     "summary": {"en": "An observation window is due for review.", "zh-CN": "旁听窗口到了复核时间。"}},
+
+    {"type": "employee.enabled", "class": "enablement", "mode": "triggered", "lane": "host", "requires_scene": false,
+     "summary": {"en": "The employee was enabled.", "zh-CN": "员工被启用。"}},
+    {"type": "employee.disabled", "class": "enablement", "mode": "triggered", "lane": "host", "requires_scene": false, "revokes": ["observation", "lifecycle"],
+     "summary": {"en": "The employee was disabled.", "zh-CN": "员工被停用。"}},
+    {"type": "subscription.changed", "class": "enablement", "mode": "triggered", "lane": "host", "requires_scene": false, "revokes": ["observation"],
+     "summary": {"en": "A listening subscription was opened or closed.", "zh-CN": "监听订阅被开启或关闭。"}},
+    {"type": "policy.changed", "class": "enablement", "mode": "triggered", "lane": "host", "requires_scene": true, "revokes": ["observation"],
+     "summary": {"en": "A scene policy or runtime configuration revision changed.", "zh-CN": "场域策略或运行配置版本发生变化。"}},
+    {"type": "scene.bound", "class": "enablement", "mode": "triggered", "lane": "background", "session": "lifecycle", "requires_scene": true,
+     "summary": {"en": "The employee was bound to a new scene.", "zh-CN": "员工被绑定到一个新场域。"}}
+  ]
+}

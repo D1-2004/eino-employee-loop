@@ -1,3 +1,0 @@
-{
-  "memstore.memory.digest": "Archived {count} older memories (originals can still be retrieved by id):\n{lines}"
-}

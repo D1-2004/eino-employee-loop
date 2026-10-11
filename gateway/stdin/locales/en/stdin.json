@@ -1,5 +1,0 @@
-{
-  "gateway.stdin.prompt": "> ",
-  "gateway.stdin.delivery": "[{employee}] {text}",
-  "gateway.stdin.publish_failed": "(the employee did not receive this message: {error})"
-}
