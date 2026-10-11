@@ -175,8 +175,8 @@ func (f HostFunc) Execute(ctx context.Context, id Identity, call ToolCall) (Tool
 	return f(ctx, id, call)
 }
 
-// FinalTextHost accepts a first plain answer as the public reply of a wake
-// that otherwise requires a terminal tool (Config.AcceptFinalText).
+// FinalTextHost accepts a plain answer as the public reply of a wake that
+// otherwise requires a terminal tool (Config.AcceptFinalText).
 type FinalTextHost interface {
 	AcceptFinalText(context.Context, Identity, string) (ToolResult, error)
 }
@@ -202,8 +202,8 @@ type ToolOutcome struct {
 	Error            string
 }
 
-// Budget bounds one wake. Successful tool progress resets the consecutive
-// error count.
+// Budget bounds one wake. Successful tool progress (Config.Progress) resets
+// the consecutive error count.
 type Budget struct {
 	MaxModelResponses    int
 	MaxConsecutiveErrors int
@@ -255,16 +255,27 @@ type ModelCall struct {
 type Config struct {
 	Tools  []Tool
 	Budget Budget
+	// Progress reports whether a successful call is progress. A batch with
+	// progress resets the consecutive error count; a batch without adds one
+	// to it, as a batch whose calls all failed does. Nil counts every
+	// successful call.
+	Progress func(ToolCall) bool
 	// RequireTerminalTool makes plain assistant text private: only a
 	// Host-accepted terminal decision ends the wake (see AcceptFinalText).
 	RequireTerminalTool bool
 	// RequireNativeToolCall asks the provider for a tool call without
 	// choosing which one (tool_choice "required").
 	RequireNativeToolCall bool
-	// AcceptFinalText lets a FinalTextHost accept a first plain answer of up
-	// to FinalTextLimit bytes (default 8000) when RequireTerminalTool is set.
+	// AcceptFinalText lets a FinalTextHost accept a plain answer of up to
+	// FinalTextLimit bytes (default 8000) when RequireTerminalTool is set.
 	AcceptFinalText bool
 	FinalTextLimit  int
+	// FinalTextAllowed reports whether the plain answer of model call `call`
+	// (from 1), given the outcomes so far, may go to AcceptFinalText. Nil
+	// allows only the first call, before any tool ran. An answer allowed
+	// here is checked and accepted as the first one is: FinalTextLimit,
+	// ValidateText, then one AcceptFinalText, whose result ends the wake.
+	FinalTextAllowed func(call int, outcomes []ToolOutcome) bool
 	// TurnTools narrows the tools offered to the next model call (call
 	// counts from 1) given the outcomes so far; nil offers every tool. Calls
 	// to a tool that was not offered are rejected like unknown tools.
@@ -288,4 +299,12 @@ type Config struct {
 	OnToolCall      func(context.Context, ToolCall, ToolResult, error, time.Duration)
 	OnBatchRejected func([]ToolCall, error)
 	OnModelFailure  func(error)
+	// OnBatchAccepted receives a native batch once, after it passed every
+	// check (the loop's own rules and public text, then ValidateBatch) and
+	// before the first Execute of its calls; the wake may still end first if
+	// ctx is cancelled. A rejected batch goes to OnBatchRejected instead, and
+	// accepted final text is not a batch. A Run that replays a model journal
+	// calls it again for every batch it accepts, as the loop keeps nothing
+	// between runs. It must not modify the calls, which Execute receives.
+	OnBatchAccepted func([]ToolCall)
 }

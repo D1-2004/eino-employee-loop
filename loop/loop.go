@@ -432,7 +432,7 @@ func (r *run) text(rc *adk.RetryContext, resp *schema.Message) *adk.RetryDecisio
 		return &adk.RetryDecision{}
 	}
 	final, ok := r.host.(FinalTextHost)
-	if !r.cfg.AcceptFinalText || !ok || r.out.ModelCalls != 1 || r.attempted || text == "" {
+	if !r.cfg.AcceptFinalText || !ok || text == "" || !r.finalTextAllowed() {
 		return r.repair(rc, ErrTerminalRequired)
 	}
 	if len(text) > r.cfg.FinalTextLimit {
@@ -465,6 +465,15 @@ func (r *run) text(rc *adk.RetryContext, resp *schema.Message) *adk.RetryDecisio
 	return &adk.RetryDecision{}
 }
 
+// finalTextAllowed reports whether the current response may be final text:
+// by default only the first, before any tool ran.
+func (r *run) finalTextAllowed() bool {
+	if r.cfg.FinalTextAllowed != nil {
+		return r.cfg.FinalTextAllowed(r.out.ModelCalls, r.out.ToolOutcomes)
+	}
+	return r.out.ModelCalls == 1 && !r.attempted
+}
+
 // acceptBatch validates a native batch before any call runs; ADK then runs
 // it through hostTool.
 func (r *run) acceptBatch(rc *adk.RetryContext, resp *schema.Message) *adk.RetryDecision {
@@ -482,6 +491,9 @@ func (r *run) acceptBatch(rc *adk.RetryContext, resp *schema.Message) *adk.Retry
 	r.batch = &batch{calls: make(map[string]ToolCall, len(calls))}
 	for _, c := range calls {
 		r.batch.calls[c.NativeToolCallID] = c
+	}
+	if r.cfg.OnBatchAccepted != nil {
+		r.cfg.OnBatchAccepted(calls)
 	}
 	return &adk.RetryDecision{}
 }
@@ -543,7 +555,9 @@ func (t hostTool) InvokableRun(ctx context.Context, _ string, _ ...tool.Option) 
 			b.err = errors.Join(b.err, classify(ErrToolFailed, fmt.Errorf("employee loop: tool %s failed: %w", call.Name, callErr)))
 		}
 	} else {
-		b.progress = true
+		if r.cfg.Progress == nil || r.cfg.Progress(call) {
+			b.progress = true
+		}
 		if result.Terminal != nil {
 			b.terminals = append(b.terminals, *result.Terminal)
 		}
@@ -602,7 +616,8 @@ func (r *run) afterBatch() error {
 }
 
 // accept records an accepted response. A plain or terminal answer is
-// progress; a tool batch counts as progress only once a call succeeds.
+// progress; a tool batch counts as progress only once a call succeeds that
+// Config.Progress counts.
 func (r *run) accept(resp *schema.Message, progress bool) {
 	r.msgs = append(r.msgs, resp)
 	r.out.BudgetUsage.ModelResponses++

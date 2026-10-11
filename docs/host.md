@@ -91,8 +91,15 @@ v0.2 did.
 - return `Terminal` when the call ends the wake (a sent reply, an accepted
   dispatch with its acknowledgement).
 
-`FinalTextHost.AcceptFinalText` optionally accepts a first plain answer as the
-reply when the wake requires a terminal tool.
+`FinalTextHost.AcceptFinalText` optionally accepts a plain answer as the reply
+when the wake requires a terminal tool: by default only the first response,
+before any tool ran. `Config.FinalTextAllowed` decides instead, from the call
+number and the outcomes so far (for example, an answer after reads only); an
+answer it allows is checked and accepted as the first one is.
+
+`Config.Progress` decides which successful calls are progress. A batch with
+progress resets the consecutive error count; a batch without adds one to it,
+as a failed batch does. Unset, every successful call counts.
 
 **The turn of a call.** `ToolCall` carries no turn number; derive it. A call's
 turn is the `ModelCall.Attempt` of the response that carried it: keep the
@@ -102,6 +109,17 @@ batch only after the attempt that returned it and before the next one, so the
 latest attempt is always the right one. Attempts count from 1 in every `Run`,
 and a re-claim that replays the model journal reproduces them. Native call ids
 are unique within one response only, hence the turn in the key.
+
+**Per-wake state.** A response passes, in this order: `OnModelCall`; the
+loop's checks (call identity and arguments, offered tools, terminal and
+exclusive rules, schemas, `PublicArgs` text); `ValidateBatch`; then either
+`OnBatchRejected` and a repair, or `OnBatchAccepted`, which receives the batch
+once before the first `Execute` of its calls. A Host whose policy hooks
+(`TurnTools`, `ValidateBatch`, `FinalTextAllowed`, `Progress`) depend on what
+the model did records accepted batches there, never rejected ones; accepted
+final text is not a batch. Keep that state per `Run`: a re-claim that replays
+the model journal starts empty and calls `OnBatchAccepted` again for every
+batch it accepts.
 
 ## 6. Make the model durable
 

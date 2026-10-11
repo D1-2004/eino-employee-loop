@@ -40,7 +40,7 @@ out, err := loop.New(loop.Config{
 - **输入：** `Config`（工具、预算、协议开关与挂点）、一个 Eino 模型、一个 `Host`（`Execute(ctx, Identity, ToolCall) (ToolResult, error)`），以及本次唤醒冻结的消息。
 - **输出：** `Outcome`——决定（`reply`、`quiet`、`dispatched`、`waiting`）、回执、按调用顺序的每个工具结果、预算用量、token 用量和被接受的对话记录。
 
-类型与常见的员工内核一一对应（`Tool`、`ToolCall`、`ToolResult`、`Decision`、`Receipt`、`ToolOutcome`、`Outcome`、`Budget`），已有 Host 换引擎只需映射字段，不需要换概念。Host 的策略通过挂点留在模块之外：`ValidateBatch`、`ValidateText`、`TurnTools`（每次模型调用提供哪些工具）、`RepairText`、`Permanent`，以及模型调用、工具调用、批次被拒、失败的观察者。
+类型与常见的员工内核一一对应（`Tool`、`ToolCall`、`ToolResult`、`Decision`、`Receipt`、`ToolOutcome`、`Outcome`、`Budget`），已有 Host 换引擎只需映射字段，不需要换概念。Host 的策略通过挂点留在模块之外：`ValidateBatch`、`ValidateText`、`TurnTools`（每次模型调用提供哪些工具）、`FinalTextAllowed`（哪些普通回答可以结束唤醒）、`Progress`（哪些成功的调用清零连续错误）、`RepairText`、`Permanent`，以及模型调用、工具调用、批次被接受与被拒、失败的观察者。
 
 循环强制的规则：
 

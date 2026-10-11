@@ -60,9 +60,13 @@ err := c.Register(spec)
 - 在任何效果之前拒绝时，返回包装了 `loop.ErrToolRefused` 的错误；模型看到错误文本，可以自行纠正；
 - 调用结束唤醒时返回 `Terminal`（已发送的回复、带确认的已受理派发）。
 
-`FinalTextHost.AcceptFinalText` 可选：在要求终态工具的唤醒中，把首个普通回答当作回复接受。
+`FinalTextHost.AcceptFinalText` 可选：在要求终态工具的唤醒中，把普通回答当作回复接受；默认只接受第一次响应，且须在任何工具执行之前。`Config.FinalTextAllowed` 改由调用序号和已有结果来决定（例如只做过读取之后的回答）；它放行的回答与第一次的回答一样校验和接受。
+
+`Config.Progress` 决定哪些成功的调用算进展。有进展的批次把连续错误数清零；没有进展的批次让它加一，和失败的批次一样。不设置时每个成功的调用都算。
 
 **调用所在的轮次。** `ToolCall` 不带轮次号，由 Host 推导：一个调用的轮次就是携带它的那次响应的 `ModelCall.Attempt`。在 `Config.OnModelCall` 中记下最新的 attempt（或在可持久模型里数 `Generate` 次数），存进本次唤醒的状态，在 `Execute` 里读取。循环只在返回该批次的 attempt 之后、下一次 attempt 之前执行这一批，所以最新的 attempt 总是正确的。每次 `Run` 的 attempt 从 1 开始计数，重放模型日志的重新领取会得到相同的编号。原生调用 ID 只在一次响应内唯一，所以键里要带轮次。
+
+**每次唤醒的状态。** 一次响应依次经过：`OnModelCall`；循环自己的检查（调用身份与参数、本轮是否提供、终态与独占规则、schema、`PublicArgs` 文本）；`ValidateBatch`；然后要么是 `OnBatchRejected` 加一次修复，要么是 `OnBatchAccepted`，它在本批第一个 `Execute` 之前收到该批，只收一次。策略挂点（`TurnTools`、`ValidateBatch`、`FinalTextAllowed`、`Progress`）依赖模型做过什么的 Host，就在这里记录被接受的批次，绝不记录被拒的；被接受的 final text 不是批次。这些状态按 `Run` 保存：重放模型日志的重新领取从空状态开始，并对它接受的每个批次再次调用 `OnBatchAccepted`。
 
 ## 6. 让模型可持久
 
