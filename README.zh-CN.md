@@ -72,9 +72,10 @@ export LLM_BASE_URL=... LLM_API_KEY=... LLM_MODEL=...      # 任意 OpenAI 兼�
 export LANGFUSE_BASE_URL=... LANGFUSE_PUBLIC_KEY=... LANGFUSE_SECRET_KEY=...   # 可选
 go run ./cmd/eel -channel dws -profile <corpId:userId> -locale zh-CN       # 一个钉钉账号
 go run ./cmd/eel -channel robot -robot-client-id <id> -robot-client-secret <secret>   # Stream 机器人
+go run ./cmd/eel -channel console -v -model-script local/testdata/console.json   # 本终端，不接钉钉；带 -model-script 不需要 LLM
 ```
 
-两种模式、Langfuse trace，以及用评测集对本地员工跑评测，见 [docs/local.zh-CN.md](docs/local.zh-CN.md)。
+各渠道、本地调试、Langfuse trace，以及用评测集对本地员工跑评测，见 [docs/local.zh-CN.md](docs/local.zh-CN.md)。
 
 ## 文档
 

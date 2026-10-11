@@ -122,8 +122,11 @@ func (tr *Trace) Generation(name, model string, call loop.ModelCall) {
 		finish := ""
 		if meta := resp.ResponseMeta; meta != nil {
 			finish = meta.FinishReason
-			if meta.Usage != nil {
-				body["usage"] = map[string]any{"input": meta.Usage.PromptTokens, "output": meta.Usage.CompletionTokens, "total": meta.Usage.TotalTokens, "unit": "TOKENS"}
+			if u := meta.Usage; u != nil {
+				body["usage"] = map[string]any{"input": u.PromptTokens, "output": u.CompletionTokens, "total": u.TotalTokens, "unit": "TOKENS"}
+				// Langfuse v3 reads token counts from usageDetails and ignores
+				// the legacy usage object (it shows zero tokens otherwise).
+				body["usageDetails"] = map[string]any{"input": u.PromptTokens, "output": u.CompletionTokens, "total": u.TotalTokens}
 			}
 		}
 		body["output"] = map[string]any{"choices": []any{map[string]any{"index": 0, "finish_reason": finish, "message": resp}}}

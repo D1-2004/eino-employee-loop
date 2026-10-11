@@ -56,6 +56,27 @@ go run ./cmd/eel -channel robot -robot-client-id <AppKey> -robot-client-secret <
 
 当前消息以带 `message_id` 的 JSON 发送，因此按「在首个 generation 的最后一条 user 消息里找消息 id」归属 trace 的工具无需修改即可使用。
 
+## 本地调试
+
+`-channel console` 在终端里跑同一套流程，不需要钉钉。每行是一条消息：`文本` 是你（`-user`）发的单聊；`#Name: 文本` 是 Name 发的、没有 @ 员工的群消息（只记入历史）；`@Name: 文本` 是 @ 了员工的群消息。管道输入会回显，读到 EOF 结束。
+
+`-model-script <文件>` 用 JSON 数组里的响应代替 LLM，按顺序每次模型请求用一条：`{"tool_calls": [{"name": "reply", "arguments": {"text": "你好"}}]}`、`{"text": "普通文本回答"}` 或 `{"error": "服务商错误"}`。响应用完后再有请求，该次唤醒失败。
+
+```bash
+go run ./cmd/eel -channel console -model-script local/testdata/console.json -name Eel -user Ann -locale zh-CN < local/testdata/console.txt
+```
+
+`-v` 把每次路由、模型请求、工具调用和决定写到 stderr；`-bodies` 再加上消息文本、请求、响应和工具参数。
+
+用 [Delve](https://github.com/go-delve/delve)（Go 1.26 需要 1.26 及以上）：
+
+```bash
+go install github.com/go-delve/delve/cmd/dlv@latest
+dlv debug -r stdin:local/testdata/console.txt ./cmd/eel -- -channel console -model-script local/testdata/console.json -locale zh-CN
+```
+
+测试：`go test -race ./...`（`local/console_test.go` 端到端跑控制台）。
+
 ## 跑评测集
 
 把评测工具指向本地员工，而不是已部署的员工：员工就是那个 dws 账号（或机器人），它的 trace 在 `local` 环境、tag `agent-<id>` 下，演员像对普通同事一样给它发消息。需要后台工作、记忆或 Host API 的用例不在本地范围内；聊天行为类用例（直接回答、严格格式、拒绝、澄清、长度限制）可以直接用。

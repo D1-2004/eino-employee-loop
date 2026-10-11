@@ -99,10 +99,11 @@ export LLM_BASE_URL=... LLM_API_KEY=... LLM_MODEL=...      # any OpenAI-compatib
 export LANGFUSE_BASE_URL=... LANGFUSE_PUBLIC_KEY=... LANGFUSE_SECRET_KEY=...   # optional
 go run ./cmd/eel -channel dws -profile <corpId:userId> -locale zh-CN       # a DingTalk account
 go run ./cmd/eel -channel robot -robot-client-id <id> -robot-client-secret <secret>   # a Stream robot
+go run ./cmd/eel -channel console -v -model-script local/testdata/console.json   # this terminal, no DingTalk; no LLM with -model-script
 ```
 
-See [docs/local.md](docs/local.md) for both modes, Langfuse traces and running an
-eval suite against the local employee.
+See [docs/local.md](docs/local.md) for the channels, local debugging, Langfuse
+traces and running an eval suite against the local employee.
 
 ## Documentation
 

@@ -28,6 +28,9 @@ type Employee struct {
 	Instructions string
 	Locale       string
 	Model        model.ToolCallingChatModel
+	// Permanent, when set, marks model errors that end a wake at once
+	// instead of being repaired (Script.Permanent for a scripted model).
+	Permanent func(error) bool
 	// ModelName is reported in traces.
 	ModelName string
 	Channel   Channel
@@ -37,7 +40,12 @@ type Employee struct {
 	Tracer *Tracer
 	// HistoryLimit bounds the remembered lines per conversation (default 20).
 	HistoryLimit int
-	Log          *slog.Logger
+	// Log receives warnings and, at level Debug, the debug log of every
+	// message and wake (see debug.go).
+	Log *slog.Logger
+	// LogBodies adds message texts, model requests and responses, tool
+	// arguments and replies to the debug log.
+	LogBodies bool
 
 	catalog *event.Catalog
 	mu      sync.Mutex
@@ -101,14 +109,24 @@ func (e *Employee) enqueue(ctx context.Context, m Message) {
 				case <-ctx.Done():
 					return
 				case next := <-c.queue:
-					if _, err := e.handle(ctx, c, next); err != nil {
+					out, err := e.handle(ctx, c, next)
+					if err != nil {
 						e.log().Warn("local.wake_failed", "conversation", next.ConversationID, "message", next.MessageID, "err", err)
+					}
+					if o, ok := e.Channel.(handledObserver); ok {
+						o.handled(next, out, err)
 					}
 				}
 			}
 		}()
 	}
 	c.queue <- m
+}
+
+// handledObserver is a channel told the outcome of every message it
+// delivered (Console), not only the replies it sends.
+type handledObserver interface {
+	handled(Message, loop.Outcome, error)
 }
 
 // handle routes one message and, for the foreground, runs a wake. Run calls
@@ -135,6 +153,7 @@ func (e *Employee) handle(ctx context.Context, c *conversation, m Message) (loop
 	if err != nil {
 		return loop.Outcome{}, err
 	}
+	e.debugRoute(m, adm)
 	speaker := m.SenderName
 	if speaker == "" {
 		speaker = m.SenderID
@@ -177,20 +196,27 @@ func (e *Employee) wake(ctx context.Context, c *conversation, m Message, adm eve
 		"employee_contract_lane": string(adm.Spec.Lane), "employee_contract_session": string(adm.Session.Kind),
 	})
 	host := &chatHost{employee: e, message: m, trace: trace}
+	tools := e.tools()
 	cfg := loop.Config{
-		Tools:               e.tools(),
+		Tools:               tools,
 		RequireTerminalTool: true,
 		AcceptFinalText:     true,
 		Locale:              e.Locale,
+		Permanent:           e.Permanent,
 		OnModelCall: func(_ context.Context, call loop.ModelCall) {
 			trace.Generation("employee_model", e.ModelName, call)
+			// Every request offers all tools: the config has no TurnTools.
+			e.debugModel(call, tools)
 		},
 		OnToolCall: func(_ context.Context, call loop.ToolCall, result loop.ToolResult, err error, elapsed time.Duration) {
 			trace.Tool(call, result, err, elapsed)
+			e.debugTool(call, result, err, elapsed)
 		},
+		OnModelFailure: e.debugRepair,
 	}
 	out, err := loop.New(cfg, e.Model, host).Run(ctx, loop.Wake{Identity: loop.Identity{Employee: e.ID, Scene: m.ConversationID, Receipt: m.MessageID}, Messages: messages})
 
+	e.debugDecision(m, out, err)
 	limit := e.historyLimit()
 	c.remember(speaker+": "+m.Text, limit)
 	if out.Kind == loop.Reply && out.Reply != "" {
@@ -263,9 +289,14 @@ func (h *chatHost) Execute(ctx context.Context, _ loop.Identity, call loop.ToolC
 	return loop.ToolResult{}, fmt.Errorf("%w: unknown tool %s", loop.ErrToolRefused, call.Name)
 }
 
-// AcceptFinalText sends a first plain answer as the reply.
+// AcceptFinalText sends a first plain answer as the reply. The loop reports
+// no tool call for it, so it is logged here like one.
 func (h *chatHost) AcceptFinalText(ctx context.Context, _ loop.Identity, text string) (loop.ToolResult, error) {
-	return h.send(ctx, text)
+	started := time.Now()
+	result, err := h.send(ctx, text)
+	call := loop.ToolCall{Origin: loop.FinalTextOrigin, Name: loop.FinalTextOrigin, Arguments: map[string]any{"text": text}}
+	h.employee.debugTool(call, result, err, time.Since(started))
+	return result, err
 }
 
 func (h *chatHost) send(ctx context.Context, reply string) (loop.ToolResult, error) {

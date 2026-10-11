@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cloudwego/eino/schema"
+
 	"github.com/D1-2004/eino-employee-loop/loop"
 	lt "github.com/D1-2004/eino-employee-loop/loop/looptest"
 )
@@ -119,6 +121,7 @@ func TestTraceUsesTheEmployeeLoopShape(t *testing.T) {
 	}))
 	defer srv.Close()
 	step := lt.Tools(lt.Call{ID: "c1", Name: "reply", Args: map[string]any{"text": "hi"}})
+	step.Message.ResponseMeta.Usage = &schema.TokenUsage{PromptTokens: 5, CompletionTokens: 2, TotalTokens: 7}
 	e := &Employee{ID: "e1", Model: lt.New(step), ModelName: "m", Channel: &fakeChannel{}, Tracer: &Tracer{BaseURL: srv.URL, PublicKey: "pk", SecretKey: "sk", Environment: "local"}}
 	if _, err := e.Answer(context.Background(), dm("m9", "hello")); err != nil {
 		t.Fatal(err)
@@ -138,6 +141,10 @@ func TestTraceUsesTheEmployeeLoopShape(t *testing.T) {
 	gen := batch.Batch[1].Body
 	if gen["name"] != "employee_model" || !strings.Contains(mustJSON(gen["input"]), "m9") {
 		t.Fatalf("generation %v", gen)
+	}
+	// Langfuse v3 counts tokens from usageDetails only.
+	if mustJSON(gen["usageDetails"]) != `{"input":5,"output":2,"total":7}` {
+		t.Fatalf("usage %v", gen["usageDetails"])
 	}
 }
 

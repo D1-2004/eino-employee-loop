@@ -1,0 +1,5 @@
+[
+  {"tool_calls": [{"name": "reply", "arguments": {"text": "你好！有什么可以帮你？"}}]},
+  {"text": "午饭改到 12 点半了。"},
+  {"tool_calls": [{"name": "stay_quiet", "arguments": {"reason": "对方说不用回复"}}]}
+]

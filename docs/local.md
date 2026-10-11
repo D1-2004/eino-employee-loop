@@ -75,6 +75,35 @@ The current message is sent as JSON with its `message_id`, so tools that
 attribute a trace to a message by looking for its id in the first generation's
 last user message work unchanged.
 
+## Local debugging
+
+`-channel console` runs the same pipeline in the terminal, without DingTalk.
+Each line is a message: `text` is a direct message from you (`-user`),
+`#Name: text` a group message from Name that does not @ the employee (kept as
+history), `@Name: text` one that does. Piped input is echoed and ends at EOF.
+
+`-model-script <file>` replaces the LLM with a JSON array of responses, used in
+order, one per model request. Each is one of
+`{"tool_calls": [{"name": "reply", "arguments": {"text": "Hi"}}]}`,
+`{"text": "a plain answer"}` or `{"error": "a provider error"}`; a request
+after the last response fails its wake.
+
+```bash
+go run ./cmd/eel -channel console -model-script local/testdata/console.json -name Eel -user Ann -locale zh-CN < local/testdata/console.txt
+```
+
+`-v` logs each route, model request, tool call and decision to stderr;
+`-bodies` adds message texts, requests, responses and tool arguments.
+
+With [Delve](https://github.com/go-delve/delve) (1.26 or later for Go 1.26):
+
+```bash
+go install github.com/go-delve/delve/cmd/dlv@latest
+dlv debug -r stdin:local/testdata/console.txt ./cmd/eel -- -channel console -model-script local/testdata/console.json -locale zh-CN
+```
+
+Tests: `go test -race ./...` (`local/console_test.go` runs the console end to end).
+
 ## Running an eval suite
 
 Point the eval harness at the local employee instead of a deployed one: the
