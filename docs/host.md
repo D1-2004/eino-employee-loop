@@ -110,15 +110,20 @@ latest attempt is always the right one. Attempts count from 1 in every `Run`,
 and a re-claim that replays the model journal reproduces them. Native call ids
 are unique within one response only, hence the turn in the key.
 
-**Per-wake state.** A response passes, in this order: `OnModelCall`; the
-loop's checks (call identity and arguments, offered tools, terminal and
-exclusive rules, schemas or `ValidateArguments`, `PublicArgs` text);
-`ValidateBatch`; then either
-`OnBatchRejected` and a repair, or `OnBatchAccepted`, which receives the batch
-once before the first `Execute` of its calls. A Host whose policy hooks
-(`TurnTools`, `ValidateBatch`, `FinalTextAllowed`, `Progress`) depend on what
-the model did records accepted batches there, never rejected ones; accepted
-final text is not a batch. Keep that state per `Run`: a re-claim that replays
+**Per-wake state.** The per-call hooks receive the state they judge:
+`TurnTools`, `FinalTextAllowed`, `ValidateBatch` and `RepairText` get the
+model call (`ModelCall.Attempt`, from 1) and the outcomes so far (what
+`Outcome.ToolOutcomes` holds at that moment, in call order, read-only). A
+response passes, in this order: `OnModelCall`; the loop's checks (call
+identity and arguments, offered tools, terminal and exclusive rules, schemas
+or `ValidateArguments`, `PublicArgs` text); `ValidateBatch`, the last check,
+with the call and outcomes `TurnTools` saw for that response; then either
+`OnBatchRejected` and a repair (`RepairText`), or `OnBatchAccepted`, which
+receives the batch once before the first `Execute` of its calls. A Host whose
+rules depend on more than the outcomes (the batches the model sent, say)
+records accepted batches in `OnBatchAccepted`, never rejected ones; accepted
+final text is not a batch. Hooks that close over such state make their
+`Config` per wake: build a new one for every `Run`. A re-claim that replays
 the model journal starts empty and calls `OnBatchAccepted` again for every
 batch it accepts.
 

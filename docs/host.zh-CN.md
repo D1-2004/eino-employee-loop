@@ -66,7 +66,7 @@ err := c.Register(spec)
 
 **调用所在的轮次。** `ToolCall` 不带轮次号，由 Host 推导：一个调用的轮次就是携带它的那次响应的 `ModelCall.Attempt`。在 `Config.OnModelCall` 中记下最新的 attempt（或在可持久模型里数 `Generate` 次数），存进本次唤醒的状态，在 `Execute` 里读取。循环只在返回该批次的 attempt 之后、下一次 attempt 之前执行这一批，所以最新的 attempt 总是正确的。每次 `Run` 的 attempt 从 1 开始计数，重放模型日志的重新领取会得到相同的编号。原生调用 ID 只在一次响应内唯一，所以键里要带轮次。
 
-**每次唤醒的状态。** 一次响应依次经过：`OnModelCall`；循环自己的检查（调用身份与参数、本轮是否提供、终态与独占规则、schema 或 `ValidateArguments`、`PublicArgs` 文本）；`ValidateBatch`；然后要么是 `OnBatchRejected` 加一次修复，要么是 `OnBatchAccepted`，它在本批第一个 `Execute` 之前收到该批，只收一次。策略挂点（`TurnTools`、`ValidateBatch`、`FinalTextAllowed`、`Progress`）依赖模型做过什么的 Host，就在这里记录被接受的批次，绝不记录被拒的；被接受的 final text 不是批次。这些状态按 `Run` 保存：重放模型日志的重新领取从空状态开始，并对它接受的每个批次再次调用 `OnBatchAccepted`。
+**每次唤醒的状态。** 逐次调用的挂点以参数拿到它们要判断的状态：`TurnTools`、`FinalTextAllowed`、`ValidateBatch` 和 `RepairText` 收到模型调用序号（`ModelCall.Attempt`，从 1 开始）和到此刻为止的结果（此刻 `Outcome.ToolOutcomes` 的内容，按调用顺序，只读）。一次响应依次经过：`OnModelCall`；循环自己的检查（调用身份与参数、本轮是否提供、终态与独占规则、schema 或 `ValidateArguments`、`PublicArgs` 文本）；`ValidateBatch`，它是最后一道检查，拿到的调用序号和结果与 `TurnTools` 为这次响应拿到的相同；然后要么是 `OnBatchRejected` 加一次修复（`RepairText`），要么是 `OnBatchAccepted`，它在本批第一个 `Execute` 之前收到该批，只收一次。规则依赖的不只是结果（例如模型发过哪些批次）的 Host，就在 `OnBatchAccepted` 里记录被接受的批次，绝不记录被拒的；被接受的 final text 不是批次。挂点闭包持有这类状态时，它们所在的 `Config` 只属于一次唤醒：每次 `Run` 都新建一个。重放模型日志的重新领取从空状态开始，并对它接受的每个批次再次调用 `OnBatchAccepted`。
 
 ## 6. 让模型可持久
 

@@ -634,7 +634,7 @@ func (r *run) fail(err error) *schema.Message {
 	r.out.BudgetUsage.ConsecutiveErrors++
 	var repair string
 	if r.cfg.RepairText != nil {
-		repair = r.cfg.RepairText(err)
+		repair = r.cfg.RepairText(r.out.ModelCalls, r.out.ToolOutcomes, err)
 	} else {
 		repair = text(r.cfg.Locale, "repair.invalid")
 		if r.cfg.RequireTerminalTool {
@@ -738,7 +738,7 @@ func (r *run) validate(calls []ToolCall) error {
 		}
 	}
 	if r.cfg.ValidateBatch != nil {
-		return r.cfg.ValidateBatch(calls)
+		return r.cfg.ValidateBatch(r.out.ModelCalls, r.out.ToolOutcomes, calls)
 	}
 	return nil
 }

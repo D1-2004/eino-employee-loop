@@ -252,6 +252,12 @@ type ModelCall struct {
 }
 
 // Config configures a loop. Everything Host-specific is injected here.
+//
+// The per-call hooks (FinalTextAllowed, TurnTools, RepairText,
+// ValidateBatch) receive the state they judge: call, the provider attempt
+// concerned (from 1, its ModelCall.Attempt), and outcomes, the Host results
+// so far in call order (what Outcome.ToolOutcomes holds at that moment;
+// read-only).
 type Config struct {
 	Tools  []Tool
 	Budget Budget
@@ -282,15 +288,17 @@ type Config struct {
 	TurnTools func(call int, outcomes []ToolOutcome) []string
 	// Locale selects the built-in repair texts (en, zh-CN).
 	Locale string
-	// RepairText replaces the built-in instruction appended after a rejected
-	// response or provider error.
-	RepairText func(err error) string
+	// RepairText replaces the built-in instruction appended after the
+	// rejected response or provider error of model call `call`.
+	RepairText func(call int, outcomes []ToolOutcome, err error) string
 	// ValidateBatch and ValidateText add Host rules to the built-in batch
 	// validation (unknown tools, exclusivity, terminal conflicts, argument
 	// schemas) and to public text (plain replies, final text and the
 	// arguments each tool lists in PublicArgs). Their errors reach the hooks
-	// and Run unchanged. ValidateBatch must not modify the calls it receives.
-	ValidateBatch func([]ToolCall) error
+	// and Run unchanged. ValidateBatch is the last check of a batch and a
+	// pure one: it sees the call and outcomes TurnTools saw for the response,
+	// records nothing (OnBatchAccepted does) and must not modify the calls.
+	ValidateBatch func(call int, outcomes []ToolOutcome, calls []ToolCall) error
 	ValidateText  func(string) error
 	// ValidateArguments replaces the built-in argument check of every call
 	// (the package function ValidateArguments over Tool.Schema), so a Host

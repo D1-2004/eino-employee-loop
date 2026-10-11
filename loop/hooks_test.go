@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -146,6 +147,85 @@ func TestValidateArgumentsReplacesTheSchemaCheck(t *testing.T) {
 	}
 }
 
+// ValidateBatch runs after every built-in check of a batch and judges it with
+// the call and the outcomes TurnTools saw for the same response; RepairText
+// gets the call and the outcomes of the response it repairs.
+func TestValidateBatchIsTheLastCheckWithTheStateTurnToolsSaw(t *testing.T) {
+	var log []string
+	turns := map[int][]loop.ToolOutcome{}
+	ids := func(outcomes []loop.ToolOutcome) string {
+		var s []string
+		for _, o := range outcomes {
+			s = append(s, o.NativeToolCallID)
+		}
+		return "[" + strings.Join(s, " ") + "]"
+	}
+	read := func(id, ref string) lt.Call {
+		return lt.Call{ID: id, Name: "read_task", Args: map[string]any{"task_ref": ref}}
+	}
+	errBlocked := errors.New("blocked")
+	m := lt.New(
+		lt.Tools(read("c1", "t1")),
+		lt.Tools(lt.Call{ID: "c2", Name: "read_task", Args: map[string]any{}}),                                   // breaks the schema
+		lt.Tools(lt.Call{ID: "c3", Name: "reply", Args: map[string]any{"source_ref": "m1", "reply": "BAD"}}),     // public text
+		lt.Tools(lt.Call{ID: "c4", Name: "stop_task", Args: map[string]any{"task_ref": "t1"}}, read("c5", "t1")), // exclusive
+		lt.Tools(lt.Call{ID: "c6", Name: "nope", Args: map[string]any{}}),                                        // unknown
+		lt.Tools(read("c7", "blocked")),
+		lt.Truncated("cut"),
+		lt.Tools(lt.Call{ID: "c8", Name: "reply", Args: map[string]any{"source_ref": "m1", "reply": "done"}}),
+	)
+	out, err := run(t, m, &fakeHost{}, func(c *loop.Config) {
+		c.Budget = loop.Budget{MaxModelResponses: 3, MaxConsecutiveErrors: 7, MaxPhysicalAttempts: 8}
+		c.ValidateText = func(text string) error {
+			if text == "BAD" {
+				return errBad
+			}
+			return nil
+		}
+		c.TurnTools = func(call int, outcomes []loop.ToolOutcome) []string {
+			turns[call] = outcomes
+			log = append(log, fmt.Sprintf("turn %d %s", call, ids(outcomes)))
+			return []string{"reply", "read_task", "stop_task"}
+		}
+		c.ValidateBatch = func(call int, outcomes []loop.ToolOutcome, calls []loop.ToolCall) error {
+			if !reflect.DeepEqual(outcomes, turns[call]) {
+				t.Errorf("call %d: ValidateBatch saw %+v, TurnTools %+v", call, outcomes, turns[call])
+			}
+			log = append(log, fmt.Sprintf("validate %d %s %s", call, ids(outcomes), calls[0].NativeToolCallID))
+			if calls[0].Arguments["task_ref"] == "blocked" {
+				return errBlocked
+			}
+			return nil
+		}
+		c.RepairText = func(call int, outcomes []loop.ToolOutcome, err error) string {
+			if !reflect.DeepEqual(outcomes, turns[call]) {
+				t.Errorf("call %d: RepairText saw %+v, TurnTools %+v", call, outcomes, turns[call])
+			}
+			var sentinel string
+			for _, s := range []error{loop.ErrInvalidArguments, errBad, loop.ErrExclusiveTool, loop.ErrUnknownTool, errBlocked, loop.ErrIncompleteResponse} {
+				if errors.Is(err, s) {
+					sentinel = s.Error()
+				}
+			}
+			log = append(log, fmt.Sprintf("repair %d %s %s", call, ids(outcomes), sentinel))
+			return "fix it"
+		}
+	})
+	want := []string{
+		"turn 1 []", "validate 1 [] c1",
+		"turn 2 [c1]", "repair 2 [c1] " + loop.ErrInvalidArguments.Error(),
+		"turn 3 [c1]", "repair 3 [c1] " + errBad.Error(),
+		"turn 4 [c1]", "repair 4 [c1] " + loop.ErrExclusiveTool.Error(),
+		"turn 5 [c1]", "repair 5 [c1] " + loop.ErrUnknownTool.Error(),
+		"turn 6 [c1]", "validate 6 [c1] c7", "repair 6 [c1] blocked",
+		"turn 7 [c1]", "repair 7 [c1] " + loop.ErrIncompleteResponse.Error(),
+		"turn 8 [c1]", "validate 8 [c1] c8",
+	}
+	if err != nil || out.Reply != "done" || !slices.Equal(log, want) {
+		t.Fatalf("out=%+v err=%v\nlog  %q\nwant %q", out, err, log, want)
+	}
+}
+
 func TestOnBatchAcceptedSeesOnlyAcceptedBatchesBeforeTheyRun(t *testing.T) {
 	var log []string
 	ids := func(calls []loop.ToolCall) string {
@@ -171,7 +251,7 @@ func TestOnBatchAcceptedSeesOnlyAcceptedBatchesBeforeTheyRun(t *testing.T) {
 	)
 	out, err := run(t, m, host, func(c *loop.Config) {
 		c.Budget = loop.Budget{MaxModelResponses: 5, MaxConsecutiveErrors: 3, MaxPhysicalAttempts: 5}
-		c.ValidateBatch = func(calls []loop.ToolCall) error {
+		c.ValidateBatch = func(_ int, _ []loop.ToolOutcome, calls []loop.ToolCall) error {
 			log = append(log, "validate "+ids(calls))
 			if calls[0].Arguments["task_ref"] == "blocked" {
 				return errors.New("blocked")

@@ -169,7 +169,9 @@ func TestTerminalRequiredForcedChoiceAndLocale(t *testing.T) {
 
 func TestRepairTextIsInjectable(t *testing.T) {
 	m := lt.New(lt.Truncated("cut"), lt.Text("ok"))
-	_, err := run(t, m, &fakeHost{}, func(c *loop.Config) { c.RepairText = func(error) string { return "HOST REPAIR" } })
+	_, err := run(t, m, &fakeHost{}, func(c *loop.Config) {
+		c.RepairText = func(int, []loop.ToolOutcome, error) string { return "HOST REPAIR" }
+	})
 	if err != nil || m.Requests[1][len(m.Requests[1])-1].Content != "HOST REPAIR" {
 		t.Fatalf("host repair text: %v %q", err, m.Requests[1][len(m.Requests[1])-1].Content)
 	}

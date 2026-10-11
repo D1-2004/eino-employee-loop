@@ -134,7 +134,9 @@ func TestPanicsBecomeErrors(t *testing.T) {
 			return err
 		},
 		"validator bug": func() error {
-			_, err := run(t, read(), &fakeHost{}, func(c *loop.Config) { c.ValidateBatch = func([]loop.ToolCall) error { panic("validator bug") } })
+			_, err := run(t, read(), &fakeHost{}, func(c *loop.Config) {
+				c.ValidateBatch = func(int, []loop.ToolOutcome, []loop.ToolCall) error { panic("validator bug") }
+			})
 			return err
 		},
 	}

@@ -472,12 +472,12 @@ func paritySc(seed int64) string {
 	repair := r.Intn(3)
 	switch repair {
 	case 1:
-		cfg.RepairText = func(err error) string {
+		cfg.RepairText = func(_ int, _ []loop.ToolOutcome, err error) string {
 			l.add("REPAIR %s", errText(err))
 			return "FIX: " + err.Error()
 		}
 	case 2:
-		cfg.RepairText = func(err error) string {
+		cfg.RepairText = func(_ int, _ []loop.ToolOutcome, err error) string {
 			l.add("REPAIR %s", errText(err))
 			return " "
 		}
@@ -490,7 +490,7 @@ func paritySc(seed int64) string {
 		return nil
 	}
 	if r.Intn(2) == 0 {
-		cfg.ValidateBatch = func(calls []loop.ToolCall) error {
+		cfg.ValidateBatch = func(_ int, _ []loop.ToolOutcome, calls []loop.ToolCall) error {
 			l.add("VBATCH %s", js(calls))
 			for _, c := range calls {
 				if c.Arguments["task_ref"] == "veto" {
