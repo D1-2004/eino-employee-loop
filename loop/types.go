@@ -14,12 +14,61 @@ var (
 	ErrConsecutiveModelErrors = errors.New("employee loop: consecutive model errors exhausted")
 	ErrModelResponseBudget    = errors.New("employee loop: valid model response budget exhausted")
 	ErrPhysicalModelBudget    = errors.New("employee loop: provider attempt budget exhausted")
-	ErrMissingReceipt         = errors.New("employee loop: effect has no host receipt")
-	ErrTerminalConflict       = errors.New("employee loop: conflicting terminal tool results")
+	// ErrMissingReceipt: a call to an Effect tool, or one whose result
+	// decides Dispatched, succeeded without a receipt. It ends the wake and
+	// always comes wrapped in ErrToolFailed.
+	ErrMissingReceipt   = errors.New("employee loop: effect has no host receipt")
+	ErrTerminalConflict = errors.New("employee loop: conflicting terminal tool results")
 	// ErrToolRefused marks a Host refusal made before any effect (for example
 	// an argument that names no known source). The model may correct the call
 	// within the budget; it is not a batch failure.
 	ErrToolRefused = errors.New("employee loop: tool call refused before any effect")
+)
+
+// Rejections of a model response. The loop repairs each one within the
+// budget, so a Host meets them in RepairText and OnModelFailure (and in
+// OnBatchRejected when they reject a tool batch: ErrInvalidToolCall,
+// ErrInvalidArguments, ErrUnknownTool, ErrExclusiveTool and a static
+// ErrTerminalConflict), and joined into Run's budget error when the budget
+// runs out. ErrTerminalConflict (above) is one too when it is found before
+// any call runs. Classify them with errors.Is: their texts are the v0.2
+// texts and carry details, not a stable API. Errors from the Host's own
+// hooks (ValidateBatch, ValidateText, provider errors) are passed on
+// unchanged.
+var (
+	// ErrIncompleteResponse: the provider returned no message, an empty plain
+	// reply or a finish_reason the loop does not accept (for example
+	// "length").
+	ErrIncompleteResponse = errors.New("employee loop: incomplete model response")
+	// ErrInvalidToolCall: a native call without an id or a name, of a type
+	// other than "function", or with an id repeated in its response.
+	ErrInvalidToolCall = errors.New("employee loop: invalid or duplicate native tool call identity")
+	// ErrInvalidArguments: arguments that are not a JSON object or break the
+	// tool's Schema.
+	ErrInvalidArguments = errors.New("employee loop: invalid arguments")
+	// ErrUnknownTool: a tool the Config does not have, or one TurnTools did
+	// not offer to this provider attempt.
+	ErrUnknownTool = errors.New("employee loop: unknown tool")
+	// ErrExclusiveTool: an Exclusive tool shares its batch.
+	ErrExclusiveTool = errors.New("employee loop: exclusive tool shares its batch")
+	// ErrTerminalRequired: plain text where RequireTerminalTool needs a native
+	// terminal tool call and the text was not taken as final text.
+	ErrTerminalRequired = errors.New("employee loop: a native terminal tool call is required")
+	// ErrFinalTextRejected: a final text longer than FinalTextLimit.
+	ErrFinalTextRejected = errors.New("employee loop: final text rejected")
+)
+
+// Failures that end the wake, besides the budget errors and a terminal
+// conflict found after the calls ran.
+var (
+	// ErrNoTerminalDecision: AcceptFinalText returned no terminal decision.
+	ErrNoTerminalDecision = errors.New("employee loop: final text produced no terminal decision")
+	// ErrToolFailed: a call that may have committed an effect (an Effect tool,
+	// or a result with a receipt) failed with an error other than a
+	// refusal, or a call lacks a receipt it needs (then ErrMissingReceipt
+	// matches too); the wake fails once its batch has run. It wraps the
+	// Host's error.
+	ErrToolFailed = errors.New("employee loop: tool failed")
 )
 
 // Identity is supplied by the Host from trusted admission data and passed
@@ -38,12 +87,16 @@ type Wake struct {
 	Messages []*schema.Message
 }
 
-// Disposition is how a wake ended.
+// Disposition is how a wake ended. The set is closed: Hosts use only the
+// four below, as in v0.2, although the loop does not check.
 type Disposition string
 
 const (
-	Reply      Disposition = "reply"
-	Quiet      Disposition = "quiet"
+	Reply Disposition = "reply"
+	Quiet Disposition = "quiet"
+	// Dispatched is the only disposition with a rule of its own: a result
+	// that decides it needs a receipt (the accepted work), even from a tool
+	// that is not an Effect, or the wake fails with ErrMissingReceipt.
 	Dispatched Disposition = "dispatched"
 	Waiting    Disposition = "waiting"
 )
@@ -73,6 +126,19 @@ type Tool struct {
 	Exclusive bool
 	// Timeout bounds one call; zero leaves it to the wake context.
 	Timeout time.Duration
+	// PublicArgs names the top-level string arguments that are public text,
+	// checked with Config.ValidateText before any call of the batch runs.
+	// Nil checks the argument "reply" (the v0.2 rule); an empty, non-nil
+	// list checks none.
+	PublicArgs []string
+}
+
+// publicArgs returns the arguments ValidateText checks.
+func (t Tool) publicArgs() []string {
+	if t.PublicArgs == nil {
+		return []string{"reply"}
+	}
+	return t.PublicArgs
 }
 
 // ToolCall is one native call of a model response.
@@ -92,7 +158,9 @@ type ToolResult struct {
 }
 
 // Host owns reads, permissions, durable state and effects. Execute honours
-// ctx and deduplicates effects by identity plus NativeToolCallID; a
+// ctx and deduplicates effects by identity, turn and NativeToolCallID: a
+// native id is unique within one response only, and a call's turn is the
+// ModelCall.Attempt of the response that carried it (docs/host.md §5). A
 // committed effect returns its receipt even when ctx was cancelled after the
 // commit. The loop never invents a receipt.
 type Host interface {
@@ -113,7 +181,8 @@ type FinalTextHost interface {
 	AcceptFinalText(context.Context, Identity, string) (ToolResult, error)
 }
 
-// FinalTextOrigin marks the tool outcome of an accepted final text.
+// FinalTextOrigin marks the tool outcome of an accepted final text. The
+// value is Multica's, kept from v0.2 for stored outcomes.
 const FinalTextOrigin = "host_final_text"
 
 // Receipt is the durable proof of one effect.
@@ -207,8 +276,9 @@ type Config struct {
 	RepairText func(err error) string
 	// ValidateBatch and ValidateText add Host rules to the built-in batch
 	// validation (unknown tools, exclusivity, terminal conflicts, argument
-	// schemas) and to public text (plain replies and "reply" arguments).
-	// ValidateBatch must not modify the calls it receives.
+	// schemas) and to public text (plain replies, final text and the
+	// arguments each tool lists in PublicArgs). Their errors reach the hooks
+	// and Run unchanged. ValidateBatch must not modify the calls it receives.
 	ValidateBatch func([]ToolCall) error
 	ValidateText  func(string) error
 	// Permanent classifies provider errors that end the wake at once.

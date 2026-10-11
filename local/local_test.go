@@ -13,6 +13,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 
 	"github.com/D1-2004/eino-employee-loop/loop"
+	"github.com/D1-2004/eino-employee-loop/loop/hosttest"
 	lt "github.com/D1-2004/eino-employee-loop/loop/looptest"
 )
 
@@ -23,11 +24,19 @@ type fakeChannel struct {
 
 func (f *fakeChannel) Listen(context.Context, func(Message)) error { return nil }
 
-func (f *fakeChannel) Send(_ context.Context, m Message, text string) (string, error) {
+func (f *fakeChannel) Send(ctx context.Context, m Message, text string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sent = append(f.sent, m.ConversationID+"|"+text)
+	hosttest.Committed(ctx)
 	return "sent-" + m.MessageID, nil
+}
+
+// count is the number of sent messages: the effects of the chat Host.
+func (f *fakeChannel) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.sent)
 }
 
 func dm(id, text string) Message {

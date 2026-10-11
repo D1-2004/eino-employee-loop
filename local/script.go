@@ -27,6 +27,10 @@ import (
 //
 // A request after the last response fails the wake with an error that says
 // the script ran out; Permanent recognises it.
+//
+// Script is built on loop/looptest, the scripted model of Host tests, so
+// this package imports it; that is fine for a verification harness, and a
+// production Host need not import either.
 type Script struct {
 	*lt.Model
 	Path  string

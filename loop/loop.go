@@ -46,8 +46,7 @@ import (
 const defaultFinalTextLimit = 8000
 
 var (
-	errTerminalRequired = errors.New("employee loop: a native terminal tool call is required")
-	errNoMessage        = errors.New("employee loop: model returned no message")
+	errNoMessage = errors.New("employee loop: model returned no message")
 	// errAttempt is all ADK sees of a failed provider attempt: decide judges
 	// the attempt itself, so ADK's own handling of special errors (its
 	// interrupts, stream cancellation) never applies to the Host model's.
@@ -58,6 +57,17 @@ var (
 	// the Host's results.
 	errDecided = errors.New("employee loop: wake decided")
 )
+
+// classified keeps the text of err, which hosts have persisted since v0.2,
+// and adds a sentinel for errors.Is. err's own chain still matches.
+type classified struct {
+	err, sentinel error
+}
+
+func classify(sentinel, err error) error { return &classified{err: err, sentinel: sentinel} }
+
+func (c *classified) Error() string   { return c.err.Error() }
+func (c *classified) Unwrap() []error { return []error{c.sentinel, c.err} }
 
 // Loop runs wakes with one configuration. It holds no state between runs.
 type Loop struct {
@@ -362,7 +372,7 @@ func (r *run) decide(_ context.Context, rc *adk.RetryContext) *adk.RetryDecision
 	case cur.err != nil:
 		return r.repair(rc, cur.err)
 	case cur.resp == nil:
-		return r.repair(rc, errNoMessage)
+		return r.repair(rc, classify(ErrIncompleteResponse, errNoMessage))
 	}
 	finish := ""
 	if meta := cur.resp.ResponseMeta; meta != nil {
@@ -378,7 +388,7 @@ func (r *run) decide(_ context.Context, rc *adk.RetryContext) *adk.RetryDecision
 	case calls == 0 && (finish == "stop" || finish == ""):
 		return r.text(rc, cur.resp)
 	}
-	return r.repair(rc, fmt.Errorf("employee loop: incomplete model response: finish_reason=%q", finish))
+	return r.repair(rc, classify(ErrIncompleteResponse, fmt.Errorf("employee loop: incomplete model response: finish_reason=%q", finish)))
 }
 
 // repair records a rejected response or provider error and asks again; the
@@ -411,7 +421,7 @@ func (r *run) text(rc *adk.RetryContext, resp *schema.Message) *adk.RetryDecisio
 	text := strings.TrimSpace(resp.Content)
 	if !r.cfg.RequireTerminalTool {
 		if text == "" {
-			return r.repair(rc, errors.New("employee loop: a plain reply needs text"))
+			return r.repair(rc, classify(ErrIncompleteResponse, errors.New("employee loop: a plain reply needs text")))
 		}
 		if err := r.guard(text); err != nil {
 			return r.repair(rc, err)
@@ -423,10 +433,10 @@ func (r *run) text(rc *adk.RetryContext, resp *schema.Message) *adk.RetryDecisio
 	}
 	final, ok := r.host.(FinalTextHost)
 	if !r.cfg.AcceptFinalText || !ok || r.out.ModelCalls != 1 || r.attempted || text == "" {
-		return r.repair(rc, errTerminalRequired)
+		return r.repair(rc, ErrTerminalRequired)
 	}
 	if len(text) > r.cfg.FinalTextLimit {
-		return r.repair(rc, fmt.Errorf("employee loop: final text exceeds %d bytes", r.cfg.FinalTextLimit))
+		return r.repair(rc, classify(ErrFinalTextRejected, fmt.Errorf("employee loop: final text exceeds %d bytes", r.cfg.FinalTextLimit)))
 	}
 	if err := r.guard(text); err != nil {
 		return r.repair(rc, err)
@@ -437,7 +447,7 @@ func (r *run) text(rc *adk.RetryContext, resp *schema.Message) *adk.RetryDecisio
 	result, err := final.AcceptFinalText(r.ctx, r.id, text)
 	outcome := ToolOutcome{Origin: FinalTextOrigin, ToolName: FinalTextOrigin, Result: result}
 	if err == nil && result.Terminal == nil {
-		err = errors.New("employee loop: final text produced no terminal decision")
+		err = ErrNoTerminalDecision
 	}
 	if err != nil {
 		outcome.Error = err.Error()
@@ -530,7 +540,7 @@ func (t hostTool) InvokableRun(ctx context.Context, _ string, _ ...tool.Option) 
 		b.noProgress = errors.Join(b.noProgress, callErr)
 		refused := errors.Is(callErr, ErrToolRefused) && receipt == ""
 		if (t.tool.Effect || receipt != "" || errors.Is(callErr, ErrMissingReceipt)) && !refused {
-			b.err = errors.Join(b.err, fmt.Errorf("employee loop: tool %s failed: %w", call.Name, callErr))
+			b.err = errors.Join(b.err, classify(ErrToolFailed, fmt.Errorf("employee loop: tool %s failed: %w", call.Name, callErr)))
 		}
 	} else {
 		b.progress = true
@@ -669,12 +679,12 @@ func parseCalls(resp *schema.Message) ([]ToolCall, error) {
 	calls := make([]ToolCall, 0, len(resp.ToolCalls))
 	for _, c := range resp.ToolCalls {
 		if (c.Type != "" && c.Type != "function") || strings.TrimSpace(c.ID) == "" || seen[c.ID] || strings.TrimSpace(c.Function.Name) == "" {
-			return nil, errors.New("employee loop: invalid or duplicate native tool call identity")
+			return nil, ErrInvalidToolCall
 		}
 		seen[c.ID] = true
 		var args map[string]any
 		if err := json.Unmarshal([]byte(c.Function.Arguments), &args); err != nil || args == nil {
-			return nil, fmt.Errorf("employee loop: invalid arguments for %q", c.Function.Name)
+			return nil, classify(ErrInvalidArguments, fmt.Errorf("employee loop: invalid arguments for %q", c.Function.Name))
 		}
 		calls = append(calls, ToolCall{NativeToolCallID: c.ID, Name: c.Function.Name, Arguments: args})
 	}
@@ -690,7 +700,7 @@ func (r *run) validate(calls []ToolCall) error {
 	for _, c := range calls {
 		tool, ok := r.tools[c.Name]
 		if !ok || !r.offered[c.Name] {
-			return fmt.Errorf("employee loop: unknown tool %q", c.Name)
+			return classify(ErrUnknownTool, fmt.Errorf("employee loop: unknown tool %q", c.Name))
 		}
 		if tool.Terminal != "" {
 			if disposition != "" && disposition != tool.Terminal {
@@ -699,14 +709,16 @@ func (r *run) validate(calls []ToolCall) error {
 			disposition = tool.Terminal
 		}
 		if tool.Exclusive && len(calls) > 1 {
-			return fmt.Errorf("employee loop: %s must be the only call of its batch", c.Name)
+			return classify(ErrExclusiveTool, fmt.Errorf("employee loop: %s must be the only call of its batch", c.Name))
 		}
 		if problems := ValidateArguments(tool.Schema, c.Arguments); len(problems) > 0 {
-			return fmt.Errorf("employee loop: invalid params for %s: %s", c.Name, strings.Join(problems, "; "))
+			return classify(ErrInvalidArguments, fmt.Errorf("employee loop: invalid params for %s: %s", c.Name, strings.Join(problems, "; ")))
 		}
-		if reply, ok := c.Arguments["reply"].(string); ok {
-			if err := r.guard(reply); err != nil {
-				return err
+		for _, name := range tool.publicArgs() {
+			if text, ok := c.Arguments[name].(string); ok {
+				if err := r.guard(text); err != nil {
+					return err
+				}
 			}
 		}
 	}

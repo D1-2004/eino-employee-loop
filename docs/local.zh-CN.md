@@ -60,7 +60,7 @@ go run ./cmd/eel -channel robot -robot-client-id <AppKey> -robot-client-secret <
 
 `-channel console` 在终端里跑同一套流程，不需要钉钉。每行是一条消息：`文本` 是你（`-user`）发的单聊；`#Name: 文本` 是 Name 发的、没有 @ 员工的群消息（只记入历史）；`@Name: 文本` 是 @ 了员工的群消息。管道输入会回显，读到 EOF 结束。
 
-`-model-script <文件>` 用 JSON 数组里的响应代替 LLM，按顺序每次模型请求用一条：`{"tool_calls": [{"name": "reply", "arguments": {"text": "你好"}}]}`、`{"text": "普通文本回答"}` 或 `{"error": "服务商错误"}`。响应用完后再有请求，该次唤醒失败。
+`-model-script <文件>` 用 JSON 数组里的响应代替 LLM，按顺序每次模型请求用一条：`{"tool_calls": [{"name": "reply", "arguments": {"text": "你好"}}]}`、`{"text": "普通文本回答"}` 或 `{"error": "服务商错误"}`。响应用完后再有请求，该次唤醒失败。它基于 Host 测试用的脚本化模型 `loop/looptest`，所以 `local` 会引入这个测试辅助包。
 
 ```bash
 go run ./cmd/eel -channel console -model-script local/testdata/console.json -name Eel -user Ann -locale zh-CN < local/testdata/console.txt

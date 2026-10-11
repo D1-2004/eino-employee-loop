@@ -181,7 +181,10 @@ var (
 	ErrMissingScene = errors.New("event: event has no scene")
 )
 
-// Validate checks producer-independent envelope invariants.
+// Validate checks producer-independent envelope invariants;
+// schema/event.schema.json states the same rules for the JSON encoding and
+// leaves the edges its description lists to Validate.
+// Scene and actor may be empty here: Route checks them against the type.
 func (e Event) Validate() error {
 	var problems []string
 	if strings.TrimSpace(e.ID) == "" {

@@ -2,19 +2,19 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/D1-2004/eino-employee-loop/schema/event.schema.json",
   "title": "Event",
-  "description": "The envelope of every employee input (event.Event).",
+  "description": "The envelope of every employee input (event.Event). It states the rules of event.Event.Validate, with unknown fields rejected, for the JSON encoding; Validate alone decides the edges: null fields, a zero time written with an offset, a malformed time (format only annotates) and non-ASCII spaces such as U+0085. Catalog.Route then adds the rules of the type: a known type, class and mode that agree with the catalog, a scene id when the type requires one, a human actor in the foreground and the type's session_key ref.",
   "type": "object",
-  "required": ["id", "source", "type", "scene", "actor", "occurred_at"],
+  "required": ["id", "source", "type", "occurred_at"],
   "properties": {
-    "id": {"type": "string", "minLength": 1, "description": "Stable per producer; a replay carries the same content."},
-    "source": {"type": "string", "minLength": 1, "description": "Producer namespace, for example chat.im."},
+    "id": {"type": "string", "pattern": "\\S", "description": "Stable per producer; a replay carries the same content."},
+    "source": {"type": "string", "pattern": "\\S", "description": "Producer namespace, for example chat.im."},
     "employee": {"type": "string", "description": "Addressed employee when a producer serves several."},
-    "type": {"type": "string", "minLength": 1, "description": "Catalog type, for example message.addressed."},
-    "class": {"enum": ["business", "execution", "completion", "schedule", "enablement"], "description": "Derived from the catalog."},
-    "mode": {"enum": ["triggered", "listening"], "description": "Derived from the catalog."},
+    "type": {"type": "string", "pattern": "\\S", "description": "Catalog type, for example message.addressed."},
+    "class": {"type": "string", "description": "Derived from the catalog: business, execution, completion, schedule or enablement. Route rejects a value that disagrees with it."},
+    "mode": {"type": "string", "description": "Derived from the catalog: triggered or listening. Route rejects a value that disagrees with it."},
     "scene": {
       "type": "object",
-      "required": ["id", "kind"],
+      "description": "Absent or empty for employee-wide events; Route requires an id when the type requires a scene.",
       "properties": {
         "id": {"type": "string", "description": "Host-minted scene id; the only key of per-scene state."},
         "kind": {"type": "string", "description": "group, dm, enterprise or a Host kind."},
@@ -26,15 +26,15 @@
     },
     "actor": {
       "type": "object",
-      "required": ["id", "kind"],
+      "description": "Absent or empty when no actor is known; Route requires a human actor in the foreground.",
       "properties": {
         "id": {"type": "string"},
-        "kind": {"enum": ["human", "employee", "system", "integration"]},
+        "kind": {"enum": ["", "human", "employee", "system", "integration"]},
         "display_name": {"type": "string"}
       },
       "additionalProperties": false
     },
-    "occurred_at": {"type": "string", "format": "date-time"},
+    "occurred_at": {"type": "string", "format": "date-time", "not": {"const": "0001-01-01T00:00:00Z"}, "description": "RFC 3339; the zero time (Go's unset time.Time) is rejected."},
     "locale": {"type": "string"},
     "refs": {"type": "object", "additionalProperties": {"type": "string"}, "description": "task, run, routine, reply_to, ..."},
     "text": {"type": "string"},

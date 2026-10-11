@@ -11,6 +11,7 @@ import (
 
 // ExtraParameters is the ToolInfo.Extra key carrying the original JSON
 // Schema map, so a model adapter can send it without a lossy round trip.
+// The value is Multica's, kept from v0.2.
 const ExtraParameters = "employee_loop.parameters"
 
 // ToolInfos converts tools to Eino tool infos, in the given order.

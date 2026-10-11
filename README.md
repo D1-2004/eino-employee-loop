@@ -24,6 +24,7 @@ call, and is it done?* — and leaves everything else to the Host that embeds it
 | `event` | Classifies inputs (class × mode) and routes them to a lane and session of their scene, with preemption and revocation. Standard catalog in `event/events.json`. |
 | `loop` | Runs one wake on an Eino ADK `ChatModelAgent` over a `ToolCallingChatModel`: native tool batches, validation before any effect, receipts for effects, terminal decisions, budgets, repair turns. |
 | `loop/looptest` | A scripted Eino model for Host tests. |
+| `loop/hosttest` | Conformance checks a Host runs from its own tests against its Host and model adapter. |
 | `local`, `cmd/eel` | Runs one employee on a laptop against real DingTalk (an account through the dws CLI, or a Stream Mode robot), traced in Langfuse. |
 | `schema` | JSON Schema of `event.Event` and reference PostgreSQL storage for a durable Host. |
 

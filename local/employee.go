@@ -196,8 +196,28 @@ func (e *Employee) wake(ctx context.Context, c *conversation, m Message, adm eve
 		"employee_contract_lane": string(adm.Spec.Lane), "employee_contract_session": string(adm.Session.Kind),
 	})
 	host := &chatHost{employee: e, message: m, trace: trace}
+	out, err := loop.New(e.config(trace), e.Model, host).Run(ctx, loop.Wake{Identity: loop.Identity{Employee: e.ID, Scene: m.ConversationID, Receipt: m.MessageID}, Messages: messages})
+
+	e.debugDecision(m, out, err)
+	limit := e.historyLimit()
+	c.remember(speaker+": "+m.Text, limit)
+	if out.Kind == loop.Reply && out.Reply != "" {
+		c.remember(text(e.Locale, "history.self", "name", name)+": "+out.Reply, limit)
+	}
+	result := map[string]any{"employee_decision": string(out.Kind), "employee_model_calls": out.ModelCalls}
+	if err != nil {
+		result["employee_failure"] = err.Error()
+	}
+	if terr := trace.End(ctx, map[string]any{"decision": string(out.Kind), "reply": out.Reply}, result); terr != nil {
+		e.log().Warn("local.trace_failed", "trace", trace.ID(), "err", terr)
+	}
+	return out, err
+}
+
+// config is the loop configuration of every wake; trace may be nil.
+func (e *Employee) config(trace *Trace) loop.Config {
 	tools := e.tools()
-	cfg := loop.Config{
+	return loop.Config{
 		Tools:               tools,
 		RequireTerminalTool: true,
 		AcceptFinalText:     true,
@@ -214,22 +234,6 @@ func (e *Employee) wake(ctx context.Context, c *conversation, m Message, adm eve
 		},
 		OnModelFailure: e.debugRepair,
 	}
-	out, err := loop.New(cfg, e.Model, host).Run(ctx, loop.Wake{Identity: loop.Identity{Employee: e.ID, Scene: m.ConversationID, Receipt: m.MessageID}, Messages: messages})
-
-	e.debugDecision(m, out, err)
-	limit := e.historyLimit()
-	c.remember(speaker+": "+m.Text, limit)
-	if out.Kind == loop.Reply && out.Reply != "" {
-		c.remember(text(e.Locale, "history.self", "name", name)+": "+out.Reply, limit)
-	}
-	result := map[string]any{"employee_decision": string(out.Kind), "employee_model_calls": out.ModelCalls}
-	if err != nil {
-		result["employee_failure"] = err.Error()
-	}
-	if terr := trace.End(ctx, map[string]any{"decision": string(out.Kind), "reply": out.Reply}, result); terr != nil {
-		e.log().Warn("local.trace_failed", "trace", trace.ID(), "err", terr)
-	}
-	return out, err
 }
 
 func (e *Employee) source() string {
@@ -257,7 +261,9 @@ func (c *conversation) remember(line string, limit int) {
 
 func (e *Employee) tools() []loop.Tool {
 	return []loop.Tool{
-		{Name: "reply", Description: text(e.Locale, "tool.reply"), Effect: true, Terminal: loop.Reply, Schema: map[string]any{
+		// "text" is the public text a Config.ValidateText would check; the
+		// local employee sets none, so declaring it changes nothing here.
+		{Name: "reply", Description: text(e.Locale, "tool.reply"), Effect: true, Terminal: loop.Reply, PublicArgs: []string{"text"}, Schema: map[string]any{
 			"type": "object", "additionalProperties": false, "required": []any{"text"},
 			"properties": map[string]any{"text": map[string]any{"type": "string", "minLength": 1, "maxLength": 3000, "description": text(e.Locale, "tool.reply.text")}},
 		}},
@@ -270,19 +276,28 @@ func (e *Employee) tools() []loop.Tool {
 
 // chatHost executes the two tools of a wake. A reply is sent at most once
 // per wake; the sent message id (or the source message id when the
-// platform reports none) is its receipt.
+// platform reports none) is its receipt. Executing the call that sent it
+// again returns its recorded result, as a re-claimed wake expects (the
+// loop itself never repeats a call within a wake).
 type chatHost struct {
 	employee *Employee
 	message  Message
 	trace    *Trace
-	sent     string
+	sent     *sentReply
+}
+
+// sentReply records the reply of a wake: the call that sent it (the final
+// text origin for a final text), its text and its result.
+type sentReply struct {
+	call, text string
+	result     loop.ToolResult
 }
 
 func (h *chatHost) Execute(ctx context.Context, _ loop.Identity, call loop.ToolCall) (loop.ToolResult, error) {
 	switch call.Name {
 	case "reply":
 		reply, _ := call.Arguments["text"].(string)
-		return h.send(ctx, reply)
+		return h.send(ctx, call.NativeToolCallID, reply)
 	case "stay_quiet":
 		return loop.ToolResult{Content: `{"state":"quiet"}`, Terminal: &loop.Decision{Kind: loop.Quiet}}, nil
 	}
@@ -293,18 +308,21 @@ func (h *chatHost) Execute(ctx context.Context, _ loop.Identity, call loop.ToolC
 // no tool call for it, so it is logged here like one.
 func (h *chatHost) AcceptFinalText(ctx context.Context, _ loop.Identity, text string) (loop.ToolResult, error) {
 	started := time.Now()
-	result, err := h.send(ctx, text)
+	result, err := h.send(ctx, loop.FinalTextOrigin, text)
 	call := loop.ToolCall{Origin: loop.FinalTextOrigin, Name: loop.FinalTextOrigin, Arguments: map[string]any{"text": text}}
 	h.employee.debugTool(call, result, err, time.Since(started))
 	return result, err
 }
 
-func (h *chatHost) send(ctx context.Context, reply string) (loop.ToolResult, error) {
+func (h *chatHost) send(ctx context.Context, callID, reply string) (loop.ToolResult, error) {
 	reply = strings.TrimSpace(reply)
 	if reply == "" {
 		return loop.ToolResult{}, fmt.Errorf("%w: empty reply", loop.ErrToolRefused)
 	}
-	if h.sent != "" {
+	if s := h.sent; s != nil {
+		if s.call == callID && s.text == reply {
+			return s.result, nil
+		}
 		return loop.ToolResult{}, fmt.Errorf("%w: this wake already replied", loop.ErrToolRefused)
 	}
 	id, err := h.employee.Channel.Send(ctx, h.message, reply)
@@ -314,7 +332,8 @@ func (h *chatHost) send(ctx context.Context, reply string) (loop.ToolResult, err
 	if id == "" {
 		id = "reply-to:" + h.message.MessageID
 	}
-	h.sent = id
 	content, _ := json.Marshal(map[string]string{"state": "sent", "message_id": id})
-	return loop.ToolResult{Content: string(content), Receipt: id, Terminal: &loop.Decision{Kind: loop.Reply, Reply: reply}}, nil
+	result := loop.ToolResult{Content: string(content), Receipt: id, Terminal: &loop.Decision{Kind: loop.Reply, Reply: reply}}
+	h.sent = &sentReply{call: callID, text: reply, result: result}
+	return result, nil
 }

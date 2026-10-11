@@ -99,6 +99,8 @@ A type with `coalesce` lets a burst share one wake: the window closes
 `quiet_ms` after its last item, `max_wait_ms` after its first, or at
 `max_items`. Addressed messages and work reports coalesce for 250 ms (at most
 1 s, 16 items); observed group messages for 12 s (at most 30 s, 20 items).
+These values are a default profile; a Host overrides them by registering the
+type again ([host.md](host.md#1-admit-the-event)).
 
 ## Host types
 

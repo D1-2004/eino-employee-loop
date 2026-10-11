@@ -21,6 +21,7 @@
 | `event` | 给输入分类（类别 × 性质），路由到所在场域的通道与会话，处理抢占与撤销。标准目录在 `event/events.json`。 |
 | `loop` | 在 Eino ADK `ChatModelAgent`（底层是 `ToolCallingChatModel`）上跑一次唤醒：原生工具批次、任何效果之前先校验、效果必须有回执、终态决定、预算、修复轮。 |
 | `loop/looptest` | 给 Host 测试用的脚本化 Eino 模型。 |
+| `loop/hosttest` | Host 在自己的测试里对其 Host 和模型适配器跑的一致性检查。 |
 | `local`、`cmd/eel` | 在本机跑一个员工，接入真实钉钉（经 dws CLI 的账号，或 Stream 模式机器人），并上报 Langfuse。 |
 | `schema` | `event.Event` 的 JSON Schema，以及持久化 Host 的参考 PostgreSQL 存储。 |
 

@@ -86,7 +86,8 @@ history), `@Name: text` one that does. Piped input is echoed and ends at EOF.
 order, one per model request. Each is one of
 `{"tool_calls": [{"name": "reply", "arguments": {"text": "Hi"}}]}`,
 `{"text": "a plain answer"}` or `{"error": "a provider error"}`; a request
-after the last response fails its wake.
+after the last response fails its wake. It runs on `loop/looptest`, the
+scripted model of Host tests, which is why `local` imports a test helper.
 
 ```bash
 go run ./cmd/eel -channel console -model-script local/testdata/console.json -name Eel -user Ann -locale zh-CN < local/testdata/console.txt

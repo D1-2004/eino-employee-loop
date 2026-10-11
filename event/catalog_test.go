@@ -111,6 +111,22 @@ func TestDescribeFallsBack(t *testing.T) {
 	}
 }
 
+// The standard coalescing values are a default profile: a Host registers
+// the type again with its own (docs/host.md).
+func TestHostOverridesTheDefaultCoalescing(t *testing.T) {
+	c := Standard()
+	spec, _ := c.Lookup("message.addressed")
+	spec.Coalesce = &Coalesce{QuietMs: 250, MaxWaitMs: 250, MaxItems: 16}
+	if err := c.Register(spec); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := c.Lookup("message.addressed")
+	def, _ := Standard().Lookup("message.addressed")
+	if got.Coalesce.MaxWaitMs != 250 || def.Coalesce.MaxWaitMs != 1000 {
+		t.Fatalf("override %+v, default %+v", got.Coalesce, def.Coalesce)
+	}
+}
+
 func TestFingerprintIgnoresDerivedFields(t *testing.T) {
 	e := ev("message.addressed", "s1", Human, nil)
 	f := e
