@@ -51,7 +51,7 @@
 
 ## 6. 让模型可持久
 
-包装 Eino 模型，使每次请求/响应都被记录（`window_model_turns`），重新领取时对相同请求重放记录的响应，而不是再问一次模型。提供方参数拒绝与预留耗尽通过 `Config.Permanent` 报告。
+包装 Eino 模型，使每次请求/响应都被记录（`window_model_turns`），重新领取时对相同请求重放记录的响应，而不是再问一次模型。提供方参数拒绝与预留耗尽通过 `Config.Permanent` 报告。模型收到的是循环自己的对话记录消息，v0.2 与 v0.3 发出的请求逐字节相同（`loop/testdata/parity.golden.gz`），所以滚动发布期间一个版本开始的唤醒可以由另一个版本重新领取。循环下面的 Eino 版本由 Host 的依赖解析决定，所以每次升级 eino 或 eino-employee-loop，都要在 Host 模块里运行 `go test -run TestParityWithV021 github.com/D1-2004/eino-employee-loop/loop`。
 
 ## 7. 送达
 

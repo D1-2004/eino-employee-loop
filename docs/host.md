@@ -78,6 +78,12 @@ Wrap the Eino model so every request/response is journaled
 (`window_model_turns`) and a re-claim replays the recorded response for an
 identical request instead of asking the provider again. Report provider
 parameter rejections and exhausted reservations through `Config.Permanent`.
+The model receives the loop's own transcript messages, and v0.2 and v0.3 send
+byte-identical requests (`loop/testdata/parity.golden.gz`), so a wake begun by
+one version can be re-claimed by the other during a rolling deploy. The Host's
+build list picks the Eino version under the loop, so on every eino or
+eino-employee-loop bump run, from the Host module,
+`go test -run TestParityWithV021 github.com/D1-2004/eino-employee-loop/loop`.
 
 ## 7. Deliver
 

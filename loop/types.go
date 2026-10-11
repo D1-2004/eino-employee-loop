@@ -208,6 +208,7 @@ type Config struct {
 	// ValidateBatch and ValidateText add Host rules to the built-in batch
 	// validation (unknown tools, exclusivity, terminal conflicts, argument
 	// schemas) and to public text (plain replies and "reply" arguments).
+	// ValidateBatch must not modify the calls it receives.
 	ValidateBatch func([]ToolCall) error
 	ValidateText  func(string) error
 	// Permanent classifies provider errors that end the wake at once.

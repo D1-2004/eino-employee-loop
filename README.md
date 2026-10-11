@@ -22,7 +22,7 @@ call, and is it done?* — and leaves everything else to the Host that embeds it
 | Package | What it does |
 | --- | --- |
 | `event` | Classifies inputs (class × mode) and routes them to a lane and session of their scene, with preemption and revocation. Standard catalog in `event/events.json`. |
-| `loop` | Runs one wake on an Eino `ToolCallingChatModel`: native tool batches, validation before any effect, receipts for effects, terminal decisions, budgets, repair turns. |
+| `loop` | Runs one wake on an Eino ADK `ChatModelAgent` over a `ToolCallingChatModel`: native tool batches, validation before any effect, receipts for effects, terminal decisions, budgets, repair turns. |
 | `loop/looptest` | A scripted Eino model for Host tests. |
 | `local`, `cmd/eel` | Runs one employee on a laptop against real DingTalk (an account through the dws CLI, or a Stream Mode robot), traced in Langfuse. |
 | `schema` | JSON Schema of `event.Event` and reference PostgreSQL storage for a durable Host. |
@@ -62,6 +62,14 @@ Rules the loop enforces:
 - a Host refusal (`ErrToolRefused`) goes back to the model as a tool result;
 - invalid output never enters the transcript;
 - the budget bounds valid responses, consecutive errors and provider attempts.
+
+Since v0.3 the loop runs on Eino ADK's `adk.ChatModelAgent` instead of a
+hand-written loop. Provider requests are byte-identical to v0.2 and behaviour
+is the same, except for the few differences listed in the
+[`loop` package doc](loop/loop.go) (for example, a panic in the Host, the model
+or any `Config` callback becomes `Run`'s error). `loop/testdata/parity.golden.gz`
+(3,000 seeded scenarios recorded from v0.2.1) pins both, so a journaled wake can
+be resumed by either version.
 
 ## Events and scenes
 

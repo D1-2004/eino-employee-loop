@@ -19,7 +19,7 @@
 | 包 | 作用 |
 | --- | --- |
 | `event` | 给输入分类（类别 × 性质），路由到所在场域的通道与会话，处理抢占与撤销。标准目录在 `event/events.json`。 |
-| `loop` | 在 Eino `ToolCallingChatModel` 上跑一次唤醒：原生工具批次、任何效果之前先校验、效果必须有回执、终态决定、预算、修复轮。 |
+| `loop` | 在 Eino ADK `ChatModelAgent`（底层是 `ToolCallingChatModel`）上跑一次唤醒：原生工具批次、任何效果之前先校验、效果必须有回执、终态决定、预算、修复轮。 |
 | `loop/looptest` | 给 Host 测试用的脚本化 Eino 模型。 |
 | `local`、`cmd/eel` | 在本机跑一个员工，接入真实钉钉（经 dws CLI 的账号，或 Stream 模式机器人），并上报 Langfuse。 |
 | `schema` | `event.Event` 的 JSON Schema，以及持久化 Host 的参考 PostgreSQL 存储。 |
@@ -48,6 +48,8 @@ out, err := loop.New(loop.Config{
 - Host 拒绝（`ErrToolRefused`）作为工具结果交回模型；
 - 无效输出永远不进入对话记录；
 - 预算限制有效响应数、连续错误数和模型请求次数。
+
+从 v0.3 起，循环跑在 Eino ADK 的 `adk.ChatModelAgent` 上，不再是手写循环。发给模型的请求与 v0.2 逐字节一致，行为也相同，只有 [`loop` 包文档](loop/loop.go)列出的少数差异（例如 Host、模型或任何 `Config` 回调里的 panic 会变成 `Run` 返回的错误）。`loop/testdata/parity.golden.gz`（从 v0.2.1 录制的 3000 个种子场景）把两者钉住，记录过的唤醒可由任一版本续跑。
 
 ## 事件与场域
 

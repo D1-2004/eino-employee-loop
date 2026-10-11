@@ -1,4 +1,6 @@
-// Package loop runs one employee wake on a CloudWeGo Eino chat model.
+// Package loop runs one employee wake.
+//
+//	out, err := loop.New(cfg, model, host).Run(ctx, loop.Wake{Identity: id, Messages: msgs})
 //
 // A wake is: take the Host's frozen messages -> ask the model -> validate
 // the native tool batch -> let the Host execute every call -> stop on a
@@ -7,7 +9,21 @@
 // validation, budgets and the rule that nothing counts as done without a
 // Host receipt.
 //
-//	out, err := loop.New(cfg, model, host).Run(ctx, loop.Wake{Identity: id, Messages: msgs})
+// Since v0.3 a CloudWeGo Eino ADK ChatModelAgent runs the wake. Provider
+// requests are byte-identical to v0.2, the hand-written loop, and behaviour
+// is the same (testdata/parity.golden.gz pins both), except that:
+//   - a panic in the Host, the Host model or any Config callback is
+//     recovered by ADK and returned as Run's error ("panic error: <value>"
+//     with the stack) instead of crashing the caller;
+//   - the Host, the Host model and the Config callbacks run on ADK's run
+//     goroutine while Run waits for it, so runtime.Goexit there (t.FailNow
+//     in a test fake) ends only that goroutine and Run returns "the wake
+//     ended without a decision";
+//   - global Eino callback handlers also see ADK's own graph nodes (agent,
+//     graph, lambdas, ToolsNode; no extra ChatModel or Tool callbacks), and
+//     a wake that ends on a terminal tool reports them as failed with
+//     "employee loop: wake decided";
+//   - a nil wake message is rejected before any provider attempt.
 package loop
 
 import (
@@ -15,16 +31,33 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/components/tool"
+	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
 )
 
 const defaultFinalTextLimit = 8000
 
-var errTerminalRequired = errors.New("employee loop: a native terminal tool call is required")
+var (
+	errTerminalRequired = errors.New("employee loop: a native terminal tool call is required")
+	errNoMessage        = errors.New("employee loop: model returned no message")
+	// errAttempt is all ADK sees of a failed provider attempt: decide judges
+	// the attempt itself, so ADK's own handling of special errors (its
+	// interrupts, stream cancellation) never applies to the Host model's.
+	errAttempt = errors.New("employee loop: provider attempt not accepted")
+	// errDecided ends ADK's run once a batch reached a terminal decision. ADK's
+	// ReturnDirectly cannot: it picks the call by tool name before it runs,
+	// keeps the last match and also ends on a failed call, while a wake ends on
+	// the Host's results.
+	errDecided = errors.New("employee loop: wake decided")
+)
 
 // Loop runs wakes with one configuration. It holds no state between runs.
 type Loop struct {
@@ -38,6 +71,8 @@ func New(cfg Config, m model.ToolCallingChatModel, host Host) *Loop {
 	return &Loop{cfg: cfg, model: m, host: host}
 }
 
+// run is the state of one wake. ADK calls the extension points one at a
+// time on its run goroutine; Run reads the state after the run ended.
 type run struct {
 	ctx   context.Context
 	cfg   Config
@@ -46,12 +81,36 @@ type run struct {
 	id    Identity
 	tools map[string]Tool
 	infos []*schema.ToolInfo
-	// offered holds the tools of the current model call.
-	offered   map[string]bool
+	// offered holds the tools of the current provider attempt.
+	offered map[string]bool
+	// msgs is the accepted conversation and the request the Host model
+	// receives. ADK keeps its own copies, with message IDs in Extra.
 	msgs      []*schema.Message
 	out       Outcome
 	lastErr   error
 	attempted bool
+	cur       attempt // the provider attempt decide judges
+	batch     *batch  // the accepted batch ADK's ToolsNode runs
+	done      bool
+	err       error // the error the wake ends with; ADK reports it wrapped
+}
+
+// attempt is what one provider attempt returned.
+type attempt struct {
+	seen  bool
+	resp  *schema.Message
+	err   error
+	fatal error
+}
+
+// batch collects the Host results of one accepted batch.
+type batch struct {
+	calls      map[string]ToolCall
+	ran        int
+	terminals  []Decision
+	err        error // effect failures: the wake fails after the batch
+	noProgress error
+	progress   bool
 }
 
 // Run executes one wake.
@@ -72,6 +131,9 @@ func (l *Loop) Run(ctx context.Context, w Wake) (Outcome, error) {
 	if len(w.Messages) == 0 {
 		return Outcome{}, errors.New("employee loop: a wake needs messages")
 	}
+	if slices.Contains(w.Messages, nil) {
+		return Outcome{}, errors.New("employee loop: a wake message is nil")
+	}
 	r := &run{ctx: ctx, cfg: cfg, model: l.model, host: l.host, id: w.Identity, tools: map[string]Tool{}, msgs: append([]*schema.Message(nil), w.Messages...)}
 	for _, t := range cfg.Tools {
 		if strings.TrimSpace(t.Name) == "" {
@@ -86,12 +148,132 @@ func (l *Loop) Run(ctx context.Context, w Wake) (Outcome, error) {
 	if r.infos, err = ToolInfos(cfg.Tools); err != nil {
 		return Outcome{}, err
 	}
-	out, err := r.loop()
-	out.Transcript = append([]*schema.Message(nil), r.msgs...)
-	return out, err
+	err = r.wake()
+	r.out.Transcript = append([]*schema.Message(nil), r.msgs...)
+	return r.out, err
 }
 
-// bind offers the tools of the next model call (all of them unless
+// wake runs the wake as one ADK ChatModelAgent run: its ReAct graph (model
+// -> tools -> model), its retry wrapper re-asking after a rejected response
+// and its ToolsNode running the calls of a batch in order. The loop plugs
+// into three extension points: the model the agent calls (provider), the
+// ShouldRetry policy that judges every response (decide) and the tools of
+// the ToolsNode (hostTool). The agent is built per wake: its tools close
+// over this wake's identity and Host.
+//
+// Cancellation is the loop's: the wake ends on r.ctx after a provider
+// attempt and before each call of a batch, as in v0.2, and the Host model,
+// the Host and every Config callback get r.ctx itself.
+func (r *run) wake() error {
+	tools := make([]tool.BaseTool, 0, len(r.cfg.Tools))
+	for i, t := range r.cfg.Tools {
+		tools = append(tools, hostTool{r: r, tool: t, info: r.infos[i]})
+	}
+	// ADK runs without cancellation, and Eino callback handlers carried by
+	// r.ctx do not see ADK's graph, as in v0.2.
+	ctx := callbacks.InitCallbacks(context.WithoutCancel(r.ctx), nil)
+	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+		Name:  "employee_loop",
+		Model: provider{r},
+		// ADK runs the calls of a batch in parallel by default.
+		ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: tools, ExecuteSequentially: true}},
+		// The wake budgets end the run first; ADK's limits only back them up.
+		// An iteration is one model node entry: one per accepted batch plus
+		// the entry whose attempt finds the budget spent (max avoids an
+		// overflow, which ADK would read as its default of 20).
+		MaxIterations: max(r.cfg.Budget.MaxModelResponses, r.cfg.Budget.MaxModelResponses+1),
+		ModelRetryConfig: &adk.ModelRetryConfig{
+			MaxRetries:  r.cfg.Budget.MaxPhysicalAttempts,
+			ShouldRetry: r.decide,
+			// A repair is asked at once; a zero delay does not sleep.
+			BackoffFunc: func(context.Context, int) time.Duration { return 0 },
+		},
+	})
+	if err != nil {
+		return err
+	}
+	// A wake never streams: ADK would emit a streamed response before
+	// ShouldRetry judged it.
+	events := agent.Run(ctx, &adk.AgentInput{Messages: detached(r.msgs)})
+	var runErr error
+	for event, ok := events.Next(); ok; event, ok = events.Next() {
+		if event.Err != nil {
+			runErr = event.Err
+		}
+	}
+	switch {
+	case r.err != nil:
+		return r.err
+	case r.done:
+		return nil
+	case runErr != nil:
+		// A recovered panic, or an ADK failure outside the extension points.
+		return runErr
+	}
+	// For example after runtime.Goexit in a callee.
+	return errors.New("employee loop: the wake ended without a decision")
+}
+
+// provider is the model ADK calls. ADK places it innermost, below its retry
+// and message-ID layers, so it sees every provider attempt and the
+// provider's own message. It sends the transcript, not ADK's copies of it,
+// and binds the tools of each attempt itself through the Host model's
+// WithTools. ADK's options carry only its whole, never narrowed, tool list,
+// which option-reading models such as eino-ext openai would prefer over the
+// bound tools, so they are not forwarded.
+type provider struct{ r *run }
+
+// IsCallbacksEnabled keeps ADK from wrapping the Host model in a second
+// ChatModel callback layer; the Host model reports its own callbacks.
+func (provider) IsCallbacksEnabled() bool { return true }
+
+func (p provider) Generate(_ context.Context, in []*schema.Message, _ ...model.Option) (*schema.Message, error) {
+	r := p.r
+	r.cur = attempt{seen: true}
+	if err := sameConversation(in, r.msgs); err != nil {
+		r.cur.fatal = err
+		return nil, errAttempt
+	}
+	if err := r.budgetErr(); err != nil {
+		r.cur.fatal = errors.Join(ErrModelBudget, err, r.lastErr)
+		return nil, errAttempt
+	}
+	m, opts, err := r.bind()
+	if err != nil {
+		r.cur.fatal = err
+		return nil, errAttempt
+	}
+	r.out.ModelCalls++
+	request := append([]*schema.Message(nil), r.msgs...)
+	started := time.Now()
+	resp, err := m.Generate(r.ctx, request, opts...)
+	if r.cfg.OnModelCall != nil {
+		r.cfg.OnModelCall(r.ctx, ModelCall{Attempt: r.out.ModelCalls, Request: request, Response: resp, Err: err, Elapsed: time.Since(started)})
+	}
+	r.cur.resp, r.cur.err = resp, err
+	if err != nil || resp == nil {
+		return nil, errAttempt
+	}
+	return assistant(resp), nil
+}
+
+// assistant returns resp as ADK may hold it. ADK's ToolsNode refuses a batch
+// whose role is not assistant, while v0.2 never read the role; the
+// transcript keeps resp itself, so requests are unchanged.
+func assistant(resp *schema.Message) *schema.Message {
+	if resp.Role == schema.Assistant {
+		return resp
+	}
+	cp := *resp
+	cp.Role = schema.Assistant
+	return &cp
+}
+
+func (provider) Stream(context.Context, []*schema.Message, ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	return nil, errors.New("employee loop: streaming is not used")
+}
+
+// bind offers the tools of the next provider attempt (all of them unless
 // Config.TurnTools narrows the list).
 func (r *run) bind() (model.ToolCallingChatModel, []model.Option, error) {
 	infos := r.infos
@@ -125,86 +307,129 @@ func (r *run) bind() (model.ToolCallingChatModel, []model.Option, error) {
 	return bound, opts, nil
 }
 
-func (r *run) loop() (Outcome, error) {
-	for {
-		if err := r.budgetErr(); err != nil {
-			return r.out, errors.Join(ErrModelBudget, err, r.lastErr)
-		}
-		m, opts, err := r.bind()
-		if err != nil {
-			return r.out, err
-		}
-		r.out.ModelCalls++
-		request := append([]*schema.Message(nil), r.msgs...)
-		started := time.Now()
-		resp, err := m.Generate(r.ctx, request, opts...)
-		if r.cfg.OnModelCall != nil {
-			r.cfg.OnModelCall(r.ctx, ModelCall{Attempt: r.out.ModelCalls, Request: request, Response: resp, Err: err, Elapsed: time.Since(started)})
-		}
-		if r.ctx.Err() != nil {
-			return r.out, r.ctx.Err()
-		}
-		if err != nil {
-			if r.cfg.Permanent != nil && r.cfg.Permanent(err) {
-				return r.out, err
-			}
-			r.fail(err)
-			continue
-		}
-		if resp == nil {
-			r.fail(errors.New("employee loop: model returned no message"))
-			continue
-		}
-		finish := ""
-		if meta := resp.ResponseMeta; meta != nil {
-			finish = meta.FinishReason
-			if meta.Usage != nil {
-				r.out.Usage.PromptTokens += meta.Usage.PromptTokens
-				r.out.Usage.CompletionTokens += meta.Usage.CompletionTokens
-			}
-		}
-		var done bool
-		switch {
-		case len(resp.ToolCalls) > 0 && (finish == "tool_calls" || finish == "stop" || finish == ""):
-			done, err = r.batch(resp)
-		case len(resp.ToolCalls) == 0 && (finish == "stop" || finish == ""):
-			done, err = r.text(resp)
-		default:
-			r.fail(fmt.Errorf("employee loop: incomplete model response: finish_reason=%q", finish))
-		}
-		if err != nil || done {
-			return r.out, err
-		}
+// detached returns copies of messages for ADK's state, so ADK never holds
+// (or stamps its message IDs on) the transcript's own messages.
+func detached(msgs []*schema.Message) []*schema.Message {
+	out := make([]*schema.Message, len(msgs))
+	for i, m := range msgs {
+		cp := *m
+		out[i] = &cp
 	}
+	return out
 }
 
-func (r *run) text(resp *schema.Message) (bool, error) {
+// sameConversation fails the wake if ADK's state and the transcript ever
+// disagree, for example after an Eino upgrade changes how ADK keeps it.
+func sameConversation(in, msgs []*schema.Message) error {
+	diverged := errors.New("employee loop: the ADK conversation diverged from the transcript")
+	if len(in) != len(msgs) {
+		return diverged
+	}
+	for i, a := range in {
+		b := msgs[i]
+		if a == nil {
+			return diverged
+		}
+		// ADK holds an accepted batch with the assistant role (see assistant).
+		sameRole := a.Role == b.Role || a.Role == schema.Assistant && len(b.ToolCalls) > 0
+		if !sameRole || a.Content != b.Content || a.ToolCallID != b.ToolCallID || a.ToolName != b.ToolName || len(a.ToolCalls) != len(b.ToolCalls) {
+			return diverged
+		}
+		for j := range a.ToolCalls {
+			if a.ToolCalls[j].ID != b.ToolCalls[j].ID {
+				return diverged
+			}
+		}
+	}
+	return nil
+}
+
+// decide is ADK's ShouldRetry. It judges every provider attempt before any
+// tool runs or any event leaves the agent: Retry asks again with the repair
+// instruction, RewriteError ends the run and an empty decision accepts.
+func (r *run) decide(_ context.Context, rc *adk.RetryContext) *adk.RetryDecision {
+	cur := r.cur
+	r.cur = attempt{}
+	switch {
+	case !cur.seen:
+		return r.stop(errors.Join(errors.New("employee loop: ADK judged an attempt the provider never saw"), rc.Err))
+	case cur.fatal != nil:
+		return r.stop(cur.fatal)
+	case r.ctx.Err() != nil:
+		return r.stop(r.ctx.Err())
+	case cur.err != nil && r.cfg.Permanent != nil && r.cfg.Permanent(cur.err):
+		return r.stop(cur.err)
+	case cur.err != nil:
+		return r.repair(rc, cur.err)
+	case cur.resp == nil:
+		return r.repair(rc, errNoMessage)
+	}
+	finish := ""
+	if meta := cur.resp.ResponseMeta; meta != nil {
+		finish = meta.FinishReason
+		if meta.Usage != nil {
+			r.out.Usage.PromptTokens += meta.Usage.PromptTokens
+			r.out.Usage.CompletionTokens += meta.Usage.CompletionTokens
+		}
+	}
+	switch calls := len(cur.resp.ToolCalls); {
+	case calls > 0 && (finish == "tool_calls" || finish == "stop" || finish == ""):
+		return r.acceptBatch(rc, cur.resp)
+	case calls == 0 && (finish == "stop" || finish == ""):
+		return r.text(rc, cur.resp)
+	}
+	return r.repair(rc, fmt.Errorf("employee loop: incomplete model response: finish_reason=%q", finish))
+}
+
+// repair records a rejected response or provider error and asks again; the
+// next attempt checks the budget. The rejected output never enters the
+// conversation.
+func (r *run) repair(rc *adk.RetryContext, err error) *adk.RetryDecision {
+	decision := &adk.RetryDecision{Retry: true}
+	if msg := r.fail(err); msg != nil {
+		decision.ModifiedInputMessages = append(slices.Clip(rc.InputMessages), detached([]*schema.Message{msg})...)
+		decision.PersistModifiedInputMessages = true
+	}
+	return decision
+}
+
+func (r *run) stop(err error) *adk.RetryDecision {
+	return &adk.RetryDecision{RewriteError: r.end(err)}
+}
+
+// end records the error the wake ends with; ADK wraps what it reports, so
+// Run returns this one.
+func (r *run) end(err error) error {
+	if r.err == nil {
+		r.err = err
+	}
+	return err
+}
+
+// text judges a plain answer.
+func (r *run) text(rc *adk.RetryContext, resp *schema.Message) *adk.RetryDecision {
 	text := strings.TrimSpace(resp.Content)
 	if !r.cfg.RequireTerminalTool {
 		if text == "" {
-			r.fail(errors.New("employee loop: a plain reply needs text"))
-			return false, nil
+			return r.repair(rc, errors.New("employee loop: a plain reply needs text"))
 		}
 		if err := r.guard(text); err != nil {
-			r.fail(err)
-			return false, nil
+			return r.repair(rc, err)
 		}
 		r.accept(resp, true)
 		r.out.Decision = Decision{Kind: Reply, Reply: text}
-		return true, nil
+		r.done = true
+		return &adk.RetryDecision{}
 	}
 	final, ok := r.host.(FinalTextHost)
 	if !r.cfg.AcceptFinalText || !ok || r.out.ModelCalls != 1 || r.attempted || text == "" {
-		r.fail(errTerminalRequired)
-		return false, nil
+		return r.repair(rc, errTerminalRequired)
 	}
 	if len(text) > r.cfg.FinalTextLimit {
-		r.fail(fmt.Errorf("employee loop: final text exceeds %d bytes", r.cfg.FinalTextLimit))
-		return false, nil
+		return r.repair(rc, fmt.Errorf("employee loop: final text exceeds %d bytes", r.cfg.FinalTextLimit))
 	}
 	if err := r.guard(text); err != nil {
-		r.fail(err)
-		return false, nil
+		return r.repair(rc, err)
 	}
 	// The Host may commit the reply, so a failure here ends the wake rather
 	// than asking the model again.
@@ -222,14 +447,17 @@ func (r *run) text(resp *schema.Message) (bool, error) {
 		r.out.Receipts = append(r.out.Receipts, Receipt{ToolName: FinalTextOrigin, ID: result.Receipt})
 	}
 	if err != nil {
-		return false, err
+		return r.stop(err)
 	}
 	r.accept(resp, true)
 	r.out.Decision = *result.Terminal
-	return true, nil
+	r.done = true
+	return &adk.RetryDecision{}
 }
 
-func (r *run) batch(resp *schema.Message) (bool, error) {
+// acceptBatch validates a native batch before any call runs; ADK then runs
+// it through hostTool.
+func (r *run) acceptBatch(rc *adk.RetryContext, resp *schema.Message) *adk.RetryDecision {
 	calls, err := parseCalls(resp)
 	if err == nil {
 		err = r.validate(calls)
@@ -238,70 +466,87 @@ func (r *run) batch(resp *schema.Message) (bool, error) {
 		if r.cfg.OnBatchRejected != nil {
 			r.cfg.OnBatchRejected(calls, err)
 		}
-		r.fail(err)
-		return false, nil
+		return r.repair(rc, err)
 	}
 	r.accept(resp, false)
-	var terminals []Decision
-	var batchErr, noProgress error
-	progress := false
-	for _, call := range calls {
-		if err := r.ctx.Err(); err != nil {
-			return false, errors.Join(batchErr, err)
-		}
-		tool := r.tools[call.Name]
-		r.attempted = true
-		result, callErr := r.execute(tool, call)
-		if result.Terminal != nil {
-			t := *result.Terminal
-			result.Terminal = &t
-		}
-		outcome := ToolOutcome{NativeToolCallID: call.NativeToolCallID, ToolName: call.Name, Result: result}
-		receipt := strings.TrimSpace(result.Receipt)
-		if receipt != "" {
-			r.out.Receipts = append(r.out.Receipts, Receipt{NativeToolCallID: call.NativeToolCallID, ToolName: call.Name, ID: result.Receipt})
-		}
-		if callErr == nil && tool.Effect && receipt == "" {
-			callErr = fmt.Errorf("%w: %s", ErrMissingReceipt, call.Name)
-		}
-		if callErr == nil && result.Terminal != nil && result.Terminal.Kind == Dispatched && receipt == "" {
-			callErr = fmt.Errorf("%w: dispatch", ErrMissingReceipt)
-		}
-		if callErr != nil {
-			outcome.Error = callErr.Error()
-			r.out.ToolOutcomes = append(r.out.ToolOutcomes, outcome)
-			content, _ := json.Marshal(map[string]string{"error": callErr.Error()})
-			r.msgs = append(r.msgs, schema.ToolMessage(string(content), call.NativeToolCallID, schema.WithToolName(call.Name)))
-			noProgress = errors.Join(noProgress, callErr)
-			refused := errors.Is(callErr, ErrToolRefused) && receipt == ""
-			if (tool.Effect || receipt != "" || errors.Is(callErr, ErrMissingReceipt)) && !refused {
-				batchErr = errors.Join(batchErr, fmt.Errorf("employee loop: tool %s failed: %w", call.Name, callErr))
-			}
-			continue
-		}
-		r.out.ToolOutcomes = append(r.out.ToolOutcomes, outcome)
-		progress = true
-		r.msgs = append(r.msgs, schema.ToolMessage(result.Content, call.NativeToolCallID, schema.WithToolName(call.Name)))
-		if result.Terminal != nil {
-			terminals = append(terminals, *result.Terminal)
-		}
+	r.batch = &batch{calls: make(map[string]ToolCall, len(calls))}
+	for _, c := range calls {
+		r.batch.calls[c.NativeToolCallID] = c
 	}
-	if progress {
-		r.out.BudgetUsage.ConsecutiveErrors = 0
-		r.lastErr = nil
+	return &adk.RetryDecision{}
+}
+
+// hostTool runs one Host tool in ADK's ToolsNode. A Host error is answered
+// to the model as tool content, never returned to ADK: compose fails the
+// whole run on a tool error, while a wake fails only after the batch and
+// only on effect failures.
+type hostTool struct {
+	r    *run
+	tool Tool
+	info *schema.ToolInfo
+}
+
+// IsCallbacksEnabled keeps ADK from wrapping Host calls in Tool callbacks.
+func (hostTool) IsCallbacksEnabled() bool { return true }
+
+func (t hostTool) Info(context.Context) (*schema.ToolInfo, error) { return t.info, nil }
+
+// InvokableRun executes the call with the arguments decide validated, and
+// settles the batch after its last call.
+func (t hostTool) InvokableRun(ctx context.Context, _ string, _ ...tool.Option) (string, error) {
+	r, b, id := t.r, t.r.batch, compose.GetToolCallID(ctx)
+	switch {
+	case r.err != nil:
+		// The ToolsNode runs the remaining calls of a failed batch too.
+		return "", r.err
+	case b == nil || b.calls[id].Name != t.tool.Name:
+		return "", r.end(fmt.Errorf("employee loop: tool call %q was not validated", id))
+	case r.ctx.Err() != nil:
+		return "", r.end(errors.Join(b.err, r.ctx.Err()))
+	}
+	call := b.calls[id]
+	r.attempted = true
+	result, callErr := r.execute(t.tool, call)
+	if result.Terminal != nil {
+		d := *result.Terminal
+		result.Terminal = &d
+	}
+	outcome := ToolOutcome{NativeToolCallID: call.NativeToolCallID, ToolName: call.Name, Result: result}
+	receipt := strings.TrimSpace(result.Receipt)
+	if receipt != "" {
+		r.out.Receipts = append(r.out.Receipts, Receipt{NativeToolCallID: call.NativeToolCallID, ToolName: call.Name, ID: result.Receipt})
+	}
+	if callErr == nil && t.tool.Effect && receipt == "" {
+		callErr = fmt.Errorf("%w: %s", ErrMissingReceipt, call.Name)
+	}
+	if callErr == nil && result.Terminal != nil && result.Terminal.Kind == Dispatched && receipt == "" {
+		callErr = fmt.Errorf("%w: dispatch", ErrMissingReceipt)
+	}
+	content := result.Content
+	if callErr != nil {
+		outcome.Error = callErr.Error()
+		raw, _ := json.Marshal(map[string]string{"error": callErr.Error()})
+		content = string(raw)
+		b.noProgress = errors.Join(b.noProgress, callErr)
+		refused := errors.Is(callErr, ErrToolRefused) && receipt == ""
+		if (t.tool.Effect || receipt != "" || errors.Is(callErr, ErrMissingReceipt)) && !refused {
+			b.err = errors.Join(b.err, fmt.Errorf("employee loop: tool %s failed: %w", call.Name, callErr))
+		}
 	} else {
-		r.out.BudgetUsage.ConsecutiveErrors++
-		r.lastErr = noProgress
+		b.progress = true
+		if result.Terminal != nil {
+			b.terminals = append(b.terminals, *result.Terminal)
+		}
 	}
-	decision, err := aggregate(terminals)
-	if err = errors.Join(batchErr, err); err != nil {
-		return false, err
+	r.out.ToolOutcomes = append(r.out.ToolOutcomes, outcome)
+	r.msgs = append(r.msgs, schema.ToolMessage(content, call.NativeToolCallID, schema.WithToolName(call.Name)))
+	b.ran++
+	if b.ran == len(b.calls) {
+		if err := r.afterBatch(); err != nil {
+			return "", err
+		}
 	}
-	if decision.Kind != "" {
-		r.out.Decision = decision
-		return true, nil
-	}
-	return false, nil
+	return content, nil
 }
 
 func (r *run) execute(tool Tool, call ToolCall) (ToolResult, error) {
@@ -322,6 +567,30 @@ func (r *run) execute(tool Tool, call ToolCall) (ToolResult, error) {
 	return result, err
 }
 
+// afterBatch settles a batch on the Host's results once its last call ran,
+// before ADK asks the model again.
+func (r *run) afterBatch() error {
+	b := r.batch
+	r.batch = nil
+	if b.progress {
+		r.out.BudgetUsage.ConsecutiveErrors = 0
+		r.lastErr = nil
+	} else {
+		r.out.BudgetUsage.ConsecutiveErrors++
+		r.lastErr = b.noProgress
+	}
+	decision, err := aggregate(b.terminals)
+	if err = errors.Join(b.err, err); err != nil {
+		return r.end(err)
+	}
+	if decision.Kind != "" {
+		r.out.Decision = decision
+		r.done = true
+		return errDecided
+	}
+	return nil
+}
+
 // accept records an accepted response. A plain or terminal answer is
 // progress; a tool batch counts as progress only once a call succeeds.
 func (r *run) accept(resp *schema.Message, progress bool) {
@@ -333,9 +602,9 @@ func (r *run) accept(resp *schema.Message, progress bool) {
 	}
 }
 
-// fail records a rejected response or provider error and appends a repair
-// instruction. The rejected output itself never enters the transcript.
-func (r *run) fail(err error) {
+// fail records a rejected response or provider error and returns the
+// repair instruction it appended, if any.
+func (r *run) fail(err error) *schema.Message {
 	r.lastErr = err
 	r.out.BudgetUsage.ConsecutiveErrors++
 	var repair string
@@ -347,12 +616,15 @@ func (r *run) fail(err error) {
 			repair += " " + r.terminalInstruction()
 		}
 	}
+	var msg *schema.Message
 	if strings.TrimSpace(repair) != "" {
-		r.msgs = append(r.msgs, schema.UserMessage(repair))
+		msg = schema.UserMessage(repair)
+		r.msgs = append(r.msgs, msg)
 	}
 	if r.cfg.OnModelFailure != nil {
 		r.cfg.OnModelFailure(err)
 	}
+	return msg
 }
 
 func (r *run) terminalInstruction() string {
@@ -376,6 +648,9 @@ func (r *run) guard(text string) error {
 	return r.cfg.ValidateText(text)
 }
 
+// budgetErr checks the wake budgets before a provider attempt. ADK's own
+// counters cannot: its retry count restarts at every model node entry and
+// it has no error streak.
 func (r *run) budgetErr() error {
 	u, b := r.out, r.cfg.Budget
 	switch {
@@ -407,7 +682,9 @@ func parseCalls(resp *schema.Message) ([]ToolCall, error) {
 }
 
 // validate rejects a batch before any call runs. Every rejection is
-// repairable.
+// repairable. ADK has none of these rules: its ToolsNode runs any
+// registered tool, ends the run on an unknown one and only unmarshals
+// arguments.
 func (r *run) validate(calls []ToolCall) error {
 	var disposition Disposition
 	for _, c := range calls {
