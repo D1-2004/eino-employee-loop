@@ -230,14 +230,15 @@ builds indexes `CONCURRENTLY`.
 ## Example: Multica
 
 Multica embeds the loop as a selectable engine next to its built-in kernel. Both
-take the same frozen configuration, durable model and Host, so switching engines
-changes only the decision loop:
+run the same wake the Host prepared, with the same durable model and Host, so
+switching engines changes only the decision loop:
 
 | Duty | Multica |
 | --- | --- |
 | Admission, windows, leases | `employee_scene_job` and its workers |
-| Wake assembly | the built-in context builder (`WakeEntries`) |
+| Wake assembly | `employeehost.Prepare`: initial session, per-call rules and identity, once per wake |
 | Tools, permissions, receipts | the EmployeeLoop Host and its tool journal |
 | Durable model | the job's model journal |
 | Delivery | the DingTalk response outbox |
-| Turn policy, repair text | `TurnTools` / `RepairText` from the built-in kernel's rules |
+| Turn policy, batch rules, repair text | every per-call hook calls the `employeehost.Turn` the built-in kernel uses; the module's static batch rules are off |
+| Streamed first feedback | a decorator on the Host's model; the loop sees complete responses |

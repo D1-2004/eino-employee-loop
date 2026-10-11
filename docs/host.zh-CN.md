@@ -120,13 +120,14 @@ Host 自己的钩子（`ValidateBatch`、`ValidateText`、`ValidateDecision`、p
 
 ## 示例：Multica
 
-Multica 把本循环作为可选引擎，与内置内核并列。两者接收相同的冻结配置、可持久模型和 Host，所以切换引擎只换掉决策循环：
+Multica 把本循环作为可选引擎，与内置内核并列。两者运行 Host 准备好的同一个 wake，用相同的可持久模型和 Host，所以切换引擎只换掉决策循环：
 
 | 职责 | Multica |
 | --- | --- |
 | 受理、窗口、租约 | `employee_scene_job` 及其 worker |
-| 唤醒装配 | 内置上下文构建器（`WakeEntries`） |
+| 唤醒装配 | `employeehost.Prepare`：每个 wake 准备一次初始会话、每轮规则和身份 |
 | 工具、权限、回执 | EmployeeLoop Host 及其工具日志 |
 | 可持久模型 | 任务的模型日志 |
 | 送达 | 钉钉回复发件箱 |
-| 每轮工具策略、修复文案 | 由内置内核规则提供的 `TurnTools` / `RepairText` |
+| 每轮工具策略、批次规则、修复文案 | 每个逐次钩子都调用内置内核所用的 `employeehost.Turn`；模块的静态批次规则关闭 |
+| 流式首条反馈 | Host 模型上的装饰器；循环只看完整响应 |
