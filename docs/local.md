@@ -22,7 +22,7 @@ export LLM_MODEL=qwen3.8-max
 The employee *is* an account the [dws CLI](https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli)
 is logged in to. It subscribes to the account's personal IM events — every
 direct message (`--kind all-direct`) and every group message that mentions it
-(`--kind at-me`) — and answers as that account.
+(`--kind at-me`) — and answers as that account with a quote reply to the message.
 
 ```bash
 go run ./cmd/eel -channel dws -profile <corpId:userId> -name <display name> -locale zh-CN
@@ -67,7 +67,7 @@ production Host uses:
 | --- | --- |
 | trace | `employee_loop`, session = conversation id, tags `agent-<id>`, `engine-eino` |
 | generation | `employee_model` per provider request, with input messages, output and token usage |
-| span | one per tool call (`reply`, `stay_quiet`) |
+| tool | one per tool call (`reply`, `stay_quiet`) |
 | metadata | `employee_loop_engine=eino`, `employee_contract_event/class/mode/lane/session`, `employee_decision`, `employee_model_calls` |
 | environment | `LANGFUSE_ENVIRONMENT`, default `local` |
 

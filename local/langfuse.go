@@ -21,7 +21,7 @@ import (
 // the names Multica uses so the same trace views and eval tooling apply:
 // a trace "employee_loop" per wake (session = conversation, tag
 // "agent-<employee>"), one generation "employee_model" per provider request
-// and one span per tool call.
+// and one tool observation per tool call.
 type Tracer struct {
 	BaseURL, PublicKey, SecretKey string
 	// Environment separates local traces from deployed ones.
@@ -117,11 +117,16 @@ func (tr *Trace) Generation(name, model string, call loop.ModelCall) {
 		"name": name, "model": model, "startTime": stamp(end.Add(-call.Elapsed)), "endTime": stamp(end),
 		"input": call.Request, "metadata": map[string]any{"attempt": call.Attempt},
 	}
-	if call.Response != nil {
-		body["output"] = call.Response
-		if meta := call.Response.ResponseMeta; meta != nil && meta.Usage != nil {
-			body["usage"] = map[string]any{"input": meta.Usage.PromptTokens, "output": meta.Usage.CompletionTokens, "total": meta.Usage.TotalTokens, "unit": "TOKENS"}
+	if resp := call.Response; resp != nil {
+		// The OpenAI chat-completion shape, as a provider-recording Host logs it.
+		finish := ""
+		if meta := resp.ResponseMeta; meta != nil {
+			finish = meta.FinishReason
+			if meta.Usage != nil {
+				body["usage"] = map[string]any{"input": meta.Usage.PromptTokens, "output": meta.Usage.CompletionTokens, "total": meta.Usage.TotalTokens, "unit": "TOKENS"}
+			}
 		}
+		body["output"] = map[string]any{"choices": []any{map[string]any{"index": 0, "finish_reason": finish, "message": resp}}}
 	}
 	if call.Err != nil {
 		body["level"], body["statusMessage"] = "ERROR", call.Err.Error()
@@ -142,7 +147,7 @@ func (tr *Trace) Tool(call loop.ToolCall, result loop.ToolResult, err error, ela
 	if err != nil {
 		body["level"], body["statusMessage"] = "ERROR", err.Error()
 	}
-	tr.add("span-create", body)
+	tr.add("tool-create", body)
 }
 
 // End closes the trace with its output and extra metadata and sends it.

@@ -127,7 +127,7 @@ func TestTraceUsesTheEmployeeLoopShape(t *testing.T) {
 	for _, item := range batch.Batch {
 		types[item.Type]++
 	}
-	if types["trace-create"] != 1 || types["generation-create"] != 1 || types["span-create"] != 1 {
+	if types["trace-create"] != 1 || types["generation-create"] != 1 || types["tool-create"] != 1 {
 		t.Fatalf("batch types %v", types)
 	}
 	trace := batch.Batch[0].Body
