@@ -44,7 +44,7 @@ var (
 	// other than "function", or with an id repeated in its response.
 	ErrInvalidToolCall = errors.New("employee loop: invalid or duplicate native tool call identity")
 	// ErrInvalidArguments: arguments that are not a JSON object or break the
-	// tool's Schema.
+	// tool's Schema (Config.ValidateArguments when set).
 	ErrInvalidArguments = errors.New("employee loop: invalid arguments")
 	// ErrUnknownTool: a tool the Config does not have, or one TurnTools did
 	// not offer to this provider attempt.
@@ -292,6 +292,13 @@ type Config struct {
 	// and Run unchanged. ValidateBatch must not modify the calls it receives.
 	ValidateBatch func([]ToolCall) error
 	ValidateText  func(string) error
+	// ValidateArguments replaces the built-in argument check of every call
+	// (the package function ValidateArguments over Tool.Schema), so a Host
+	// with its own argument rules rejects exactly the arguments it would
+	// reject; nil keeps the built-in check. It runs where that check runs,
+	// before ValidateBatch; its problems reject the batch as
+	// ErrInvalidArguments. It must not modify the arguments.
+	ValidateArguments func(Tool, map[string]any) []string
 	// Permanent classifies provider errors that end the wake at once.
 	Permanent func(error) bool
 	// Hooks observe the wake; they never change it and must not block.

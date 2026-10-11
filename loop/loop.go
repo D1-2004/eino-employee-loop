@@ -726,7 +726,7 @@ func (r *run) validate(calls []ToolCall) error {
 		if tool.Exclusive && len(calls) > 1 {
 			return classify(ErrExclusiveTool, fmt.Errorf("employee loop: %s must be the only call of its batch", c.Name))
 		}
-		if problems := ValidateArguments(tool.Schema, c.Arguments); len(problems) > 0 {
+		if problems := r.arguments(tool, c.Arguments); len(problems) > 0 {
 			return classify(ErrInvalidArguments, fmt.Errorf("employee loop: invalid params for %s: %s", c.Name, strings.Join(problems, "; ")))
 		}
 		for _, name := range tool.publicArgs() {
@@ -741,6 +741,15 @@ func (r *run) validate(calls []ToolCall) error {
 		return r.cfg.ValidateBatch(calls)
 	}
 	return nil
+}
+
+// arguments checks one call's arguments with the Host's rules, or the
+// built-in ones when the Host has none.
+func (r *run) arguments(tool Tool, args map[string]any) []string {
+	if r.cfg.ValidateArguments != nil {
+		return r.cfg.ValidateArguments(tool, args)
+	}
+	return ValidateArguments(tool.Schema, args)
 }
 
 // aggregate combines the terminal decisions of one batch; static conflicts

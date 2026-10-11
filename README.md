@@ -50,17 +50,19 @@ out, err := loop.New(loop.Config{
 The types mirror a typical employee kernel (`Tool`, `ToolCall`, `ToolResult`,
 `Decision`, `Receipt`, `ToolOutcome`, `Outcome`, `Budget`), so an existing Host
 swaps engines by mapping fields, not concepts. Hooks keep Host policy outside the
-module: `ValidateBatch`, `ValidateText`, `TurnTools` (which tools each model call
-offers), `FinalTextAllowed` (which plain answers may end the wake), `Progress`
-(which successful calls reset the error streak), `RepairText`, `Permanent`, and
-observers for model calls, tool calls, accepted and rejected batches and
-failures.
+module: `ValidateBatch`, `ValidateText`, `ValidateArguments` (the Host's own
+argument rules in place of the built-in schema check), `TurnTools` (which tools
+each model call offers), `FinalTextAllowed` (which plain answers may end the
+wake), `Progress` (which successful calls reset the error streak), `RepairText`,
+`Permanent`, and observers for model calls, tool calls, accepted and rejected
+batches and failures.
 
 Rules the loop enforces:
 
 - a batch is validated as a whole before any call runs (unknown or not-offered
   tools, exclusive tools, conflicting static terminal dispositions, argument
-  schemas, Host rules) — a rejected batch is repaired, never half-executed;
+  schemas or the Host's `ValidateArguments`, Host rules) — a rejected batch is
+  repaired, never half-executed;
 - an effect without a Host receipt is never done;
 - a Host refusal (`ErrToolRefused`) goes back to the model as a tool result;
 - invalid output never enters the transcript;

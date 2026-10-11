@@ -112,7 +112,8 @@ are unique within one response only, hence the turn in the key.
 
 **Per-wake state.** A response passes, in this order: `OnModelCall`; the
 loop's checks (call identity and arguments, offered tools, terminal and
-exclusive rules, schemas, `PublicArgs` text); `ValidateBatch`; then either
+exclusive rules, schemas or `ValidateArguments`, `PublicArgs` text);
+`ValidateBatch`; then either
 `OnBatchRejected` and a repair, or `OnBatchAccepted`, which receives the batch
 once before the first `Execute` of its calls. A Host whose policy hooks
 (`TurnTools`, `ValidateBatch`, `FinalTextAllowed`, `Progress`) depend on what

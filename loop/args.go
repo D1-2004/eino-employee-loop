@@ -43,7 +43,8 @@ func ToolInfos(tools []Tool) ([]*schema.ToolInfo, error) {
 // ValidateArguments checks arguments against the portable subset of JSON
 // Schema used by tool contracts: type, required, additionalProperties=false,
 // properties, enum, minLength, maxLength, minItems, maxItems and items.
-// Hosts with a full validator add it through Config.ValidateBatch.
+// A Host with its own argument rules replaces it through
+// Config.ValidateArguments.
 func ValidateArguments(schemaMap map[string]any, args map[string]any) []string {
 	var problems []string
 	validateValue("", schemaMap, args, &problems)

@@ -113,6 +113,39 @@ func TestFinalTextAllowedChoosesTheResponses(t *testing.T) {
 
 var errBad = errors.New("bad public text")
 
+func TestValidateArgumentsReplacesTheSchemaCheck(t *testing.T) {
+	var asked []string
+	var rejected []error
+	h := &fakeHost{}
+	m := lt.New(
+		// Breaks the built-in schema check (a number, an unknown property).
+		lt.Tools(lt.Call{ID: "c1", Name: "read_task", Args: map[string]any{"task_ref": 1, "extra": true}}),
+		lt.Tools(lt.Call{ID: "c2", Name: "read_task", Args: map[string]any{"task_ref": "blocked"}}),
+		lt.Tools(lt.Call{ID: "c3", Name: "reply", Args: map[string]any{"source_ref": "m1", "reply": "done"}}),
+	)
+	out, err := run(t, m, h, func(c *loop.Config) {
+		c.Budget = loop.Budget{MaxModelResponses: 5, MaxConsecutiveErrors: 3, MaxPhysicalAttempts: 5}
+		c.ValidateArguments = func(tool loop.Tool, args map[string]any) []string {
+			asked = append(asked, tool.Name)
+			if args["task_ref"] == "blocked" {
+				return []string{"task_ref: blocked"}
+			}
+			return nil
+		}
+		c.OnBatchRejected = func(_ []loop.ToolCall, err error) { rejected = append(rejected, err) }
+	})
+	var ran []string
+	for _, call := range h.calls {
+		ran = append(ran, call.NativeToolCallID)
+	}
+	if err != nil || out.Reply != "done" || !slices.Equal(asked, []string{"read_task", "read_task", "reply"}) || !slices.Equal(ran, []string{"c1", "c3"}) {
+		t.Fatalf("out=%+v err=%v asked=%v ran=%v", out, err, asked, ran)
+	}
+	if len(rejected) != 1 || !errors.Is(rejected[0], loop.ErrInvalidArguments) || rejected[0].Error() != "employee loop: invalid params for read_task: task_ref: blocked" {
+		t.Fatalf("rejected=%v", rejected)
+	}
+}
+
 func TestOnBatchAcceptedSeesOnlyAcceptedBatchesBeforeTheyRun(t *testing.T) {
 	var log []string
 	ids := func(calls []loop.ToolCall) string {
