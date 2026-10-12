@@ -116,6 +116,7 @@ traces and running an eval suite against the local employee.
 - [docs/events.md](docs/events.md) — classification, routing invariants, sessions, preemption, extension types.
 - [docs/host.md](docs/host.md) — what a Host implements: tools, receipts, refusals, wake assembly, storage, replay, delivery.
 - [docs/local.md](docs/local.md) — local verification.
+- [docs/integration.md](docs/integration.md) — integrating the loop into your platform: the minimum Host, state, conformance, drivers, swapping engines, evaluation.
 
 Texts are multilingual: the loop's repair instructions (`loop/locales`), the
 local employee's prompt (`local/locales`) and event summaries

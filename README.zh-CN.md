@@ -83,6 +83,7 @@ go run ./cmd/eel -channel console -v -model-script local/testdata/console.json  
 - [docs/events.zh-CN.md](docs/events.zh-CN.md)——分类、路由不变量、会话、抢占、扩展类型。
 - [docs/host.zh-CN.md](docs/host.zh-CN.md)——Host 要实现什么：工具、回执、拒绝、唤醒装配、存储、重放、送达。
 - [docs/local.zh-CN.md](docs/local.zh-CN.md)——本地验证。
+- [docs/integration.zh-CN.md](docs/integration.zh-CN.md)——把本循环接入你的平台：最小 Host、状态、一致性检查、驱动、切换引擎、评测。
 
 文案支持多语言：循环的修复指令（`loop/locales`）、本地员工的提示词（`local/locales`）和事件说明（`event/events.json`）都提供 `en` 与 `zh-CN`，并有测试保证键集合一致。新增语言只需新增文件。
 
