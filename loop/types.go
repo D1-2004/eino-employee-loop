@@ -261,6 +261,26 @@ type ModelCall struct {
 type Config struct {
 	Tools  []Tool
 	Budget Budget
+	// TransformResponse optionally derives the accepted native response from
+	// the provider's original response. It runs after OnModelCall (which sees
+	// the original), before ADK or the transcript receives the response. It
+	// must return a detached response and keep correlation IDs of retained
+	// calls. Every transformed batch still passes all normal validators.
+	TransformResponse func(call int, outcomes []ToolOutcome, response *schema.Message) (*schema.Message, error)
+	// BeforeTool adds a use-time check before each Host call. Its refusal is
+	// paired with that native call and accounted like a Host error; return
+	// ErrToolRefused for a proven rejection before any effect.
+	BeforeTool func(call int, outcomes []ToolOutcome, tool ToolCall) error
+	// CountBatch controls error-streak accounting after a completed batch.
+	// False leaves the previous streak unchanged (for a standalone protocol
+	// repair). Response and physical budgets are never exempted.
+	CountBatch func(call int, calls []ToolCall, outcomes []ToolOutcome, progress bool) bool
+	// CheckContextAfterTool preserves committed receipts but prevents a
+	// cancelled final tool from turning a cancelled wake into success.
+	CheckContextAfterTool bool
+	// RawFinalTextLimit checks the untrimmed provider bytes when a Host's
+	// frozen text limit was defined before whitespace normalization.
+	RawFinalTextLimit bool
 	// Progress reports whether a successful call is progress. A batch with
 	// progress resets the consecutive error count; a batch without adds one
 	// to it, as a batch whose calls all failed does. Nil counts every

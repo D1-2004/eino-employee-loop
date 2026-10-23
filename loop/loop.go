@@ -116,6 +116,7 @@ type attempt struct {
 // batch collects the Host results of one accepted batch.
 type batch struct {
 	calls      map[string]ToolCall
+	ordered    []ToolCall
 	ran        int
 	terminals  []Decision
 	err        error // effect failures: the wake fails after the batch
@@ -259,6 +260,9 @@ func (p provider) Generate(_ context.Context, in []*schema.Message, _ ...model.O
 	resp, err := m.Generate(r.ctx, request, opts...)
 	if r.cfg.OnModelCall != nil {
 		r.cfg.OnModelCall(r.ctx, ModelCall{Attempt: r.out.ModelCalls, Request: request, Response: resp, Err: err, Elapsed: time.Since(started)})
+	}
+	if err == nil && resp != nil && r.cfg.TransformResponse != nil {
+		resp, err = r.cfg.TransformResponse(r.out.ModelCalls, r.out.ToolOutcomes, resp)
 	}
 	r.cur.resp, r.cur.err = resp, err
 	if err != nil || resp == nil {
@@ -435,7 +439,11 @@ func (r *run) text(rc *adk.RetryContext, resp *schema.Message) *adk.RetryDecisio
 	if !r.cfg.AcceptFinalText || !ok || text == "" || !r.finalTextAllowed() {
 		return r.repair(rc, ErrTerminalRequired)
 	}
-	if len(text) > r.cfg.FinalTextLimit {
+	textBytes := len(text)
+	if r.cfg.RawFinalTextLimit {
+		textBytes = len(resp.Content)
+	}
+	if textBytes > r.cfg.FinalTextLimit {
 		return r.repair(rc, classify(ErrFinalTextRejected, fmt.Errorf("employee loop: final text exceeds %d bytes", r.cfg.FinalTextLimit)))
 	}
 	if err := r.guard(text); err != nil {
@@ -491,7 +499,7 @@ func (r *run) acceptBatch(rc *adk.RetryContext, resp *schema.Message) *adk.Retry
 		return r.repair(rc, err)
 	}
 	r.accept(resp, false)
-	r.batch = &batch{calls: make(map[string]ToolCall, len(calls))}
+	r.batch = &batch{calls: make(map[string]ToolCall, len(calls)), ordered: calls}
 	for _, c := range calls {
 		r.batch.calls[c.NativeToolCallID] = c
 	}
@@ -579,6 +587,9 @@ func (t hostTool) InvokableRun(ctx context.Context, _ string, _ ...tool.Option) 
 	}
 	r.out.ToolOutcomes = append(r.out.ToolOutcomes, outcome)
 	r.msgs = append(r.msgs, schema.ToolMessage(content, call.NativeToolCallID, schema.WithToolName(call.Name)))
+	if r.cfg.CheckContextAfterTool && r.ctx.Err() != nil {
+		return "", r.end(errors.Join(b.err, r.ctx.Err()))
+	}
 	b.ran++
 	if b.ran == len(b.calls) {
 		if err := r.afterBatch(); err != nil {
@@ -589,6 +600,11 @@ func (t hostTool) InvokableRun(ctx context.Context, _ string, _ ...tool.Option) 
 }
 
 func (r *run) execute(tool Tool, call ToolCall) (ToolResult, error) {
+	if r.cfg.BeforeTool != nil {
+		if err := r.cfg.BeforeTool(r.out.ModelCalls, r.out.ToolOutcomes, call); err != nil {
+			return ToolResult{}, err
+		}
+	}
 	if r.host == nil {
 		return ToolResult{}, errors.New("employee loop: missing host for tool execution")
 	}
@@ -611,7 +627,10 @@ func (r *run) execute(tool Tool, call ToolCall) (ToolResult, error) {
 func (r *run) afterBatch() error {
 	b := r.batch
 	r.batch = nil
-	if b.progress {
+	count := r.cfg.CountBatch == nil || r.cfg.CountBatch(r.out.ModelCalls, b.ordered, r.out.ToolOutcomes, b.progress)
+	if !count {
+		// Protocol repair is neither progress nor another failure.
+	} else if b.progress {
 		r.out.BudgetUsage.ConsecutiveErrors = 0
 		r.lastErr = nil
 	} else {
