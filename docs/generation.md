@@ -22,6 +22,12 @@ permission error as retryable. `MaxAttempts` bounds this invocation; durable
 providers must additionally enforce their original persisted budget, so restarting
 a process never resets the allowance. No Provider is implicitly optional.
 
+`Continue` optionally requests another bounded round after a validated and
+journaled response (for example, repairing only rejected parts of a memory
+proposal). It is separate from retrying a failed response. At the configured
+ceiling, the last validated decision remains available and `LimitReached` records
+that further work was requested; this never means the business work is complete.
+
 The graph scheduler survives request cancellation only to reach the journal node.
 Each Provider receives the original request context; a journal may perform a
 bounded independent write to retain a known committed result. No new preparation
@@ -48,3 +54,11 @@ the pinned Eino OpenAI adapter otherwise converts a forced single-tool choice to
 a named tool, which differs from a Host that froze literal `required`. Validation
 continues to check the original finish reason; it never rewrites `stop` into
 `tool_calls` to make an incompatible response pass.
+
+`MaxAttempts` matches the consumer's invocation budget (one for a one-shot
+projection). `RejectDuplicateJSON` detects duplicate members before a map decode
+could silently overwrite them. A rejected one-shot output is retained; a later
+consumer job attempt gets its own artifact instead of hiding an internal repair.
+`FinishReasons` may declare a consumer's existing named-tool `stop` contract;
+omitting it keeps the strict native `tool_calls` gate. The original reason is
+always preserved for the consumer's actual parser.

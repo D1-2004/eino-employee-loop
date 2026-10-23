@@ -77,3 +77,17 @@ func TestGraphCancellationSettlesPreparedAttemptWithoutAnotherModel(t *testing.T
 		t.Fatal(out, err, models, saves)
 	}
 }
+
+func TestValidatedContinuationRetainsFindingsAndRespectsCeiling(t *testing.T) {
+	models, saves, findings := 0, 0, 0
+	p := generation.Providers[int, int, int]{Context: generation.ContextFunc[int](func(_ context.Context, n int) (int, error) {
+		if saves != n-1 {
+			t.Error("continued before journal settlement")
+		}
+		return n, nil
+	}), Model: generation.ModelFunc[int, int](func(_ context.Context, n int) (int, error) { models++; return n, nil }), Decision: generation.DecisionFunc[int, int, int](func(_ context.Context, _ int, r int) (int, error) { findings += r; return findings, nil }), Journal: generation.JournalFunc[int, int, int](func(context.Context, generation.Attempt[int, int, int]) error { saves++; return nil })}
+	out, err := generation.Run(context.Background(), generation.Config[int, int, int]{MaxAttempts: 2, Continue: func(generation.Attempt[int, int, int]) bool { return true }}, p)
+	if err != nil || !out.Accepted || !out.LimitReached || out.Last.Decision != 3 || models != 2 || saves != 2 {
+		t.Fatal(out, err, models, saves)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -29,12 +30,15 @@ func TestOwnModelConsumerGenerationFixture(t *testing.T) {
 		t.Skip("consumer fixture and result paths required")
 	}
 	var fixture struct {
-		Mode          string
-		JSONSchema    map[string]any
-		RequestFields map[string]any
-		Messages      []*schema.Message
-		Tools         []loop.Tool
-		ExpectedTool  string
+		Mode                string
+		JSONSchema          map[string]any
+		RequestFields       map[string]any
+		Messages            []*schema.Message
+		Tools               []loop.Tool
+		ExpectedTool        string
+		FinishReasons       []string
+		MaxAttempts         int
+		RejectDuplicateJSON bool
 	}
 	raw, err := os.ReadFile(input)
 	if err != nil {
@@ -85,7 +89,7 @@ func TestOwnModelConsumerGenerationFixture(t *testing.T) {
 					}
 					for key, value := range fixture.RequestFields {
 						switch key {
-						case "tool_choice", "parallel_tool_calls", "max_completion_tokens", "enable_thinking", "temperature", "top_p", "reasoning_effort":
+						case "tool_choice", "parallel_tool_calls", "max_completion_tokens", "enable_thinking", "temperature", "top_p", "reasoning_effort", "response_format", "thinking":
 						default:
 							return nil, fmt.Errorf("unsupported frozen request field %s", key)
 						}
@@ -112,6 +116,15 @@ func TestOwnModelConsumerGenerationFixture(t *testing.T) {
 					return "", fmt.Errorf("one complete JSON response is required")
 				}
 				var object map[string]any
+				if fixture.RejectDuplicateJSON {
+					decoder := json.NewDecoder(strings.NewReader(m.Content))
+					if err := fixtureUniqueJSON(decoder, 0); err != nil {
+						return "", err
+					}
+					if _, err := decoder.Token(); err != io.EOF {
+						return "", fmt.Errorf("trailing JSON data")
+					}
+				}
 				if err := json.Unmarshal([]byte(m.Content), &object); err != nil || object == nil {
 					return "", fmt.Errorf("JSON object required")
 				}
@@ -120,7 +133,14 @@ func TestOwnModelConsumerGenerationFixture(t *testing.T) {
 				}
 				return "json", nil
 			}
-			if m == nil || m.ResponseMeta == nil || m.ResponseMeta.FinishReason != "tool_calls" || len(m.ToolCalls) != 1 {
+			allowedFinish := m != nil && m.ResponseMeta != nil && m.ResponseMeta.FinishReason == "tool_calls"
+			if m != nil && m.ResponseMeta != nil && len(fixture.FinishReasons) > 0 {
+				allowedFinish = false
+				for _, reason := range fixture.FinishReasons {
+					allowedFinish = allowedFinish || m.ResponseMeta.FinishReason == reason
+				}
+			}
+			if !allowedFinish || len(m.ToolCalls) != 1 {
 				return "", fmt.Errorf("one complete native decision is required")
 			}
 			call := m.ToolCalls[0]
@@ -155,7 +175,11 @@ func TestOwnModelConsumerGenerationFixture(t *testing.T) {
 			return nil
 		}),
 	}
-	out, err := generation.Run(ctx, generation.Config[[]*schema.Message, *schema.Message, string]{MaxAttempts: 3, Retry: func(a generation.Attempt[[]*schema.Message, *schema.Message, string]) bool {
+	maximum := fixture.MaxAttempts
+	if maximum == 0 {
+		maximum = 3
+	}
+	out, err := generation.Run(ctx, generation.Config[[]*schema.Message, *schema.Message, string]{MaxAttempts: maximum, Retry: func(a generation.Attempt[[]*schema.Message, *schema.Message, string]) bool {
 		return a.PrepareError == nil
 	}}, p)
 	if err != nil || !out.Accepted {
@@ -165,4 +189,67 @@ func TestOwnModelConsumerGenerationFixture(t *testing.T) {
 		t.Fatalf("business outcome differs: got %s want %s; original result retained at %s", out.Last.Decision, fixture.ExpectedTool, output)
 	}
 	t.Logf("model=%s native_decision=%s physical_calls=%d journaled=%d; consumer must verify its business parser and apply/readback separately", os.Getenv("LLM_MODEL"), out.Last.Decision, physical, journaled)
+}
+
+func fixtureUniqueJSON(decoder *json.Decoder, depth int) error {
+	if depth > 64 {
+		return fmt.Errorf("JSON depth exceeded")
+	}
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delimiter, container := token.(json.Delim)
+	if !container {
+		return nil
+	}
+	switch delimiter {
+	case '{':
+		seen := map[string]bool{}
+		for decoder.More() {
+			key, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+			name, ok := key.(string)
+			if !ok || seen[name] {
+				return fmt.Errorf("duplicate JSON member")
+			}
+			seen[name] = true
+			if err = fixtureUniqueJSON(decoder, depth+1); err != nil {
+				return err
+			}
+		}
+	case '[':
+		for decoder.More() {
+			if err = fixtureUniqueJSON(decoder, depth+1); err != nil {
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("unexpected JSON delimiter")
+	}
+	end, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	if delimiter == '{' && end != json.Delim('}') || delimiter == '[' && end != json.Delim(']') {
+		return fmt.Errorf("unclosed JSON container")
+	}
+	return nil
+}
+
+func TestFixtureJSONMemberUniqueness(t *testing.T) {
+	for _, case_ := range []struct {
+		raw     string
+		invalid bool
+	}{
+		{`{"decision":{"description":"d"},"decision":{"markdown":"m"}}`, true},
+		{`{"decision":{"description":"d","description":"other"}}`, true},
+		{`{"sections":[{"text":"one"},{"text":"two"}]}`, false},
+	} {
+		if err := fixtureUniqueJSON(json.NewDecoder(strings.NewReader(case_.raw)), 0); (err != nil) != case_.invalid {
+			t.Fatal(case_.raw, err)
+		}
+	}
 }

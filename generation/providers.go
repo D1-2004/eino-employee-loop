@@ -65,11 +65,15 @@ func (a Attempt[A, R, D]) Error() error {
 type Config[A, R, D any] struct {
 	MaxAttempts int
 	Retry       func(Attempt[A, R, D]) bool
+	// Continue requests another round after successful validation/journaling.
+	// The configured physical attempt ceiling still applies.
+	Continue func(Attempt[A, R, D]) bool
 }
 
 // Result.Accepted certifies validation only, never a business effect or commit.
 type Result[A, R, D any] struct {
-	Accepted bool
-	Attempts int
-	Last     Attempt[A, R, D]
+	Accepted     bool
+	LimitReached bool
+	Attempts     int
+	Last         Attempt[A, R, D]
 }

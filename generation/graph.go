@@ -116,6 +116,12 @@ func save[A, R, D any](_ context.Context, s *state[A, R, D]) (*state[A, R, D], e
 		return s, nil
 	}
 	if a.Error() == nil {
+		if s.config.Continue != nil && s.config.Continue(a) {
+			if s.result.Attempts < s.config.MaxAttempts {
+				return s, nil
+			}
+			s.result.LimitReached = true
+		}
 		s.result.Accepted = true
 		return s, nil
 	}
