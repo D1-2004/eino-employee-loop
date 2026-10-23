@@ -21,12 +21,15 @@ var (
 
 // Key is supplied by authenticated admission, never inferred from messages.
 type Key struct {
-	Workspace string
-	Tenant    string
-	Employee  string
-	Scene     string
-	Lane      string
-	Subject   string
+	Profile         string `json:"profile,omitempty"`
+	ProfileRevision string `json:"profile_revision,omitempty"`
+	ProfileBinding  string `json:"profile_binding,omitempty"`
+	Workspace       string
+	Tenant          string
+	Employee        string
+	Scene           string
+	Lane            string
+	Subject         string
 }
 
 // Request is one immutable input receipt within a scoped session.

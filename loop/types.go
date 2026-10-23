@@ -265,6 +265,10 @@ type ModelCall struct {
 type Config struct {
 	Tools  []Tool
 	Budget Budget
+	// HostToolOffering delegates the acceptance of registered-but-unlisted
+	// tools to ValidateBatch. Unknown tools remain forbidden. A non-nil batch
+	// validator is mandatory; the default rejects every unoffered call.
+	HostToolOffering bool
 	// ResultData creates an optional JSON Host projection after the wake has
 	// settled. It is pure and receives read-only outcome/error values. An
 	// error fails the wake without discarding its known committed effects.

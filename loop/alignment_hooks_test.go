@@ -99,3 +99,41 @@ func TestCancelledTerminalToolRetainsItsCommittedReceipt(t *testing.T) {
 		t.Fatal(out, err)
 	}
 }
+
+func TestHostToolOfferingStillRequiresPolicyAndRegisteredTools(t *testing.T) {
+	for _, tc := range []struct {
+		name                   string
+		enabled, guard, reject bool
+		tool                   string
+		wantCalls              int
+	}{
+		{"default refuses hidden", false, true, false, "read_task", 0},
+		{"Host approves registered hidden", true, true, false, "read_task", 1},
+		{"Host refuses registered hidden", true, true, true, "read_task", 0},
+		{"unknown stays forbidden", true, true, false, "unknown", 0},
+		{"missing Host policy", true, false, false, "read_task", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := looptest.New(looptest.Tools(looptest.Call{ID: "read", Name: tc.tool, Args: map[string]any{"task_ref": "t1"}}), looptest.Text("done"))
+			h := &fakeHost{}
+			_, err := run(t, m, h, func(c *loop.Config) {
+				c.HostToolOffering = tc.enabled
+				c.TurnTools = func(int, []loop.ToolOutcome) []string { return []string{"reply"} }
+				if tc.guard {
+					c.ValidateBatch = func(int, []loop.ToolOutcome, []loop.ToolCall) error {
+						if tc.reject {
+							return loop.ErrToolRefused
+						}
+						return nil
+					}
+				}
+			})
+			if len(h.calls) != tc.wantCalls {
+				t.Fatal(err, h.calls)
+			}
+			if tc.enabled && !tc.guard && (err == nil || m.Calls() != 0) {
+				t.Fatal("missing policy reached model", err, m.Calls())
+			}
+		})
+	}
+}

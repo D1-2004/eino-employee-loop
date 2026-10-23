@@ -6,13 +6,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/D1-2004/eino-employee-loop/generation"
+	"github.com/D1-2004/eino-employee-loop/internal/jsoncheck"
 	"github.com/D1-2004/eino-employee-loop/loop"
 	openaimodel "github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
@@ -117,12 +117,8 @@ func TestOwnModelConsumerGenerationFixture(t *testing.T) {
 				}
 				var object map[string]any
 				if fixture.RejectDuplicateJSON {
-					decoder := json.NewDecoder(strings.NewReader(m.Content))
-					if err := fixtureUniqueJSON(decoder, 0); err != nil {
+					if err := jsoncheck.Unique([]byte(m.Content), 64); err != nil {
 						return "", err
-					}
-					if _, err := decoder.Token(); err != io.EOF {
-						return "", fmt.Errorf("trailing JSON data")
 					}
 				}
 				if err := json.Unmarshal([]byte(m.Content), &object); err != nil || object == nil {
@@ -191,54 +187,6 @@ func TestOwnModelConsumerGenerationFixture(t *testing.T) {
 	t.Logf("model=%s native_decision=%s physical_calls=%d journaled=%d; consumer must verify its business parser and apply/readback separately", os.Getenv("LLM_MODEL"), out.Last.Decision, physical, journaled)
 }
 
-func fixtureUniqueJSON(decoder *json.Decoder, depth int) error {
-	if depth > 64 {
-		return fmt.Errorf("JSON depth exceeded")
-	}
-	token, err := decoder.Token()
-	if err != nil {
-		return err
-	}
-	delimiter, container := token.(json.Delim)
-	if !container {
-		return nil
-	}
-	switch delimiter {
-	case '{':
-		seen := map[string]bool{}
-		for decoder.More() {
-			key, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			name, ok := key.(string)
-			if !ok || seen[name] {
-				return fmt.Errorf("duplicate JSON member")
-			}
-			seen[name] = true
-			if err = fixtureUniqueJSON(decoder, depth+1); err != nil {
-				return err
-			}
-		}
-	case '[':
-		for decoder.More() {
-			if err = fixtureUniqueJSON(decoder, depth+1); err != nil {
-				return err
-			}
-		}
-	default:
-		return fmt.Errorf("unexpected JSON delimiter")
-	}
-	end, err := decoder.Token()
-	if err != nil {
-		return err
-	}
-	if delimiter == '{' && end != json.Delim('}') || delimiter == '[' && end != json.Delim(']') {
-		return fmt.Errorf("unclosed JSON container")
-	}
-	return nil
-}
-
 func TestFixtureJSONMemberUniqueness(t *testing.T) {
 	for _, case_ := range []struct {
 		raw     string
@@ -248,7 +196,7 @@ func TestFixtureJSONMemberUniqueness(t *testing.T) {
 		{`{"decision":{"description":"d","description":"other"}}`, true},
 		{`{"sections":[{"text":"one"},{"text":"two"}]}`, false},
 	} {
-		if err := fixtureUniqueJSON(json.NewDecoder(strings.NewReader(case_.raw)), 0); (err != nil) != case_.invalid {
+		if err := jsoncheck.Unique([]byte(case_.raw), 64); (err != nil) != case_.invalid {
 			t.Fatal(case_.raw, err)
 		}
 	}

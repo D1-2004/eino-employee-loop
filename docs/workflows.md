@@ -66,6 +66,39 @@ Store and a non-nil gate. No global registry or environment wildcard enables it.
 Plugins register Providers under unique kind/version pairs. Existing sessions
 continue to request their pinned version; missing plugins return an error.
 
+## Operator profiles
+
+`ParseProfile` / `NewAssembly` load a small immutable binding profile. Native
+tool workflows use this session assembly; structured generation stages keep
+their typed business Providers and `generation.Config`, rather than decoding
+business permissions or arbitrary code from JSON.
+
+```json
+{
+  "version": "workflow-profile/1",
+  "name": "local-employee",
+  "revision": "candidate-1",
+  "agents": [
+    {"name":"front","provider":"employee","provider_version":"multica-alignment-1","lane":"foreground","session":"interactive"},
+    {"name":"follow-up","provider":"employee","provider_version":"multica-alignment-1","lane":"follow_up","session":"task"}
+  ]
+}
+```
+
+The Host registers trusted Provider code first; the profile can only select an
+exact registered name/version. No commands, plugin URLs, credentials or model
+prose are executable configuration. Unknown fields, duplicate members, duplicate
+bindings, invalid session policies and unavailable Providers fail closed.
+
+Assembly adds profile name/revision/binding to the scoped key. Two bindings
+cannot accidentally share history even if they use the same Provider and lane.
+A new revision creates a separate namespace; an admitted old revision is not
+silently moved. `task` and `routine` require a Host-admitted subject; message
+content cannot supply it. `interactive` uses the fixed subject, while `isolated`
+uses the receipt. Every run still requires the original gate and current Provider
+authorization. Adding a plugin means registering another trusted Provider under
+a fresh version; loading arbitrary third-party code remains outside this API.
+
 For the Multica alignment, foreground tools use the existing frozen registry and
 Host; Review/Goal, Attention, feedback reflection, memory, Context/Tone and
 expression are independent Providers. Their actual schemas, prompts, source
@@ -134,3 +167,23 @@ the Host's frozen budget rule before each physical attempt; the outer configured
 physical limit remains a hard ceiling. These switches are opt-in and do not
 change old default behavior. They allow a candidate to replay historical input
 semantics without silently transferring that input to another engine.
+
+## Local own-model acceptance
+
+`TestOwnModelConfiguredTaskLifecycle` exercises `ParseProfile` and `NewAssembly`
+with a registered file-backed task Provider. Each turn rebuilds the assembly.
+The opted-in fixture covers read/create/continue/steer/wait/answer/result/stop,
+scene isolation and a replay with unchanged model/effect/commit counters. A real
+local executor file supplies the result; model assertions do not certify it.
+`EEL_LIFECYCLE_DIR` must name a fresh private artifact directory. It records raw
+model observations, ordered before/after snapshots, receipts and the result hash.
+
+```sh
+EEL_RUN_WORKFLOW_MODEL_CHECK=1 EEL_LIFECYCLE_DIR=/private/local-check \
+  go test -tags=workflowintegration ./workflow \
+  -run '^TestOwnModelConfiguredTaskLifecycle$' -count=1 -v
+```
+
+The caller supplies `LLM_BASE_URL`, `LLM_MODEL` and `LLM_API_KEY` only through the
+process environment. This is local architecture acceptance; it does not establish
+any external business deployment, messaging or production database result.

@@ -130,6 +130,9 @@ func (l *Loop) Run(ctx context.Context, w Wake) (Outcome, error) {
 		return Outcome{}, errors.New("employee loop: missing model")
 	}
 	cfg := l.cfg
+	if cfg.HostToolOffering && cfg.ValidateBatch == nil {
+		return Outcome{}, errors.New("employee loop: Host tool offering requires ValidateBatch")
+	}
 	if cfg.Budget == (Budget{}) {
 		cfg.Budget = DefaultBudget()
 	}
@@ -634,7 +637,7 @@ func (r *run) execute(tool Tool, call ToolCall) (ToolResult, error) {
 			return ToolResult{}, err
 		}
 	}
-	if _, known := r.tools[call.Name]; !known || !r.offered[call.Name] {
+	if _, known := r.tools[call.Name]; !known || !r.offered[call.Name] && !r.cfg.HostToolOffering {
 		return ToolResult{}, classify(ErrUnknownTool, fmt.Errorf("employee loop: unknown tool %q", call.Name))
 	}
 	if r.cfg.PerCallValidation {
@@ -794,7 +797,7 @@ func (r *run) validate(calls []ToolCall) error {
 	var disposition Disposition
 	for _, c := range calls {
 		tool, ok := r.tools[c.Name]
-		if !ok || !r.offered[c.Name] {
+		if !ok || !r.offered[c.Name] && !r.cfg.HostToolOffering {
 			if r.cfg.PerCallValidation {
 				continue
 			}
