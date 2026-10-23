@@ -77,6 +77,28 @@ Architecture references: [Eino ADK](https://www.cloudwego.io/docs/eino/core_modu
 and [Runner/checkpoint](https://www.cloudwego.io/docs/eino/core_modules/eino_adk/agent_extension/).
 The fixed dependency's source is authoritative for executable APIs.
 
+## Typed Host projections
+
+`loop.Config.ResultData` may attach a JSON projection to `Outcome.HostData` after
+the native wake has settled, including a failed wake with committed receipts.
+The module treats this data as opaque: it cannot supply authority, alter the
+native decision/receipts or replace validation. A projection error fails the wake
+while retaining its core outcomes. Providers bind their projection to the exact
+scope, input receipt and projection version, and reauthorize it before commit.
+
+This lets an embedding Host preserve richer result types (card presentation,
+progress identity and provider-native messages) through the generation/commit
+checkpoint and process restart. It avoids reconstructing those fields from
+assistant text or rerunning tools merely to recover metadata.
+
+The Multica foreground adapter composes separate Context, Model, Tool and Commit
+Providers. Context calls the same Host preparation/Turn rules as Embedded;
+Model retains the durable journal and first-feedback decorator; tools execute
+through the existing Host; commit receives the typed persisted projection.
+Historical session records are input data only: Context must select currently
+authorized history, and the adapter never implicitly merges private old tool
+results into a new wake. Merely sharing a scene does not grant that access.
+
 ## Local verification
 
 Run deterministic recovery/isolation checks with `go test -race ./workflow/...`.

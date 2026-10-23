@@ -161,7 +161,25 @@ func (l *Loop) Run(ctx context.Context, w Wake) (Outcome, error) {
 	}
 	err = r.wake()
 	r.out.Transcript = append([]*schema.Message(nil), r.msgs...)
+	if cfg.ResultData != nil {
+		data, projectionErr := resultData(cfg.ResultData, r.out, err)
+		if len(data) > 0 && !json.Valid(data) {
+			projectionErr = errors.Join(projectionErr, errors.New("employee loop: invalid Host result projection"))
+			data = nil
+		}
+		r.out.HostData = append(json.RawMessage(nil), data...)
+		return r.out, errors.Join(err, projectionErr)
+	}
 	return r.out, err
+}
+
+func resultData(project func(Outcome, error) (json.RawMessage, error), out Outcome, runErr error) (data json.RawMessage, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("employee loop: Host result projection panic: %v", recovered)
+		}
+	}()
+	return project(out, runErr)
 }
 
 // wake runs the wake as one ADK ChatModelAgent run: its ReAct graph (model

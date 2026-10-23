@@ -29,9 +29,12 @@ func TestOwnModelConsumerGenerationFixture(t *testing.T) {
 		t.Skip("consumer fixture and result paths required")
 	}
 	var fixture struct {
-		Messages     []*schema.Message
-		Tools        []loop.Tool
-		ExpectedTool string
+		Mode          string
+		JSONSchema    map[string]any
+		RequestFields map[string]any
+		Messages      []*schema.Message
+		Tools         []loop.Tool
+		ExpectedTool  string
 	}
 	raw, err := os.ReadFile(input)
 	if err != nil {
@@ -50,9 +53,12 @@ func TestOwnModelConsumerGenerationFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bound, err := m.WithTools(infos)
-	if err != nil {
-		t.Fatal(err)
+	var bound model.ToolCallingChatModel = m
+	if len(infos) > 0 {
+		bound, err = m.WithTools(infos)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	tools := map[string]loop.Tool{}
 	for _, tool := range fixture.Tools {
@@ -70,9 +76,50 @@ func TestOwnModelConsumerGenerationFixture(t *testing.T) {
 		}),
 		Model: generation.ModelFunc[[]*schema.Message, *schema.Message](func(c context.Context, messages []*schema.Message) (*schema.Message, error) {
 			physical++
-			return bound.Generate(c, messages, model.WithToolChoice(schema.ToolChoiceForced))
+			var options []model.Option
+			if len(fixture.RequestFields) > 0 {
+				options = append(options, openaimodel.WithRequestPayloadModifier(func(_ context.Context, _ []*schema.Message, raw []byte) ([]byte, error) {
+					var request map[string]any
+					if err := json.Unmarshal(raw, &request); err != nil {
+						return nil, err
+					}
+					for key, value := range fixture.RequestFields {
+						switch key {
+						case "tool_choice", "parallel_tool_calls", "max_completion_tokens", "enable_thinking", "temperature", "top_p", "reasoning_effort":
+						default:
+							return nil, fmt.Errorf("unsupported frozen request field %s", key)
+						}
+						request[key] = value
+					}
+					frozen, err := json.Marshal(request)
+					if err != nil {
+						return nil, err
+					}
+					if err = os.WriteFile(fmt.Sprintf("%s.attempt-%d.request.json", output, physical), frozen, 0600); err != nil {
+						return nil, err
+					}
+					return frozen, nil
+				}))
+			}
+			if len(infos) > 0 {
+				options = append(options, model.WithToolChoice(schema.ToolChoiceForced))
+			}
+			return bound.Generate(c, messages, options...)
 		}),
 		Decision: generation.DecisionFunc[[]*schema.Message, *schema.Message, string](func(_ context.Context, _ []*schema.Message, m *schema.Message) (string, error) {
+			if fixture.Mode == "json" {
+				if m == nil || m.ResponseMeta == nil || m.ResponseMeta.FinishReason != "stop" || len(m.ToolCalls) != 0 {
+					return "", fmt.Errorf("one complete JSON response is required")
+				}
+				var object map[string]any
+				if err := json.Unmarshal([]byte(m.Content), &object); err != nil || object == nil {
+					return "", fmt.Errorf("JSON object required")
+				}
+				if problems := loop.ValidateArguments(fixture.JSONSchema, object); len(problems) > 0 {
+					return "", fmt.Errorf("invalid JSON fields: %s", strings.Join(problems, "; "))
+				}
+				return "json", nil
+			}
 			if m == nil || m.ResponseMeta == nil || m.ResponseMeta.FinishReason != "tool_calls" || len(m.ToolCalls) != 1 {
 				return "", fmt.Errorf("one complete native decision is required")
 			}

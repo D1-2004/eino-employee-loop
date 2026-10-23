@@ -40,3 +40,11 @@ tool arguments and saves the original response at `EEL_GENERATION_RESULT`.
 The consumer must then run its actual parser and apply/readback checks against
 the same synthetic evidence. Structural success does not certify business
 completion, actual remote tools or delivery. The test never connects to IM.
+
+Fixtures may supply `Mode=json`, an output `JSONSchema`, and frozen
+`RequestFields` (tool choice, parallel calls, token/thinking controls). The test
+bridge preserves these fields in the final serialized request. In particular,
+the pinned Eino OpenAI adapter otherwise converts a forced single-tool choice to
+a named tool, which differs from a Host that froze literal `required`. Validation
+continues to check the original finish reason; it never rewrites `stop` into
+`tool_calls` to make an incompatible response pass.

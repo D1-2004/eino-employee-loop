@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -230,6 +231,9 @@ type Usage struct {
 // Outcome is the result of one wake. Callers check Run's error as well:
 // ToolOutcomes may hold committed effects of a failed wake.
 type Outcome struct {
+	// HostData is an opaque, versioned Host projection. It grants no authority
+	// and never replaces the native decision, receipts or tool outcomes.
+	HostData json.RawMessage `json:"host_data,omitempty"`
 	Decision
 	// ModelCalls counts provider requests (physical attempts).
 	ModelCalls   int
@@ -261,6 +265,10 @@ type ModelCall struct {
 type Config struct {
 	Tools  []Tool
 	Budget Budget
+	// ResultData creates an optional JSON Host projection after the wake has
+	// settled. It is pure and receives read-only outcome/error values. An
+	// error fails the wake without discarding its known committed effects.
+	ResultData func(Outcome, error) (json.RawMessage, error)
 	// PerCallValidation defers argument and unknown/offered-name checks to
 	// each call. Such failures become paired tool results; unknown or
 	// not-offered tools are never executed. Static batch rules still apply.
