@@ -261,6 +261,18 @@ type ModelCall struct {
 type Config struct {
 	Tools  []Tool
 	Budget Budget
+	// PerCallValidation defers argument and unknown/offered-name checks to
+	// each call. Such failures become paired tool results; unknown or
+	// not-offered tools are never executed. Static batch rules still apply.
+	PerCallValidation bool
+	// RecordToolOutcome may omit a pre-effect validation result from the
+	// outcome journal. Receipts, successful calls and terminal results are
+	// always retained. The transcript always contains the native result pair.
+	RecordToolOutcome func(ToolCall, ToolResult, error) bool
+	// BudgetError supplies an additional frozen Host budget rule. It may
+	// replace semantic counter limits, but not MaxPhysicalAttempts. Nil uses
+	// the default counter rules. Its error text and chain are preserved.
+	BudgetError func(physicalCalls int, usage BudgetUsage) error
 	// TransformResponse optionally derives the accepted native response from
 	// the provider's original response. It runs after OnModelCall (which sees
 	// the original), before ADK or the transcript receives the response. It

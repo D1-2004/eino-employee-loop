@@ -183,11 +183,17 @@ func (r *run) wake() error {
 	// ADK runs without cancellation, and Eino callback handlers carried by
 	// r.ctx do not see ADK's graph, as in v0.2.
 	ctx := callbacks.InitCallbacks(context.WithoutCancel(r.ctx), nil)
+	toolsConfig := compose.ToolsNodeConfig{Tools: tools, ExecuteSequentially: true}
+	if r.cfg.PerCallValidation {
+		toolsConfig.UnknownToolsHandler = func(ctx context.Context, name, _ string) (string, error) {
+			return (hostTool{r: r, tool: Tool{Name: name}}).InvokableRun(ctx, "")
+		}
+	}
 	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
 		Name:  "employee_loop",
 		Model: provider{r},
 		// ADK runs the calls of a batch in parallel by default.
-		ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: tools, ExecuteSequentially: true}},
+		ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: toolsConfig},
 		// The wake budgets end the run first; ADK's limits only back them up.
 		// An iteration is one model node entry: one per accepted batch plus
 		// the entry whose attempt finds the budget spent (max avoids an
@@ -247,6 +253,9 @@ func (p provider) Generate(_ context.Context, in []*schema.Message, _ ...model.O
 	}
 	if err := r.budgetErr(); err != nil {
 		r.cur.fatal = errors.Join(ErrModelBudget, err, r.lastErr)
+		if r.cfg.BudgetError != nil {
+			r.cur.fatal = classify(ErrModelBudget, errors.Join(err, r.lastErr))
+		}
 		return nil, errAttempt
 	}
 	m, opts, err := r.bind()
@@ -585,7 +594,9 @@ func (t hostTool) InvokableRun(ctx context.Context, _ string, _ ...tool.Option) 
 			b.terminals = append(b.terminals, *result.Terminal)
 		}
 	}
-	r.out.ToolOutcomes = append(r.out.ToolOutcomes, outcome)
+	if r.cfg.RecordToolOutcome == nil || callErr == nil || receipt != "" || result.Terminal != nil || r.cfg.RecordToolOutcome(call, result, callErr) {
+		r.out.ToolOutcomes = append(r.out.ToolOutcomes, outcome)
+	}
 	r.msgs = append(r.msgs, schema.ToolMessage(content, call.NativeToolCallID, schema.WithToolName(call.Name)))
 	if r.cfg.CheckContextAfterTool && r.ctx.Err() != nil {
 		return "", r.end(errors.Join(b.err, r.ctx.Err()))
@@ -603,6 +614,14 @@ func (r *run) execute(tool Tool, call ToolCall) (ToolResult, error) {
 	if r.cfg.BeforeTool != nil {
 		if err := r.cfg.BeforeTool(r.out.ModelCalls, r.out.ToolOutcomes, call); err != nil {
 			return ToolResult{}, err
+		}
+	}
+	if _, known := r.tools[call.Name]; !known || !r.offered[call.Name] {
+		return ToolResult{}, classify(ErrUnknownTool, fmt.Errorf("employee loop: unknown tool %q", call.Name))
+	}
+	if r.cfg.PerCallValidation {
+		if problems := r.arguments(tool, call.Arguments); len(problems) > 0 {
+			return ToolResult{}, classify(ErrInvalidArguments, fmt.Errorf("employee loop: invalid params for %s: %s", call.Name, strings.Join(problems, "; ")))
 		}
 	}
 	if r.host == nil {
@@ -712,6 +731,15 @@ func (r *run) guard(text string) error {
 // it has no error streak.
 func (r *run) budgetErr() error {
 	u, b := r.out, r.cfg.Budget
+	if r.cfg.BudgetError != nil {
+		if err := r.cfg.BudgetError(u.ModelCalls, u.BudgetUsage); err != nil {
+			return err
+		}
+		if u.ModelCalls >= b.MaxPhysicalAttempts {
+			return ErrPhysicalModelBudget
+		}
+		return nil
+	}
 	switch {
 	case u.BudgetUsage.ConsecutiveErrors >= b.MaxConsecutiveErrors:
 		return ErrConsecutiveModelErrors
@@ -749,6 +777,9 @@ func (r *run) validate(calls []ToolCall) error {
 	for _, c := range calls {
 		tool, ok := r.tools[c.Name]
 		if !ok || !r.offered[c.Name] {
+			if r.cfg.PerCallValidation {
+				continue
+			}
 			return classify(ErrUnknownTool, fmt.Errorf("employee loop: unknown tool %q", c.Name))
 		}
 		if tool.Terminal != "" {
@@ -760,8 +791,10 @@ func (r *run) validate(calls []ToolCall) error {
 		if tool.Exclusive && len(calls) > 1 {
 			return classify(ErrExclusiveTool, fmt.Errorf("employee loop: %s must be the only call of its batch", c.Name))
 		}
-		if problems := r.arguments(tool, c.Arguments); len(problems) > 0 {
-			return classify(ErrInvalidArguments, fmt.Errorf("employee loop: invalid params for %s: %s", c.Name, strings.Join(problems, "; ")))
+		if !r.cfg.PerCallValidation {
+			if problems := r.arguments(tool, c.Arguments); len(problems) > 0 {
+				return classify(ErrInvalidArguments, fmt.Errorf("employee loop: invalid params for %s: %s", c.Name, strings.Join(problems, "; ")))
+			}
 		}
 		for _, name := range tool.publicArgs() {
 			if text, ok := c.Arguments[name].(string); ok {

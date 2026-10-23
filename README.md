@@ -28,6 +28,7 @@ call, and is it done?* — and leaves everything else to the Host that embeds it
 | `local`, `cmd/eel` | Runs one employee on a laptop against real DingTalk (an account through the dws CLI, or a Stream Mode robot), traced in Langfuse. |
 | `schema` | JSON Schema of `event.Event` and reference PostgreSQL storage for a durable Host. |
 | `workflow`, `workflow/filestore` | Opt-in Eino workflow with versioned Providers, scoped multi-turn sessions, commit recovery and a private local reference Store. |
+| `generation` | Bounded Eino prepare/model/validate/journal/retry graph with typed Context, Model, Decision and Journal Providers for structured decisions. |
 
 For the isolated workflow API, Provider contracts and local real-model acceptance,
 see [workflows](docs/workflows.md). This API does not change existing `loop.Run`

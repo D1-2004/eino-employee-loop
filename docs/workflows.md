@@ -100,3 +100,15 @@ rejecting a terminal decision after cancellation. `RawFinalTextLimit` retains a
 Host's pre-trim byte contract. All are disabled by default; existing response
 observers keep the original provider output, and transformed batches still pass
 the regular validators.
+
+Some frozen hosts validate arguments call by call. `PerCallValidation` makes
+unknown/not-offered names and argument errors paired tool results, rather than
+rejecting the whole batch. Unknown capabilities **never reach Host.Execute**.
+Static exclusivity, terminal/public-text rules and `ValidateBatch` still run
+before any call. The Host's `BeforeTool` may provide its exact parameter check.
+`RecordToolOutcome` selects which settled results belong in the outcome journal;
+it cannot discard receipts or terminal results. `BudgetError` optionally supplies
+the Host's frozen budget rule before each physical attempt; the outer configured
+physical limit remains a hard ceiling. These switches are opt-in and do not
+change old default behavior. They allow a candidate to replay historical input
+semantics without silently transferring that input to another engine.
