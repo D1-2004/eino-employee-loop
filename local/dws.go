@@ -155,19 +155,21 @@ func (d *DWS) own(m Message) bool {
 // conversation with its sender, or in its group), like a colleague replying
 // to a specific message. The uuid makes a retried send idempotent.
 func (d *DWS) Send(ctx context.Context, m Message, text string) (string, error) {
-	args := []string{"chat", "+messages-reply", "--as", "user", "--message-id", m.MessageID, "--content", text, "--ai-tag=false", "--uuid", "eel-" + m.MessageID, "-y", "-f", "json"}
-	if m.Direct {
-		args = append(args, "--open-dingtalk-id", m.SenderID)
-	} else {
-		args = append(args, "--group", m.ConversationID)
-	}
-	out, err := exec.CommandContext(ctx, d.bin(), d.args(args...)...).Output()
-	if err != nil {
-		var exit *exec.ExitError
-		if errors.As(err, &exit) {
-			return "", fmt.Errorf("dws send: %w: %s", err, strings.TrimSpace(string(exit.Stderr)))
+	conversation := m.ConversationID
+	if conversation == "" && m.Direct && m.SenderID != "" {
+		// A record without its conversation: look up the direct one.
+		cid, err := d.directConversation(ctx, m.SenderID)
+		if err != nil {
+			return "", err
 		}
-		return "", fmt.Errorf("dws send: %w", err)
+		conversation = cid
+	}
+	if conversation == "" {
+		return "", errors.New("dws send: no conversation to reply in")
+	}
+	out, err := d.run(ctx, "dws send", replyArgs(conversation, m, text)...)
+	if err != nil {
+		return "", err
 	}
 	d.mu.Lock()
 	if d.sent == nil {
@@ -176,6 +178,51 @@ func (d *DWS) Send(ctx context.Context, m Message, text string) (string, error) 
 	d.sent[m.ConversationID+"|"+strings.TrimSpace(text)] = true
 	d.mu.Unlock()
 	return sentID(out), nil
+}
+
+// replyArgs builds `dws chat +messages-reply` (dws v1.0.59): the reply always
+// goes to a conversation (--group takes the openConversationId of a group or
+// a direct conversation), and passing the quoted sender saves the CLI a
+// lookup. The identity is the logged-in account; there is no --as.
+func replyArgs(conversation string, m Message, text string) []string {
+	args := []string{"chat", "+messages-reply", "--group", conversation, "--message-id", m.MessageID, "--content", text, "--ai-tag=false", "--uuid", "eel-" + m.MessageID, "-y", "-f", "json"}
+	if m.SenderID != "" {
+		args = append(args, "--ref-sender", m.SenderID)
+	}
+	return args
+}
+
+// directConversation returns the openConversationId of the account's direct
+// conversation with peer (an openDingTalkId).
+func (d *DWS) directConversation(ctx context.Context, peer string) (string, error) {
+	out, err := d.run(ctx, "dws conversation", "chat", "+conversation-info", "--open-dingtalk-id", peer, "-f", "json")
+	if err != nil {
+		return "", err
+	}
+	var resp struct {
+		Result struct {
+			ConversationInfo struct {
+				OpenConversationID string `json:"openConversationId"`
+			} `json:"conversationInfo"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil || resp.Result.ConversationInfo.OpenConversationID == "" {
+		return "", fmt.Errorf("dws conversation: no direct conversation with %s", peer)
+	}
+	return resp.Result.ConversationInfo.OpenConversationID, nil
+}
+
+// run runs one dws command and returns its stdout; a failure carries stderr.
+func (d *DWS) run(ctx context.Context, what string, args ...string) ([]byte, error) {
+	out, err := exec.CommandContext(ctx, d.bin(), d.args(args...)...).Output()
+	if err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			return nil, fmt.Errorf("%s: %w: %s", what, err, strings.TrimSpace(string(exit.Stderr)))
+		}
+		return nil, fmt.Errorf("%s: %w", what, err)
+	}
+	return out, nil
 }
 
 // parseDWSEvent decodes one NDJSON record of `dws event +listen-im`. ok is
@@ -239,7 +286,9 @@ func str(m map[string]any, keys ...string) string {
 	return ""
 }
 
-// sentID extracts the message id of a +messages-send answer.
+// sentID extracts the message id of a send or reply answer, when the CLI
+// reports one (a v1.0.59 reply adds a top-level messageId only when DingTalk returns
+// one; otherwise the caller falls back to the quoted message).
 func sentID(raw []byte) string {
 	var resp map[string]any
 	if json.Unmarshal(raw, &resp) != nil {

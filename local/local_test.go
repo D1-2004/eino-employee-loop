@@ -6,6 +6,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -173,5 +176,95 @@ func TestLocalePacksHaveTheSameKeys(t *testing.T) {
 		if len(pack) != len(packs["en"]) {
 			t.Errorf("%s has %d keys, en has %d", tag, len(pack), len(packs["en"]))
 		}
+	}
+}
+
+func TestDWSReplyArgsMatchCLIv1059(t *testing.T) {
+	// dws v1.0.59 `chat +messages-reply`: --group is required for direct and
+	// group conversations alike; --as and --open-dingtalk-id do not exist.
+	got := strings.Join(replyArgs("cidB=", Message{ConversationID: "cidB=", MessageID: "msgA==", SenderID: "DnG0", Direct: true}, "11"), " ")
+	want := "chat +messages-reply --group cidB= --message-id msgA== --content 11 --ai-tag=false --uuid eel-msgA== -y -f json --ref-sender DnG0"
+	if got != want {
+		t.Fatalf("args:\n got %s\nwant %s", got, want)
+	}
+	for _, bad := range []string{"--as", "--open-dingtalk-id"} {
+		if strings.Contains(got, bad+" ") {
+			t.Fatalf("unsupported flag %s in %s", bad, got)
+		}
+	}
+	if got := strings.Join(replyArgs("cidG", Message{MessageID: "m1"}, "x"), " "); strings.Contains(got, "--ref-sender") {
+		t.Fatalf("no sender, no --ref-sender: %s", got)
+	}
+}
+
+// fakeDWS writes a dws stand-in that logs its argv and answers like v1.0.59.
+func fakeDWS(t *testing.T) (bin, argv string) {
+	t.Helper()
+	dir := t.TempDir()
+	argv = filepath.Join(dir, "argv")
+	bin = filepath.Join(dir, "dws")
+	script := `#!/bin/sh
+echo "$*" >> "` + argv + `"
+case "$2" in
++conversation-info) echo '{"result":{"conversationInfo":{"openConversationId":"cidDM=","singleChat":true}},"success":true}' ;;
++messages-reply) echo '{"contractVersion":"im.message-reply.v1","conversationId":"cidDM=","deliveryStatus":"unknown","success":true}' ;;
+*) echo "unknown flag" >&2; exit 3 ;;
+esac
+`
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return bin, argv
+}
+
+func TestDWSSendRepliesInTheConversation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell stand-in")
+	}
+	bin, argv := fakeDWS(t)
+	d := &DWS{Bin: bin, Profile: "corp:emp"}
+	m := Message{ConversationID: "cidB=", MessageID: "msgA==", SenderID: "DnG0", Direct: true, Text: "1+1"}
+	id, err := d.Send(context.Background(), m, "2")
+	if err != nil || id != "" {
+		t.Fatalf("id=%q err=%v", id, err)
+	}
+	raw, _ := os.ReadFile(argv)
+	if got := strings.TrimSpace(string(raw)); got != "chat +messages-reply --group cidB= --message-id msgA== --content 2 --ai-tag=false --uuid eel-msgA== -y -f json --ref-sender DnG0 --profile corp:emp" {
+		t.Fatalf("argv %q", got)
+	}
+	if !d.own(Message{ConversationID: "cidB=", SenderID: "self", Text: "2"}) {
+		t.Fatal("the sent text is remembered for its echo")
+	}
+}
+
+func TestDWSSendLooksUpAMissingDirectConversation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell stand-in")
+	}
+	bin, argv := fakeDWS(t)
+	d := &DWS{Bin: bin}
+	if _, err := d.Send(context.Background(), Message{MessageID: "m1", SenderID: "DnG0", Direct: true}, "ok"); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(argv)
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(lines) != 2 || lines[0] != "chat +conversation-info --open-dingtalk-id DnG0 -f json" || !strings.Contains(lines[1], "--group cidDM= ") {
+		t.Fatalf("argv %q", lines)
+	}
+	if _, err := d.Send(context.Background(), Message{MessageID: "m2"}, "ok"); err == nil {
+		t.Fatal("a reply needs a conversation")
+	}
+}
+
+func TestDWSSendReportsCLIErrors(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell stand-in")
+	}
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "dws")
+	_ = os.WriteFile(bin, []byte("#!/bin/sh\necho 'unknown flag: --as' >&2\nexit 3\n"), 0o755)
+	_, err := (&DWS{Bin: bin}).Send(context.Background(), Message{ConversationID: "c", MessageID: "m"}, "x")
+	if err == nil || !strings.Contains(err.Error(), "unknown flag: --as") {
+		t.Fatalf("err=%v", err)
 	}
 }
