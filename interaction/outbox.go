@@ -10,8 +10,7 @@ import (
 	"time"
 
 	"github.com/D1-2004/eino-employee-loop/contextbuilder"
-	"github.com/D1-2004/eino-employee-loop/storage/markdown"
-	"github.com/D1-2004/eino-employee-loop/storage/sqlite"
+	"github.com/D1-2004/eino-employee-loop/storage"
 	"github.com/D1-2004/eino-employee-loop/work"
 )
 
@@ -42,7 +41,7 @@ type Record struct {
 	Receipt                 *Receipt
 }
 type Manager struct {
-	DB           *sqlite.Store
+	DB           storage.State
 	Port         Port
 	Owner        string
 	Authorize    func(context.Context, work.Scope) error
@@ -61,7 +60,7 @@ func (m *Manager) Enqueue(ctx context.Context, in Intent) (Record, error) {
 		return Record{}, err
 	}
 	r := Record{Intent: in, State: "queued"}
-	err = m.DB.Transaction(ctx, func(tx *sqlite.Tx) error {
+	err = m.DB.Transact(ctx, func(tx storage.Tx) error {
 		old, e := tx.Get(ctx, "outbox", scope, in.ID)
 		if e == nil {
 			if e = json.Unmarshal(old.Body, &r); e != nil {
@@ -70,15 +69,15 @@ func (m *Manager) Enqueue(ctx context.Context, in Intent) (Record, error) {
 			a, _ := json.Marshal(r.Intent)
 			b, _ := json.Marshal(in)
 			if string(a) != string(b) {
-				return sqlite.ErrConflict
+				return storage.ErrConflict
 			}
 			return nil
 		}
-		if !errors.Is(e, sqlite.ErrNotFound) {
+		if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
 		raw, _ := json.Marshal(r)
-		_, e = tx.Put(ctx, sqlite.Document{Namespace: "outbox", Scope: scope, ID: in.ID, Body: raw})
+		_, e = tx.Put(ctx, storage.Document{Namespace: "outbox", Scope: scope, ID: in.ID, Body: raw})
 		return e
 	})
 	return r, err
@@ -180,7 +179,7 @@ func (m *Manager) Deliver(ctx context.Context, scope work.Scope, id string) (Rec
 	r.Receipt = &receipt
 	return m.confirm(settle, d, r)
 }
-func (m *Manager) confirm(ctx context.Context, d sqlite.Document, r Record) (Record, error) {
+func (m *Manager) confirm(ctx context.Context, d storage.Document, r Record) (Record, error) {
 	if r.Receipt == nil || r.Receipt.ID != r.Intent.ID || r.Receipt.ProviderMessageID == "" || r.Receipt.BodySHA256 != contextbuilder.Digest([]byte(r.Intent.Body)) {
 		verificationErr := errors.New("delivery: unverified receipt")
 		r.State = "unknown"
@@ -198,7 +197,7 @@ func (m *Manager) confirm(ctx context.Context, d sqlite.Document, r Record) (Rec
 }
 
 // Local writes a real immutable Markdown delivery, not an IM claim.
-type Local struct{ Files *markdown.Store }
+type Local struct{ Files storage.Artifacts }
 
 func (l Local) path(in Intent) string {
 	key, _ := in.Scope.Key()
@@ -213,7 +212,7 @@ func (l Local) Lookup(ctx context.Context, in Intent) (Lookup, error) {
 		return Lookup{}, err
 	}
 	if d.Body != in.Body {
-		return Lookup{}, sqlite.ErrConflict
+		return Lookup{}, storage.ErrConflict
 	}
 	return Lookup{Receipt: &Receipt{ID: in.ID, ProviderMessageID: "local-file/" + d.Path, BodySHA256: d.SHA256, ObservedAt: time.Now().UTC()}}, nil
 }

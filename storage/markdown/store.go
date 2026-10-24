@@ -16,10 +16,11 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/D1-2004/eino-employee-loop/storage"
 	"github.com/gofrs/flock"
 )
 
-var ErrConflict = errors.New("markdown: content revision changed")
+var ErrConflict = storage.ErrArtifactConflict
 
 const maxBytes = 8 << 20
 
@@ -29,7 +30,9 @@ type Store struct {
 	mu     sync.RWMutex
 	closed bool
 }
-type Document struct{ Path, Body, SHA256 string }
+type Document = storage.File
+
+var _ storage.Artifacts = (*Store)(nil)
 
 func Open(dir string) (*Store, error) {
 	if dir == "" {

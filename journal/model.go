@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/D1-2004/eino-employee-loop/contextbuilder"
-	"github.com/D1-2004/eino-employee-loop/storage/sqlite"
+	"github.com/D1-2004/eino-employee-loop/storage"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )
@@ -24,7 +24,7 @@ type call struct {
 	Response            *schema.Message
 }
 type Model struct {
-	DB                          *sqlite.Store
+	DB                          storage.State
 	Scope, Receipt, Owner, Name string
 	Limit                       int
 	Delegate                    model.ToolCallingChatModel
@@ -106,8 +106,8 @@ func (m *Model) Generate(ctx context.Context, messages []*schema.Message, opts .
 	scopeParts, _ := json.Marshal([]string{m.Scope, m.Receipt})
 	scope := string(scopeParts)
 	var cached *schema.Message
-	var reservation sqlite.Document
-	err = m.DB.Transaction(ctx, func(tx *sqlite.Tx) error {
+	var reservation storage.Document
+	err = m.DB.Transact(ctx, func(tx storage.Tx) error {
 		prior, e := tx.Get(ctx, "model-calls", scope, id)
 		var old call
 		if e == nil {
@@ -121,7 +121,7 @@ func (m *Model) Generate(ctx context.Context, messages []*schema.Message, opts .
 			if old.State == "pending" && old.Owner == m.Owner {
 				return ErrInFlight
 			}
-		} else if !errors.Is(e, sqlite.ErrNotFound) {
+		} else if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
 		counter, e := tx.Get(ctx, "model-budget", scope, "physical")
@@ -130,7 +130,7 @@ func (m *Model) Generate(ctx context.Context, messages []*schema.Message, opts .
 			if e = json.Unmarshal(counter.Body, &budget); e != nil {
 				return e
 			}
-		} else if !errors.Is(e, sqlite.ErrNotFound) {
+		} else if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
 		if budget.Calls >= m.Limit {
@@ -144,7 +144,7 @@ func (m *Model) Generate(ctx context.Context, messages []*schema.Message, opts .
 		if _, e = tx.Put(ctx, counter); e != nil {
 			return e
 		}
-		reservation = sqlite.Document{Namespace: "model-calls", Scope: scope, ID: id, Revision: prior.Revision}
+		reservation = storage.Document{Namespace: "model-calls", Scope: scope, ID: id, Revision: prior.Revision}
 		reservation.Body, _ = json.Marshal(call{Owner: m.Owner, State: "pending"})
 		rev, e := tx.Put(ctx, reservation)
 		reservation.Revision = rev

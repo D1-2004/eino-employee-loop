@@ -98,3 +98,12 @@ receipt 回流原 Task，并可唤醒其准确 delivery Wait。
 
 恢复 hold 和失败项提供明确 handle；Retry 不重置物理预算。unknown 原动作只能向
 原 port lookup，不能换 provider 再做一遍。未确认投递不阻塞其他 scene 的已就绪项。
+
+## 模块替换（2026-10-24）
+
+当前 typed module registry、目录绑定、能力协商与恢复合同见
+[模块组合](../module-composition.md)和[模块装配规范](module-composition.md)。
+State/Artifacts已独立为中立端口；SQLite/md为默认持久实现，memory为独立进程内参考实现。
+Executor通过Submit/Lookup/Poll/Cancel接入，Work不读取其私有存储；Review只提案，
+Owner/Context/Scheduler按精确工厂装配。跨场景Owner证据默认不进入模型，显式Host
+授权与冻结Frame恢复均需重验。本地模块可替换不等于真实DWS或线上业务协议已经还原。

@@ -10,8 +10,8 @@ import (
 
 	"github.com/D1-2004/eino-employee-loop/contextbuilder"
 	"github.com/D1-2004/eino-employee-loop/interaction"
+	"github.com/D1-2004/eino-employee-loop/storage"
 	"github.com/D1-2004/eino-employee-loop/storage/markdown"
-	"github.com/D1-2004/eino-employee-loop/storage/sqlite"
 	"github.com/D1-2004/eino-employee-loop/work"
 )
 
@@ -82,7 +82,7 @@ func (s *standalone) renderResult(ctx context.Context, task work.Task, goal work
 		var pkg markdown.Document
 		if e == nil {
 			if old.Body != content {
-				return "", sqlite.ErrConflict
+				return "", storage.ErrConflict
 			}
 			pkg = old
 		} else if errors.Is(e, fs.ErrNotExist) {
@@ -147,7 +147,7 @@ func (s *standalone) recordDelivery(ctx context.Context, scope work.Scope, recor
 
 func (s *standalone) validateDelivery(ctx context.Context, in interaction.Intent) error {
 	_, _, err := s.context.Source(ctx, in.Scope, in.SourceReceipt)
-	if errors.Is(err, contextbuilder.ErrRevoked) || errors.Is(err, sqlite.ErrNotFound) {
+	if errors.Is(err, contextbuilder.ErrRevoked) || errors.Is(err, storage.ErrNotFound) {
 		return interaction.ErrObsolete
 	}
 	if err != nil {

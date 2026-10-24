@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+
+	"github.com/cloudwego/eino/adk"
 )
 
 // Checkpoints is an Eino CheckPointStore bound by the Host to one trusted scope
@@ -46,4 +48,9 @@ func (c *Checkpoints) Delete(ctx context.Context, id string) error {
 	}
 	_, err := c.store.db.ExecContext(ctx, `DELETE FROM eino_checkpoints WHERE scope=? AND version=? AND id=?`, c.scope, c.version, id)
 	return err
+}
+
+// CheckpointStore binds native checkpoints to a trusted scope and version.
+func (s *Store) CheckpointStore(scope, version string) (adk.CheckPointStore, error) {
+	return s.Checkpoints(scope, version)
 }

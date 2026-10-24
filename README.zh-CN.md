@@ -102,3 +102,5 @@ go run ./cmd/eel -channel console -v -model-script local/testdata/console.json  
 ## 许可
 
 MIT
+
+[模块装配、可替换边界与恢复约束](docs/module-composition.md)。

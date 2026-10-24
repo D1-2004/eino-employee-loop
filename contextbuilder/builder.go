@@ -13,12 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/D1-2004/eino-employee-loop/storage/markdown"
-	"github.com/D1-2004/eino-employee-loop/storage/sqlite"
+	"github.com/D1-2004/eino-employee-loop/storage"
 	"github.com/D1-2004/eino-employee-loop/work"
 )
 
 var ErrRevoked = errors.New("context: source withdrawn or revision changed")
+var ErrAudience = errors.New("context: evidence not authorized for target audience")
 
 type Source struct {
 	ID, Actor, Text string
@@ -41,31 +41,78 @@ type ScopedRef struct {
 	Scope work.Scope
 	Ref   Ref
 }
-type Frame struct {
-	OwnerEvidence []ScopedRef
-	OwnerEpoch    uint64
-	Materials     []markdown.Document
-	View          View
-	Scope         work.Scope
-	Current       *Source
-	Sources       []Source
-	Refs          []Ref
-	Tasks         []work.Task
-	OwnerFiles    []markdown.Document
-	Gaps          []string
-}
-type Builder struct {
-	db        *sqlite.Store
-	md        *markdown.Store
-	tasks     *work.Manager
-	authorize func(context.Context, work.Scope, View) error
+
+// AudiencePolicy authorizes an exact evidence transfer. It must not infer
+// audience membership from a scene's textual name.
+type AudiencePolicy func(context.Context, work.Scope, work.Scope, View) error
+
+type Option func(*Builder)
+
+func WithAudiencePolicy(policy AudiencePolicy) Option {
+	return func(b *Builder) { b.audience = policy }
 }
 
-func New(db *sqlite.Store, md *markdown.Store, tasks *work.Manager, authorize func(context.Context, work.Scope, View) error) (*Builder, error) {
+type OwnerProjection struct {
+	Path, SHA256 string
+	Evidence     []ScopedRef
+}
+type Frame struct {
+	OwnerEvidence    []ScopedRef
+	OwnerProjections []OwnerProjection
+	OwnerEpoch       uint64
+	Materials        []storage.File
+	View             View
+	Scope            work.Scope
+	Current          *Source
+	Sources          []Source
+	Refs             []Ref
+	Tasks            []work.Task
+	OwnerFiles       []storage.File
+	Gaps             []string
+}
+type Builder struct {
+	db        storage.State
+	md        storage.Artifacts
+	tasks     *work.Manager
+	authorize func(context.Context, work.Scope, View) error
+	audience  AudiencePolicy
+}
+
+func New(db storage.State, md storage.Artifacts, tasks *work.Manager, authorize func(context.Context, work.Scope, View) error, options ...Option) (*Builder, error) {
 	if db == nil || md == nil || tasks == nil || authorize == nil {
 		return nil, errors.New("context: stores, work manager and authorization required")
 	}
-	return &Builder{db, md, tasks, authorize}, nil
+	b := &Builder{db: db, md: md, tasks: tasks, authorize: authorize}
+	for _, option := range options {
+		if option != nil {
+			option(b)
+		}
+	}
+	return b, nil
+}
+
+// CheckAudience applies mandatory owner boundaries before the optional host
+// policy. Call this before loading evidence for a target model view.
+func (b *Builder) CheckAudience(ctx context.Context, source, target work.Scope, view View) error {
+	if _, err := source.Key(); err != nil {
+		return err
+	}
+	if _, err := target.Key(); err != nil {
+		return err
+	}
+	if source.Workspace != target.Workspace || source.Tenant != target.Tenant || source.Employee != target.Employee || source.Requester != target.Requester {
+		return ErrAudience
+	}
+	if view != Front && view != Execution && view != Maintenance {
+		return ErrAudience
+	}
+	if b.audience != nil {
+		return b.audience(ctx, source, target, view)
+	}
+	if source != target {
+		return ErrAudience
+	}
+	return nil
 }
 func Digest(raw []byte) string { h := sha256.Sum256(raw); return hex.EncodeToString(h[:]) }
 func OwnerKey(scope work.Scope) string {
@@ -87,7 +134,7 @@ func (b *Builder) Admit(ctx context.Context, scope work.Scope, s Source) (Source
 	if s.At.IsZero() {
 		s.At = time.Now().UTC()
 	}
-	err = b.db.Transaction(ctx, func(tx *sqlite.Tx) error {
+	err = b.db.Transact(ctx, func(tx storage.Tx) error {
 		d, e := tx.Get(ctx, "sources", key, s.ID)
 		if e == nil {
 			var old Source
@@ -95,7 +142,7 @@ func (b *Builder) Admit(ctx context.Context, scope work.Scope, s Source) (Source
 				return e
 			}
 			if old.ID != s.ID || old.Actor != s.Actor || old.Text != s.Text {
-				return sqlite.ErrConflict
+				return storage.ErrConflict
 			}
 			if old.Withdrawn {
 				return ErrRevoked
@@ -103,14 +150,14 @@ func (b *Builder) Admit(ctx context.Context, scope work.Scope, s Source) (Source
 			s = old
 			return nil
 		}
-		if !errors.Is(e, sqlite.ErrNotFound) {
+		if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
 		raw, e := json.Marshal(s)
 		if e != nil {
 			return e
 		}
-		_, e = tx.Put(ctx, sqlite.Document{Namespace: "sources", Scope: key, ID: s.ID, Body: raw})
+		_, e = tx.Put(ctx, storage.Document{Namespace: "sources", Scope: key, ID: s.ID, Body: raw})
 		return e
 	})
 	return s, err
@@ -144,7 +191,7 @@ func (b *Builder) Revoke(ctx context.Context, scope work.Scope, id string) error
 	if err != nil {
 		return err
 	}
-	return b.db.Transaction(ctx, func(tx *sqlite.Tx) error {
+	return b.db.Transact(ctx, func(tx storage.Tx) error {
 		d, e := tx.Get(ctx, "sources", key, id)
 		if e != nil {
 			return e
@@ -163,7 +210,7 @@ func (b *Builder) Revoke(ctx context.Context, scope work.Scope, id string) error
 	})
 }
 func (b *Builder) Build(ctx context.Context, scope work.Scope, view View, currentID, taskID string) (Frame, error) {
-	frame := Frame{View: view, Scope: scope, Sources: []Source{}, Refs: []Ref{}, Tasks: []work.Task{}, OwnerFiles: []markdown.Document{}, Gaps: []string{}}
+	frame := Frame{View: view, Scope: scope, Sources: []Source{}, Refs: []Ref{}, Tasks: []work.Task{}, OwnerFiles: []storage.File{}, Gaps: []string{}}
 	if view != Front && view != Execution && view != Maintenance {
 		return frame, errors.New("context: unknown view")
 	}
@@ -285,13 +332,17 @@ func (b *Builder) Build(ctx context.Context, scope work.Scope, view View, curren
 				if e = json.Unmarshal(meta.Body, &doc); e != nil {
 					return frame, e
 				}
-				if doc.Invalidated || doc.OwnerEpoch != frame.OwnerEpoch || doc.Path != path || doc.SHA256 != d.SHA256 {
+				if doc.Invalidated || doc.OwnerEpoch != frame.OwnerEpoch || doc.Path != path || doc.SHA256 != d.SHA256 || len(doc.Evidence) == 0 {
 					frame.Gaps = append(frame.Gaps, name+" projection pending or invalidated")
 					continue
 				}
 				valid := true
 				refs := []ScopedRef{}
 				for _, ev := range doc.Evidence {
+					if ev.Quote == "" || b.CheckAudience(ctx, ev.Scope, scope, view) != nil {
+						valid = false
+						break
+					}
 					raw, ref, e := b.Source(ctx, ev.Scope, ev.Ref.ID)
 					if e != nil || ref != ev.Ref || !strings.Contains(raw.Text, ev.Quote) {
 						valid = false
@@ -304,8 +355,12 @@ func (b *Builder) Build(ctx context.Context, scope work.Scope, view View, curren
 					continue
 				}
 				frame.OwnerEvidence = append(frame.OwnerEvidence, refs...)
-			} else if !errors.Is(e, sqlite.ErrNotFound) {
+				frame.OwnerProjections = append(frame.OwnerProjections, OwnerProjection{Path: d.Path, SHA256: d.SHA256, Evidence: refs})
+			} else if !errors.Is(e, storage.ErrNotFound) {
 				return frame, e
+			} else {
+				frame.Gaps = append(frame.Gaps, name+" metadata unavailable")
+				continue
 			}
 			frame.OwnerFiles = append(frame.OwnerFiles, d)
 		}
@@ -326,12 +381,40 @@ func (b *Builder) Revalidate(ctx context.Context, f Frame) error {
 		}
 	}
 	for _, ev := range f.OwnerEvidence {
+		if err := b.CheckAudience(ctx, ev.Scope, f.Scope, f.View); err != nil {
+			return err
+		}
 		_, ref, e := b.Source(ctx, ev.Scope, ev.Ref.ID)
 		if e != nil {
 			return e
 		}
 		if ref != ev.Ref {
 			return ErrRevoked
+		}
+	}
+	for _, file := range f.OwnerFiles {
+		matched := false
+		for _, projection := range f.OwnerProjections {
+			if projection.Path != file.Path || projection.SHA256 != file.SHA256 || Digest([]byte(file.Body)) != file.SHA256 || len(projection.Evidence) == 0 {
+				continue
+			}
+			for _, ev := range projection.Evidence {
+				if err := b.CheckAudience(ctx, ev.Scope, f.Scope, f.View); err != nil {
+					return err
+				}
+				_, now, err := b.Source(ctx, ev.Scope, ev.Ref.ID)
+				if err != nil {
+					return err
+				}
+				if now != ev.Ref {
+					return ErrRevoked
+				}
+			}
+			matched = true
+			break
+		}
+		if !matched {
+			return ErrAudience
 		}
 	}
 	epoch, err := b.ownerEpoch(ctx, f.Scope)
@@ -347,7 +430,7 @@ func (b *Builder) Revalidate(ctx context.Context, f Frame) error {
 
 func (b *Builder) ownerEpoch(ctx context.Context, scope work.Scope) (uint64, error) {
 	d, err := b.db.Get(ctx, "owner-epochs", OwnerKey(scope), "revocation")
-	if errors.Is(err, sqlite.ErrNotFound) {
+	if errors.Is(err, storage.ErrNotFound) {
 		return 0, nil
 	}
 	return d.Revision, err
@@ -362,9 +445,9 @@ func (b *Builder) ResetOwner(ctx context.Context, scope work.Scope) error {
 	if _, err := scope.Key(); err != nil {
 		return err
 	}
-	return b.db.Transaction(ctx, func(tx *sqlite.Tx) error {
+	return b.db.Transact(ctx, func(tx storage.Tx) error {
 		d, err := tx.Get(ctx, "owner-epochs", OwnerKey(scope), "revocation")
-		if err != nil && !errors.Is(err, sqlite.ErrNotFound) {
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
 			return err
 		}
 		d.Body = []byte(`{"revoked":true}`)

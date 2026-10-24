@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/D1-2004/eino-employee-loop/storage/sqlite"
+	"github.com/D1-2004/eino-employee-loop/storage"
 )
 
-type Manager struct{ store *sqlite.Store }
+type Manager struct{ store storage.State }
 
-func New(s *sqlite.Store) (*Manager, error) {
+func New(s storage.State) (*Manager, error) {
 	if s == nil {
 		return nil, errors.New("work: store required")
 	}
@@ -30,7 +30,7 @@ func (m *Manager) Get(ctx context.Context, scope Scope, id string) (Task, error)
 	}
 	return decode(d, scope)
 }
-func decode(d sqlite.Document, scope Scope) (Task, error) {
+func decode(d storage.Document, scope Scope) (Task, error) {
 	var t Task
 	if err := json.Unmarshal(d.Body, &t); err != nil {
 		return t, err
@@ -66,16 +66,16 @@ type accepted struct {
 }
 
 func (m *Manager) apply(ctx context.Context, scope Scope, operation string, payload any, id string, create bool, fn func(*Task) error) (Receipt, error) {
-	return m.applyChecked(ctx, scope, operation, payload, id, create, func(_ *sqlite.Tx, t *Task) error { return fn(t) })
+	return m.applyChecked(ctx, scope, operation, payload, id, create, func(_ storage.Tx, t *Task) error { return fn(t) })
 }
-func (m *Manager) applyChecked(ctx context.Context, scope Scope, operation string, payload any, id string, create bool, fn func(*sqlite.Tx, *Task) error) (Receipt, error) {
+func (m *Manager) applyChecked(ctx context.Context, scope Scope, operation string, payload any, id string, create bool, fn func(storage.Tx, *Task) error) (Receipt, error) {
 	key, err := scope.Key()
 	if err != nil {
 		return Receipt{}, err
 	}
 	digest := stableID("", payload)
 	var result Receipt
-	err = m.store.Transaction(ctx, func(tx *sqlite.Tx) error {
+	err = m.store.Transact(ctx, func(tx storage.Tx) error {
 		prior, e := tx.Get(ctx, "work-receipts", key, operation)
 		if e == nil {
 			var a accepted
@@ -83,16 +83,16 @@ func (m *Manager) applyChecked(ctx context.Context, scope Scope, operation strin
 				return e
 			}
 			if a.Hash != digest {
-				return sqlite.ErrConflict
+				return storage.ErrConflict
 			}
 			result = a.Receipt
 			return nil
-		} else if !errors.Is(e, sqlite.ErrNotFound) {
+		} else if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
 		d, e := tx.Get(ctx, "tasks", key, id)
 		var task Task
-		if errors.Is(e, sqlite.ErrNotFound) && create {
+		if errors.Is(e, storage.ErrNotFound) && create {
 			task = Task{ID: id, Scope: scope, CreatedAt: time.Now().UTC()}
 		} else if e != nil {
 			return e
@@ -112,7 +112,7 @@ func (m *Manager) applyChecked(ctx context.Context, scope Scope, operation strin
 		if e != nil {
 			return e
 		}
-		if _, e = tx.Put(ctx, sqlite.Document{Namespace: "tasks", Scope: key, ID: id, Revision: d.Revision, Body: raw}); e != nil {
+		if _, e = tx.Put(ctx, storage.Document{Namespace: "tasks", Scope: key, ID: id, Revision: d.Revision, Body: raw}); e != nil {
 			return e
 		}
 		result = Receipt{ID: "work/" + operation, TaskID: id, TaskRevision: task.Revision, GoalRevision: task.Goal.Revision, State: task.State}
@@ -123,7 +123,7 @@ func (m *Manager) applyChecked(ctx context.Context, scope Scope, operation strin
 		if e != nil {
 			return e
 		}
-		if _, e = tx.Put(ctx, sqlite.Document{Namespace: "work-receipts", Scope: key, ID: operation, Body: raw}); e != nil {
+		if _, e = tx.Put(ctx, storage.Document{Namespace: "work-receipts", Scope: key, ID: operation, Body: raw}); e != nil {
 			return e
 		}
 		event, _ := json.Marshal(map[string]any{"receipt": result, "task_state": task.State, "goal": task.Goal, "waits": task.Waits, "task": task})
@@ -131,7 +131,7 @@ func (m *Manager) applyChecked(ctx context.Context, scope Scope, operation strin
 		if task.State == Completed && (priorState != Completed || priorGoal.Revision != task.Goal.Revision) {
 			kind = "goal.completed"
 		}
-		_, e = tx.Append(ctx, sqlite.Event{Namespace: "work-events", Scope: key, ID: operation, Kind: kind, Body: event})
+		_, e = tx.Append(ctx, storage.Event{Namespace: "work-events", Scope: key, ID: operation, Kind: kind, Body: event})
 		return e
 	})
 	return result, err
@@ -314,10 +314,17 @@ func (m *Manager) Submission(ctx context.Context, scope Scope, taskID, runID, ex
 		if !unknown && executionID == "" {
 			return errors.New("work: execution receipt required")
 		}
-		t.Runs[len(t.Runs)-1].ExecutionID = executionID
-		t.Runs[len(t.Runs)-1].State = RunActive
-		if unknown {
-			t.Runs[len(t.Runs)-1].State = RunUnknown
+		if run.ExecutionID != "" && executionID != "" && run.ExecutionID != executionID {
+			return ErrStale
+		}
+		if executionID != "" {
+			t.Runs[len(t.Runs)-1].ExecutionID = executionID
+		}
+		if run.State != RunCancelling {
+			t.Runs[len(t.Runs)-1].State = RunActive
+			if unknown {
+				t.Runs[len(t.Runs)-1].State = RunUnknown
+			}
 		}
 		return nil
 	})

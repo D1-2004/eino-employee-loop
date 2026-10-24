@@ -8,7 +8,7 @@ import (
 
 	"github.com/D1-2004/eino-employee-loop/contextbuilder"
 	"github.com/D1-2004/eino-employee-loop/interaction"
-	"github.com/D1-2004/eino-employee-loop/storage/sqlite"
+	"github.com/D1-2004/eino-employee-loop/storage"
 	"github.com/D1-2004/eino-employee-loop/work"
 )
 
@@ -28,7 +28,7 @@ func (s *standalone) reviewHeld(ctx context.Context, task work.Task) (bool, erro
 	}
 	key, _ := task.Scope.Key()
 	d, err := s.db.Get(ctx, "review-holds", key, reviewHoldID(task))
-	if errors.Is(err, sqlite.ErrNotFound) {
+	if errors.Is(err, storage.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {
@@ -46,9 +46,9 @@ func (s *standalone) reviewHeld(ctx context.Context, task work.Task) (bool, erro
 func (s *standalone) holdReview(ctx context.Context, task work.Task, cause error) error {
 	key, _ := task.Scope.Key()
 	id := reviewHoldID(task)
-	return s.db.Transaction(ctx, func(tx *sqlite.Tx) error {
+	return s.db.Transact(ctx, func(tx storage.Tx) error {
 		d, err := tx.Get(ctx, "review-holds", key, id)
-		if err != nil && !errors.Is(err, sqlite.ErrNotFound) {
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
 			return err
 		}
 		d.Body = encode(reviewHold{TaskID: task.ID, TaskRevision: task.Revision, State: "held", Error: cause.Error(), At: time.Now().UTC()})
@@ -90,7 +90,7 @@ func (s *standalone) Retry(ctx context.Context, id string) error {
 		_, err = s.db.Put(ctx, doc)
 		return err
 	}
-	if !errors.Is(err, sqlite.ErrNotFound) {
+	if !errors.Is(err, storage.ErrNotFound) {
 		return err
 	}
 	for _, scene := range s.opts.Profile.Scenes {
@@ -120,7 +120,7 @@ func (s *standalone) Retry(ctx context.Context, id string) error {
 			_, e = s.db.Put(ctx, d)
 			return e
 		}
-		if !errors.Is(e, sqlite.ErrNotFound) {
+		if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
 	}
@@ -130,7 +130,7 @@ func (s *standalone) Retry(ctx context.Context, id string) error {
 			return err
 		}
 		task, e := s.work.Get(ctx, scope, id)
-		if errors.Is(e, sqlite.ErrNotFound) {
+		if errors.Is(e, storage.ErrNotFound) {
 			continue
 		}
 		if e != nil {
@@ -140,7 +140,7 @@ func (s *standalone) Retry(ctx context.Context, id string) error {
 			return work.ErrState
 		}
 		key, _ := scope.Key()
-		return s.db.Transaction(ctx, func(tx *sqlite.Tx) error {
+		return s.db.Transact(ctx, func(tx storage.Tx) error {
 			d, e := tx.Get(ctx, "review-holds", key, reviewHoldID(task))
 			if e != nil {
 				return e
@@ -158,7 +158,7 @@ func (s *standalone) Retry(ctx context.Context, id string) error {
 			return e
 		})
 	}
-	return sqlite.ErrNotFound
+	return storage.ErrNotFound
 }
 
 type pendingDelivery struct {

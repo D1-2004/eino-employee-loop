@@ -11,12 +11,14 @@ import (
 
 	native "github.com/D1-2004/eino-employee-loop/agent"
 	"github.com/D1-2004/eino-employee-loop/contextbuilder"
-	"github.com/D1-2004/eino-employee-loop/storage/sqlite"
+	"github.com/D1-2004/eino-employee-loop/storage"
 	"github.com/D1-2004/eino-employee-loop/work"
 )
 
 var ErrBusy = errors.New("execution: active local invocation")
 var ErrIncomplete = errors.New("execution: kernel returned without exit or interrupt proof")
+var ErrUnknown = errors.New("execution: outcome unknown")
+var ErrNotFound = storage.ErrNotFound
 
 type Request struct {
 	Task          work.Task
@@ -31,23 +33,30 @@ type Result struct {
 }
 type Record struct {
 	ID, SubmitKey, TaskID, RunID, State, Owner string
+	NeverSubmitted                             bool
 	Request                                    Request
 	Result                                     Result
 }
 type Port interface {
 	Submit(context.Context, Request) (Record, error)
 	Lookup(context.Context, work.Scope, string) (Record, error)
-	Advance(context.Context, work.Scope, string, func(context.Context, Record) (Result, error)) (Record, error)
+	Poll(context.Context, work.Scope, string) (Record, error)
+	Cancel(context.Context, Target) (Record, error)
+	Close() error
 }
 type Local struct {
-	DB        *sqlite.Store
+	DB        storage.State
 	Owner     string
 	Authorize func(context.Context, work.Scope) error
+	Run       func(context.Context, Record) (Result, error)
 	mu        sync.Mutex
 	active    map[string]bool
 }
 
 func (l *Local) Lookup(ctx context.Context, scope work.Scope, key string) (Record, error) {
+	if l.DB == nil || l.Authorize == nil || l.Owner == "" {
+		return Record{}, errors.New("execution: scoped local binding required")
+	}
 	if err := l.Authorize(ctx, scope); err != nil {
 		return Record{}, err
 	}
@@ -63,8 +72,8 @@ func (l *Local) Lookup(ctx context.Context, scope work.Scope, key string) (Recor
 	if err = json.Unmarshal(d.Body, &r); err != nil {
 		return r, err
 	}
-	if r.Request.Task.Scope != scope {
-		return Record{}, work.ErrScope
+	if err := Validate(r, Target{Scope: scope, SubmitKey: key, TaskID: r.TaskID, RunID: r.RunID}); err != nil {
+		return Record{}, err
 	}
 	return r, nil
 }
@@ -88,31 +97,44 @@ func (l *Local) Submit(ctx context.Context, request Request) (Record, error) {
 		return Record{}, work.ErrState
 	}
 	r := Record{ID: "execution-" + contextbuilder.Digest([]byte(run.SubmitKey))[:24], SubmitKey: run.SubmitKey, TaskID: request.Task.ID, RunID: run.ID, State: "prepared", Request: request}
-	err = l.DB.Transaction(ctx, func(tx *sqlite.Tx) error {
+	if err = Validate(r, TargetFor(request.Task)); err != nil {
+		return Record{}, err
+	}
+	err = l.DB.Transact(ctx, func(tx storage.Tx) error {
 		d, e := tx.Get(ctx, "executions", key, run.SubmitKey)
 		if e == nil {
 			var old Record
 			if e = json.Unmarshal(d.Body, &old); e != nil {
 				return e
 			}
+			if e = Validate(old, TargetFor(request.Task)); e != nil {
+				return e
+			}
+			if old.NeverSubmitted {
+				r = old
+				return nil
+			}
 			a, _ := json.Marshal(old.Request)
 			b, _ := json.Marshal(request)
 			if string(a) != string(b) {
-				return sqlite.ErrConflict
+				return storage.ErrConflict
 			}
 			r = old
 			return nil
 		}
-		if !errors.Is(e, sqlite.ErrNotFound) {
+		if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
 		raw, _ := json.Marshal(r)
-		_, e = tx.Put(ctx, sqlite.Document{Namespace: "executions", Scope: key, ID: run.SubmitKey, Body: raw})
+		_, e = tx.Put(ctx, storage.Document{Namespace: "executions", Scope: key, ID: run.SubmitKey, Body: raw})
 		return e
 	})
 	return r, err
 }
 func (l *Local) Advance(ctx context.Context, scope work.Scope, key string, kernel func(context.Context, Record) (Result, error)) (Record, error) {
+	if l.DB == nil || l.Authorize == nil || l.Owner == "" {
+		return Record{}, errors.New("execution: scoped local binding required")
+	}
 	if err := l.Authorize(ctx, scope); err != nil {
 		return Record{}, err
 	}
@@ -137,11 +159,14 @@ func (l *Local) Advance(ctx context.Context, scope work.Scope, key string, kerne
 	if err = json.Unmarshal(d.Body, &r); err != nil {
 		return r, err
 	}
-	if r.Request.Task.Scope != scope {
-		return Record{}, work.ErrScope
+	if err = Validate(r, Target{Scope: scope, SubmitKey: key, TaskID: r.TaskID, RunID: r.RunID}); err != nil {
+		return Record{}, err
 	}
 	if r.State == "exited" {
 		return r, nil
+	}
+	if kernel == nil {
+		return Record{}, errors.New("execution: local Run function required")
 	}
 	r.State = "running"
 	r.Owner = l.Owner
@@ -162,8 +187,11 @@ func (l *Local) Advance(ctx context.Context, scope work.Scope, key string, kerne
 	if ctx.Err() != nil {
 		r.State = "recovery"
 		r.Result.Exited = false
+		r.Result.Interrupts = nil
 	} else if runErr != nil {
+		r.State = "exited"
 		r.Result.Exited = true
+		r.Result.Interrupts = nil
 		r.Result.Failure = runErr.Error()
 	} else if len(result.Interrupts) == 0 && !result.Exited {
 		r.State = "recovery"

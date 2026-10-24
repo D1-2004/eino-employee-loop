@@ -7,7 +7,7 @@ import (
 
 	"github.com/D1-2004/eino-employee-loop/contextbuilder"
 	"github.com/D1-2004/eino-employee-loop/interaction"
-	"github.com/D1-2004/eino-employee-loop/storage/sqlite"
+	"github.com/D1-2004/eino-employee-loop/storage"
 	"github.com/D1-2004/eino-employee-loop/work"
 )
 
@@ -29,6 +29,56 @@ func (s *standalone) review(ctx context.Context, task work.Task) error {
 		}
 		frame.Materials = append(frame.Materials, doc)
 	}
+	receipt := "review-" + contextbuilder.Digest(encode([]any{task.ID, task.Revision, task.Goal.Revision, run.ID}))
+	var profile Profile
+	if err = json.Unmarshal(task.Definition.Configuration, &profile); err != nil {
+		return err
+	}
+	if err = s.opts.Modules.validate(profile.Modules); err != nil {
+		return err
+	}
+	var reviewer Reviewer = ReviewFunc(s.proposeNativeReview)
+	if profile.Modules.Review.effective() != builtinModule {
+		s.opts.Modules.mu.RLock()
+		factory := s.opts.Modules.reviews[profile.Modules.Review]
+		s.opts.Modules.mu.RUnlock()
+		reviewer, err = factory(ctx, s.dependencies(profile))
+		if closer, ok := reviewer.(interface{ Close() error }); ok && !nilModule(reviewer) {
+			defer closer.Close()
+		}
+		if err != nil {
+			return err
+		}
+		if nilModule(reviewer) {
+			return errors.New("entry: review factory returned nil")
+		}
+	}
+	if err = s.context.Revalidate(ctx, frame); err != nil {
+		return err
+	}
+	decision, err := reviewer.Propose(ctx, ReviewRequest{Task: task, Frame: frame, Profile: profile, Receipt: receipt})
+	if err != nil {
+		return err
+	}
+	if err = s.authorize(ctx, task.Scope); err != nil {
+		return err
+	}
+	if err = s.context.Revalidate(ctx, frame); err != nil {
+		return err
+	}
+	// A reviewer proposes business changes; it cannot select another snapshot.
+	if decision.TaskRevision != task.Revision || decision.GoalRevision != task.Goal.Revision || decision.RunID != run.ID {
+		return work.ErrStale
+	}
+	_, err = s.work.ApplyReview(ctx, task.Scope, task.ID, receipt, decision)
+	return err
+}
+func (s *standalone) proposeNativeReview(ctx context.Context, req ReviewRequest) (work.Review, error) {
+	task, frame := req.Task, req.Frame
+	run := task.CurrentRun()
+	if run == nil {
+		return work.Review{}, work.ErrState
+	}
 	var decision *work.Review
 	choose := &function{spec: spec("decide_review", "Propose a business transition using only verified current evidence.", map[string]any{"kind": map[string]any{"type": "string", "enum": []any{"complete", "continue", "resume", "wait", "fail"}}, "summary": stringField(), "next_instruction": map[string]any{"type": "string"}, "waits": map[string]any{"type": "array", "items": map[string]any{"type": "object", "properties": map[string]any{"kind": map[string]any{"type": "string", "enum": []any{"human", "recovery", "event", "timer"}}, "prompt": map[string]any{"type": "string"}, "condition": map[string]any{"type": "string"}, "due": map[string]any{"type": "string"}}, "required": []string{"kind"}, "additionalProperties": false}}}, "kind", "summary"), before: func(c context.Context) error { return s.context.Revalidate(c, frame) }, run: func(_ context.Context, _ string, a map[string]any) (any, error) {
 		p := work.Review{TaskRevision: task.Revision, GoalRevision: task.Goal.Revision, RunID: run.ID, Kind: str(a, "kind"), Summary: str(a, "summary"), NextInstruction: str(a, "next_instruction")}
@@ -41,14 +91,10 @@ func (s *standalone) review(ctx context.Context, task work.Task) error {
 		decision = &p
 		return map[string]any{"review_proposal": p}, nil
 	}}
-	receipt := "review-" + contextbuilder.Digest(encode([]any{task.ID, task.Revision, task.Goal.Revision, run.ID}))
-	var profile Profile
-	if err = json.Unmarshal(task.Definition.Configuration, &profile); err != nil {
-		return err
-	}
+	receipt, profile := req.Receipt, req.Profile
 	out, runErr := s.runAgent(ctx, profile, task.Scope, "review", receipt, frame, reviewPolicy, []*function{choose}, map[string]bool{"decide_review": true}, false)
 	if runErr != nil {
-		return runErr
+		return work.Review{}, runErr
 	}
 	if decision == nil && out.Output != nil {
 		var saved struct {
@@ -59,11 +105,11 @@ func (s *standalone) review(ctx context.Context, task work.Task) error {
 		}
 	}
 	if decision == nil {
-		return errors.New("review: missing validated proposal")
+		return work.Review{}, errors.New("review: missing validated proposal")
 	}
-	_, err = s.work.ApplyReview(ctx, task.Scope, task.ID, receipt, *decision)
-	return err
+	return *decision, nil
 }
+
 func (s *standalone) deliveryOnce(ctx context.Context) (bool, error) {
 	s.deliveryMu.Lock()
 	defer s.deliveryMu.Unlock()
@@ -84,7 +130,7 @@ func (s *standalone) deliveryOnce(ctx context.Context) (bool, error) {
 			if err = json.Unmarshal(cursorDoc.Body, &cursor); err != nil {
 				return false, err
 			}
-		} else if !errors.Is(err, sqlite.ErrNotFound) {
+		} else if !errors.Is(err, storage.ErrNotFound) {
 			return false, err
 		}
 		events, err := s.db.Events(ctx, "work-events", key, cursor, 100)

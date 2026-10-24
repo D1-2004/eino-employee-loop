@@ -16,13 +16,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/D1-2004/eino-employee-loop/storage"
 	_ "modernc.org/sqlite"
 )
 
 var (
-	ErrConflict = errors.New("sqlite: revision conflict")
-	ErrNotFound = errors.New("sqlite: record not found")
-	ErrBusy     = errors.New("sqlite: active operation")
+	ErrConflict = storage.ErrConflict
+	ErrNotFound = storage.ErrNotFound
+	ErrBusy     = storage.ErrBusy
 )
 
 const maxDocumentBytes = 8 << 20
@@ -134,17 +135,8 @@ func validKey(namespace, scope, id string) error {
 	return nil
 }
 
-type Document struct {
-	Namespace, Scope, ID string
-	Revision             uint64
-	Body                 json.RawMessage
-}
-type Event struct {
-	Sequence                   int64
-	Namespace, Scope, ID, Kind string
-	Body                       json.RawMessage
-	CreatedAt                  string
-}
+type Document = storage.Document
+type Event = storage.Event
 type Tx struct{ tx *sql.Tx }
 
 func (s *Store) Transaction(ctx context.Context, fn func(*Tx) error) error {
@@ -299,3 +291,13 @@ func (s *Store) Events(ctx context.Context, namespace, scope string, after int64
 	}
 	return out, rows.Err()
 }
+
+// Transact preserves SQLite atomicity through the neutral transaction port.
+func (s *Store) Transact(ctx context.Context, fn func(storage.Tx) error) error {
+	if fn == nil {
+		return errors.New("sqlite: transaction callback required")
+	}
+	return s.Transaction(ctx, func(tx *Tx) error { return fn(tx) })
+}
+
+var _ storage.State = (*Store)(nil)

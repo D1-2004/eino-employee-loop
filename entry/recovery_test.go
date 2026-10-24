@@ -62,7 +62,7 @@ func readyForReview(t *testing.T, s *standalone, id string) work.Task {
 	if _, e = s.work.Submission(ctx, scope, task.ID, run.ID, record.ID, false); e != nil {
 		t.Fatal(e)
 	}
-	record, e = s.executor.Advance(ctx, scope, run.SubmitKey, func(context.Context, execution.Record) (execution.Result, error) {
+	record, e = s.executor.(*execution.Local).Advance(ctx, scope, run.SubmitKey, func(context.Context, execution.Record) (execution.Result, error) {
 		return execution.Result{Output: "Actual local invocation exited", Exited: true}, nil
 	})
 	if e != nil {

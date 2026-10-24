@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/D1-2004/eino-employee-loop/storage/sqlite"
+	"github.com/D1-2004/eino-employee-loop/storage"
 )
 
 type Schedule struct {
@@ -40,13 +40,13 @@ type Occurrence struct {
 	Acknowledged           bool
 }
 type Scheduler struct {
-	db        *sqlite.Store
+	db        storage.State
 	manager   *Manager
 	authorize func(context.Context, Scope) error
 	check     func(context.Context, Scope, Source) error
 }
 
-func NewScheduler(db *sqlite.Store, manager *Manager, authorize func(context.Context, Scope) error, sourceCheck func(context.Context, Scope, Source) error) (*Scheduler, error) {
+func NewScheduler(db storage.State, manager *Manager, authorize func(context.Context, Scope) error, sourceCheck func(context.Context, Scope, Source) error) (*Scheduler, error) {
 	if db == nil || manager == nil || authorize == nil || sourceCheck == nil {
 		return nil, errors.New("work: scheduler requires stores and source/authorization gates")
 	}
@@ -85,7 +85,7 @@ func (s *Scheduler) Schedule(ctx context.Context, scope Scope, in Schedule) (Sch
 	if in.Limit > 1 && int64(in.Every) > math.MaxInt64/int64(in.Limit-1) {
 		return Schedule{}, ErrBudget
 	}
-	err = s.db.Transaction(ctx, func(tx *sqlite.Tx) error {
+	err = s.db.Transact(ctx, func(tx storage.Tx) error {
 		d, e := tx.Get(ctx, "work-schedules", key, in.ID)
 		if e == nil {
 			var prior Schedule
@@ -98,12 +98,12 @@ func (s *Scheduler) Schedule(ctx context.Context, scope Scope, in Schedule) (Sch
 			compare.GoalRevision = compare.InitialGoalRevision
 			compare.Since = time.Time{}
 			if stableID("", compare) != stableID("", in) {
-				return sqlite.ErrConflict
+				return storage.ErrConflict
 			}
 			in = prior
 			return nil
 		}
-		if !errors.Is(e, sqlite.ErrNotFound) {
+		if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
 		td, e := tx.Get(ctx, "tasks", key, in.TaskID)
@@ -119,7 +119,7 @@ func (s *Scheduler) Schedule(ctx context.Context, scope Scope, in Schedule) (Sch
 		}
 		in.Since = time.Now().UTC()
 		raw, _ := json.Marshal(in)
-		_, e = tx.Put(ctx, sqlite.Document{Namespace: "work-schedules", Scope: key, ID: in.ID, Body: raw})
+		_, e = tx.Put(ctx, storage.Document{Namespace: "work-schedules", Scope: key, ID: in.ID, Body: raw})
 		return e
 	})
 	return in, err
@@ -141,7 +141,7 @@ func (s *Scheduler) Signal(ctx context.Context, scope Scope, in Signal) error {
 	if err = validateSource(scope, in.Source, in.ID); err != nil {
 		return err
 	}
-	return s.db.Transaction(ctx, func(tx *sqlite.Tx) error {
+	return s.db.Transact(ctx, func(tx storage.Tx) error {
 		d, e := tx.Get(ctx, "work-signals", key, in.ID)
 		if e == nil {
 			var old Signal
@@ -150,18 +150,18 @@ func (s *Scheduler) Signal(ctx context.Context, scope Scope, in Signal) error {
 			}
 			in.At = old.At
 			if stableID("", old) != stableID("", in) {
-				return sqlite.ErrConflict
+				return storage.ErrConflict
 			}
 			return nil
 		}
-		if !errors.Is(e, sqlite.ErrNotFound) {
+		if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
 		if in.At.IsZero() {
 			in.At = time.Now().UTC()
 		}
 		raw, _ := json.Marshal(in)
-		_, e = tx.Put(ctx, sqlite.Document{Namespace: "work-signals", Scope: key, ID: in.ID, Body: raw})
+		_, e = tx.Put(ctx, storage.Document{Namespace: "work-signals", Scope: key, ID: in.ID, Body: raw})
 		return e
 	})
 }
@@ -291,14 +291,14 @@ func (s *Scheduler) Tick(ctx context.Context, scope Scope, now time.Time) (bool,
 		schedule.Emitted++
 		d.Body, _ = json.Marshal(schedule)
 		raw, _ := json.Marshal(occ)
-		err = s.db.Transaction(ctx, func(tx *sqlite.Tx) error {
+		err = s.db.Transact(ctx, func(tx storage.Tx) error {
 			if _, e := tx.Put(ctx, d); e != nil {
 				return e
 			}
-			if _, e := tx.Put(ctx, sqlite.Document{Namespace: "work-occurrences", Scope: key, ID: occ.ID, Body: raw}); e != nil {
+			if _, e := tx.Put(ctx, storage.Document{Namespace: "work-occurrences", Scope: key, ID: occ.ID, Body: raw}); e != nil {
 				return e
 			}
-			_, e := tx.Append(ctx, sqlite.Event{Namespace: "work-occurrence-events", Scope: key, ID: occ.ID, Kind: "occurrence.ready", Body: raw})
+			_, e := tx.Append(ctx, storage.Event{Namespace: "work-occurrence-events", Scope: key, ID: occ.ID, Kind: "occurrence.ready", Body: raw})
 			return e
 		})
 		return err == nil, err
@@ -332,7 +332,7 @@ func (s *Scheduler) Acknowledge(ctx context.Context, scope Scope, id string) err
 	if err != nil {
 		return err
 	}
-	return s.db.Transaction(ctx, func(tx *sqlite.Tx) error {
+	return s.db.Transact(ctx, func(tx storage.Tx) error {
 		d, e := tx.Get(ctx, "work-occurrences", key, id)
 		if e != nil {
 			return e
@@ -408,16 +408,16 @@ func (s *Scheduler) AcknowledgeForGoal(ctx context.Context, scope Scope, id stri
 	if err = s.check(ctx, scope, schedule.Source); err != nil {
 		return err
 	}
-	return s.db.Transaction(ctx, func(tx *sqlite.Tx) error {
+	return s.db.Transact(ctx, func(tx storage.Tx) error {
 		op := stableID("occurrence-ack-", []any{id, expectedOldGoal, newGoalRevision})
 		prior, e := tx.Get(ctx, "work-occurrence-receipts", key, id)
 		if e == nil {
 			if string(prior.Body) != string(mustJSON(op)) {
-				return sqlite.ErrConflict
+				return storage.ErrConflict
 			}
 			return nil
 		}
-		if !errors.Is(e, sqlite.ErrNotFound) {
+		if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
 		od, e := tx.Get(ctx, "work-occurrences", key, id)
@@ -486,7 +486,7 @@ func (s *Scheduler) AcknowledgeForGoal(ctx context.Context, scope Scope, id stri
 		if _, e = tx.Put(ctx, sd); e != nil {
 			return e
 		}
-		_, e = tx.Put(ctx, sqlite.Document{Namespace: "work-occurrence-receipts", Scope: key, ID: id, Body: mustJSON(op)})
+		_, e = tx.Put(ctx, storage.Document{Namespace: "work-occurrence-receipts", Scope: key, ID: id, Body: mustJSON(op)})
 		return e
 	})
 }
@@ -529,7 +529,7 @@ func (s *Scheduler) RecoverOccurrence(ctx context.Context, scope Scope, id strin
 	}
 	controlOp := stableID("control-", []any{scope, schedule.Source.Receipt, occurrence.ID})
 	proof, err := s.db.Get(ctx, "work-receipts", key, controlOp)
-	if errors.Is(err, sqlite.ErrNotFound) {
+	if errors.Is(err, storage.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {

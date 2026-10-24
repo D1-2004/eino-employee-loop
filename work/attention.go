@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/D1-2004/eino-employee-loop/storage/sqlite"
+	"github.com/D1-2004/eino-employee-loop/storage"
 )
 
 // Attention is an explicit local inbox item, never an authorization to perform
@@ -55,7 +55,7 @@ func (s *Scheduler) Observe(ctx context.Context, scope Scope, in Attention) (Att
 	} else if in.GoalRevision != 0 {
 		return Attention{}, ErrState
 	}
-	err = s.db.Transaction(ctx, func(tx *sqlite.Tx) error {
+	err = s.db.Transact(ctx, func(tx storage.Tx) error {
 		d, e := tx.Get(ctx, "work-attention", key, in.ID)
 		if e == nil {
 			var prior Attention
@@ -65,16 +65,16 @@ func (s *Scheduler) Observe(ctx context.Context, scope Scope, in Attention) (Att
 			compare := prior
 			compare.State = "open"
 			if stableID("", compare) != stableID("", in) {
-				return sqlite.ErrConflict
+				return storage.ErrConflict
 			}
 			in = prior
 			return nil
 		}
-		if !errors.Is(e, sqlite.ErrNotFound) {
+		if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
 		raw, _ := json.Marshal(in)
-		_, e = tx.Put(ctx, sqlite.Document{Namespace: "work-attention", Scope: key, ID: in.ID, Body: raw})
+		_, e = tx.Put(ctx, storage.Document{Namespace: "work-attention", Scope: key, ID: in.ID, Body: raw})
 		return e
 	})
 	return in, err
@@ -124,17 +124,17 @@ func (s *Scheduler) ResolveAttention(ctx context.Context, scope Scope, id, state
 	if err = s.check(ctx, scope, source); err != nil {
 		return err
 	}
-	return s.db.Transaction(ctx, func(tx *sqlite.Tx) error {
+	return s.db.Transact(ctx, func(tx storage.Tx) error {
 		op := stableID("attention-", []any{id, source.Receipt})
 		payload := []any{id, state, source}
 		receipt, e := tx.Get(ctx, "work-attention-receipts", key, op)
 		if e == nil {
 			if string(receipt.Body) != string(mustJSON(payload)) {
-				return sqlite.ErrConflict
+				return storage.ErrConflict
 			}
 			return nil
 		}
-		if !errors.Is(e, sqlite.ErrNotFound) {
+		if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
 		d, e := tx.Get(ctx, "work-attention", key, id)
@@ -153,7 +153,7 @@ func (s *Scheduler) ResolveAttention(ctx context.Context, scope Scope, id, state
 		if _, e = tx.Put(ctx, d); e != nil {
 			return e
 		}
-		_, e = tx.Put(ctx, sqlite.Document{Namespace: "work-attention-receipts", Scope: key, ID: op, Body: mustJSON(payload)})
+		_, e = tx.Put(ctx, storage.Document{Namespace: "work-attention-receipts", Scope: key, ID: op, Body: mustJSON(payload)})
 		return e
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"sync"
 	"time"
@@ -15,7 +16,7 @@ import (
 	"github.com/D1-2004/eino-employee-loop/contextbuilder"
 	"github.com/D1-2004/eino-employee-loop/execution"
 	"github.com/D1-2004/eino-employee-loop/interaction"
-	"github.com/D1-2004/eino-employee-loop/ownerloop"
+	"github.com/D1-2004/eino-employee-loop/storage"
 	"github.com/D1-2004/eino-employee-loop/storage/markdown"
 	"github.com/D1-2004/eino-employee-loop/storage/sqlite"
 	"github.com/D1-2004/eino-employee-loop/work"
@@ -25,15 +26,17 @@ import (
 type standalone struct {
 	executionMu                  sync.Mutex
 	executionCancels             map[string]context.CancelFunc
-	ownerWorker                  *ownerloop.Worker
-	scheduler                    *work.Scheduler
+	ownerWorker                  OwnerRuntime
+	ownerWorkers                 map[string]OwnerRuntime
+	moduleClosers                []io.Closer
+	scheduler                    SchedulerRuntime
 	ownerMu, timingMu            sync.Mutex
-	executor                     *execution.Local
+	executor                     execution.Port
 	opts                         Options
-	db                           *sqlite.Store
-	files                        *markdown.Store
+	db                           storage.State
+	files                        storage.Artifacts
 	work                         *work.Manager
-	context                      *contextbuilder.Builder
+	context                      ContextRuntime
 	delivery                     *interaction.Manager
 	lease                        workflow.Lease
 	owner                        string
@@ -61,14 +64,50 @@ func openStandalone(ctx context.Context, opts Options) (result *standalone, err 
 	if opts.Models == nil {
 		return nil, errors.New("entry: model factory required")
 	}
-	db, err := sqlite.Open(ctx, filepath.Join(opts.Directory, "state"))
-	if err != nil {
+	if err = bindModules(opts); err != nil {
 		return nil, err
 	}
-	s := &standalone{opts: opts, db: db, errors: make(chan error, 16)}
+	var db storage.State
+	var files storage.Artifacts
+	if opts.Profile.Modules.Storage.effective() == builtinModule {
+		db, err = sqlite.Open(ctx, filepath.Join(opts.Directory, "state"))
+		if err == nil {
+			files, err = markdown.Open(filepath.Join(opts.Directory, "workspace"))
+		}
+		if err != nil {
+			if !nilModule(db) {
+				_ = db.Close()
+			}
+			return nil, err
+		}
+	} else {
+		opts.Modules.mu.RLock()
+		factory := opts.Modules.storage[opts.Profile.Modules.Storage]
+		opts.Modules.mu.RUnlock()
+		db, files, err = factory(ctx, opts)
+	}
+	if err != nil {
+		if !nilModule(files) {
+			_ = files.Close()
+		}
+		if !nilModule(db) {
+			_ = db.Close()
+		}
+		return nil, err
+	}
+	if nilModule(db) || nilModule(files) {
+		if !nilModule(files) {
+			_ = files.Close()
+		}
+		if !nilModule(db) {
+			_ = db.Close()
+		}
+		return nil, errors.New("entry: storage factory returned unavailable resources")
+	}
+	s := &standalone{opts: opts, db: db, files: files, ownerWorkers: map[string]OwnerRuntime{}, errors: make(chan error, 16)}
 	defer func() {
 		if err != nil {
-			_ = s.Close()
+			err = errors.Join(err, s.Close())
 		}
 	}()
 	key := opts.Profile.Scope("__entry__")
@@ -81,15 +120,24 @@ func openStandalone(ctx context.Context, opts Options) (result *standalone, err 
 		return nil, err
 	}
 	s.owner = hex.EncodeToString(nonce)
-	s.files, err = markdown.Open(filepath.Join(opts.Directory, "workspace"))
-	if err != nil {
-		return nil, err
-	}
 	s.work, err = work.New(db)
 	if err != nil {
 		return nil, err
 	}
-	s.context, err = contextbuilder.New(db, s.files, s.work, func(c context.Context, scope work.Scope, _ contextbuilder.View) error { return s.authorize(c, scope) })
+	if opts.Profile.Modules.Context.effective() == builtinModule {
+		s.context, err = contextbuilder.New(db, s.files, s.work, func(c context.Context, scope work.Scope, _ contextbuilder.View) error { return s.authorize(c, scope) }, contextbuilder.WithAudiencePolicy(opts.AudiencePolicy))
+	} else {
+		opts.Modules.mu.RLock()
+		factory := opts.Modules.contexts[opts.Profile.Modules.Context]
+		opts.Modules.mu.RUnlock()
+		s.context, err = factory(ctx, s.dependencies(opts.Profile))
+	}
+	if err == nil && nilModule(s.context) {
+		err = errors.New("entry: context factory returned nil")
+	}
+	if s.context != nil {
+		s.own(s.context)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -98,39 +146,70 @@ func openStandalone(ctx context.Context, opts Options) (result *standalone, err 
 		port = interaction.Local{Files: s.files}
 	}
 	s.delivery = &interaction.Manager{DB: db, Port: port, Owner: s.owner, Authorize: s.authorize, ValidateSend: s.validateDelivery}
-	s.executor = &execution.Local{DB: db, Owner: s.owner, Authorize: s.authorize}
-	s.scheduler, err = work.NewScheduler(db, s.work, s.authorize, func(c context.Context, scope work.Scope, src work.Source) error {
-		current, _, e := s.context.Source(c, scope, src.Receipt)
-		if e != nil {
-			return e
-		}
-		if current.Actor != src.Actor || current.Text != src.Text {
-			return work.ErrScope
-		}
-		return nil
-	})
+	if opts.Profile.Modules.Executor.effective() == builtinModule {
+		s.executor = &execution.Local{DB: db, Owner: s.owner, Authorize: s.authorize, Run: s.execute}
+	} else {
+		opts.Modules.mu.RLock()
+		factory := opts.Modules.executors[opts.Profile.Modules.Executor]
+		opts.Modules.mu.RUnlock()
+		s.executor, err = factory(ctx, s.dependencies(opts.Profile))
+	}
+	if s.executor != nil {
+		s.own(s.executor)
+	}
 	if err != nil {
 		return nil, err
 	}
-	s.ownerWorker, err = s.ownerFor(opts.Profile)
+	if nilModule(s.executor) {
+		return nil, errors.New("entry: executor factory returned nil")
+	}
+	if opts.Profile.Modules.Scheduler.effective() == builtinModule {
+		s.scheduler, err = s.defaultScheduler()
+	} else {
+		opts.Modules.mu.RLock()
+		factory := opts.Modules.schedulers[opts.Profile.Modules.Scheduler]
+		opts.Modules.mu.RUnlock()
+		s.scheduler, err = factory(ctx, s.dependencies(opts.Profile))
+	}
+	if err == nil && nilModule(s.scheduler) {
+		err = errors.New("entry: scheduler factory returned nil")
+	}
+	if s.scheduler != nil {
+		s.own(s.scheduler)
+	}
 	if err != nil {
 		return nil, err
 	}
-	binding := struct{ Backend, ProfileID string }{opts.Profile.Backend, opts.Profile.ID}
+	s.ownerWorker, err = s.ownerFor(ctx, opts.Profile)
+	if err != nil {
+		return nil, err
+	}
+	binding := struct {
+		Backend, ProfileID string
+		Modules            ModuleSelection
+	}{opts.Profile.Backend, opts.Profile.ID, opts.Profile.Modules.core()}
 	bindingKey := contextbuilder.OwnerKey(opts.Profile.Scope("binding"))
-	err = db.Transaction(ctx, func(tx *sqlite.Tx) error {
+	err = db.Transact(ctx, func(tx storage.Tx) error {
 		d, e := tx.Get(ctx, "business-bindings", bindingKey, "selected")
 		raw := encode(binding)
 		if e == nil {
-			if string(d.Body) != string(raw) {
+			var old struct {
+				Backend, ProfileID string
+				Modules            ModuleSelection
+			}
+			if e = json.Unmarshal(d.Body, &old); e != nil {
+				return e
+			}
+			old.Modules = old.Modules.core()
+			if string(encode(old)) != string(raw) {
 				return errors.New("entry: directory is bound to a different business profile/backend; explicit migration required")
 			}
 			return nil
 		}
-		if !errors.Is(e, sqlite.ErrNotFound) {
+		if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
-		_, e = tx.Put(ctx, sqlite.Document{Namespace: "business-bindings", Scope: bindingKey, ID: "selected", Body: raw})
+		_, e = tx.Put(ctx, storage.Document{Namespace: "business-bindings", Scope: bindingKey, ID: "selected", Body: raw})
 		return e
 	})
 	if err != nil {
@@ -138,18 +217,22 @@ func openStandalone(ctx context.Context, opts Options) (result *standalone, err 
 	}
 	raw, _ := json.Marshal(opts.Profile)
 	id := opts.Profile.ID + "/" + opts.Profile.Revision
-	err = db.Transaction(ctx, func(tx *sqlite.Tx) error {
+	err = db.Transact(ctx, func(tx storage.Tx) error {
 		d, e := tx.Get(ctx, "profiles", opts.Profile.Key(), id)
 		if e == nil {
-			if string(d.Body) != string(raw) {
+			var old Profile
+			if e = json.Unmarshal(d.Body, &old); e != nil {
+				return e
+			}
+			if string(encode(old)) != string(raw) {
 				return errors.New("entry: profile changed under same revision")
 			}
 			return nil
 		}
-		if !errors.Is(e, sqlite.ErrNotFound) {
+		if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
-		_, e = tx.Put(ctx, sqlite.Document{Namespace: "profiles", Scope: opts.Profile.Key(), ID: id, Body: raw})
+		_, e = tx.Put(ctx, storage.Document{Namespace: "profiles", Scope: opts.Profile.Key(), ID: id, Body: raw})
 		return e
 	})
 	if err != nil {
@@ -188,7 +271,7 @@ func (s *standalone) Submit(ctx context.Context, in Input) (Admission, error) {
 	}
 	id := contextbuilder.Digest([]byte(in.Scene + "/" + in.Actor + "/" + in.ID))
 	admission := Admission{ID: id, State: "queued", Backend: s.opts.Profile.Backend, ProfileRevision: s.opts.Profile.Revision}
-	err := s.db.Transaction(ctx, func(tx *sqlite.Tx) error {
+	err := s.db.Transact(ctx, func(tx storage.Tx) error {
 		d, e := tx.Get(ctx, "entry-jobs", s.opts.Profile.Key(), id)
 		if e == nil {
 			var old job
@@ -205,11 +288,11 @@ func (s *standalone) Submit(ctx context.Context, in Input) (Admission, error) {
 			admission.Replay = true
 			return nil
 		}
-		if !errors.Is(e, sqlite.ErrNotFound) {
+		if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
 		raw, _ := json.Marshal(job{Input: in, Profile: s.opts.Profile, State: "queued"})
-		_, e = tx.Put(ctx, sqlite.Document{Namespace: "entry-jobs", Scope: s.opts.Profile.Key(), ID: id, Body: raw})
+		_, e = tx.Put(ctx, storage.Document{Namespace: "entry-jobs", Scope: s.opts.Profile.Key(), ID: id, Body: raw})
 		return e
 	})
 	return admission, err
@@ -290,6 +373,9 @@ func (s *standalone) Close() error {
 	s.timingMu.Lock()
 	defer s.timingMu.Unlock()
 	var err error
+	for i := len(s.moduleClosers) - 1; i >= 0; i-- {
+		err = errors.Join(err, s.moduleClosers[i].Close())
+	}
 	if s.files != nil {
 		err = errors.Join(err, s.files.Close())
 	}

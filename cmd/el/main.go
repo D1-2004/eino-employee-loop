@@ -58,12 +58,16 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	scriptPath := flags.String("script", "", "stateless role/rule model JSON, instead of an LLM")
 	timeout := flags.Duration("timeout", 2*time.Minute, "total bounded command duration")
 	limit := flags.Int("limit", 256, "maximum synchronous drain steps")
+	listPlugins := flags.Bool("list-plugins", false, "list trusted compiled plugin name/version pairs and exit")
 	flags.Usage = func() {
 		fmt.Fprintln(errOut, "Usage: el -profile profile.json -dir state [-script rules.json] replay|submit|answer|signal|schedule|drain|status|owner-status|retry|serve [command flags]")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
 		return err
+	}
+	if *listPlugins {
+		return json.NewEncoder(out).Encode(compiledPlugins)
 	}
 	if *profilePath == "" || *directory == "" || flags.NArg() < 1 {
 		flags.Usage()
@@ -85,7 +89,11 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if err != nil {
 		return err
 	}
-	e, err := entry.Open(ctx, entry.Options{Directory: *directory, Profile: profile, Models: models})
+	plugins, err := pluginRegistry(errOut)
+	if err != nil {
+		return err
+	}
+	e, err := entry.Open(ctx, entry.Options{Directory: *directory, Profile: profile, Models: models, Plugins: plugins})
 	if err != nil {
 		return err
 	}

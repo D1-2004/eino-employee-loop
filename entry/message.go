@@ -6,7 +6,7 @@ import (
 	"errors"
 	"github.com/D1-2004/eino-employee-loop/contextbuilder"
 	"github.com/D1-2004/eino-employee-loop/interaction"
-	"github.com/D1-2004/eino-employee-loop/storage/sqlite"
+	"github.com/D1-2004/eino-employee-loop/storage"
 	"github.com/D1-2004/eino-employee-loop/work"
 )
 
@@ -23,7 +23,7 @@ func (s *standalone) enqueueMessage(ctx context.Context, j job, call, kind, inst
 	}
 	id := "message-" + contextbuilder.Digest(encode([]any{j.Profile.Scope(j.Input.Scene), j.Input.ID, call}))
 	item := messageJob{Input: j.Input, Profile: j.Profile, Kind: kind, Instruction: instruction, State: "queued"}
-	err := s.db.Transaction(ctx, func(tx *sqlite.Tx) error {
+	err := s.db.Transact(ctx, func(tx storage.Tx) error {
 		d, e := tx.Get(ctx, "message-jobs", j.Profile.Key(), id)
 		if e == nil {
 			var old messageJob
@@ -33,14 +33,14 @@ func (s *standalone) enqueueMessage(ctx context.Context, j job, call, kind, inst
 			old.State = "queued"
 			old.Frame = nil
 			if string(encode(old)) != string(encode(item)) {
-				return sqlite.ErrConflict
+				return storage.ErrConflict
 			}
 			return nil
 		}
-		if !errors.Is(e, sqlite.ErrNotFound) {
+		if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
-		_, e = tx.Put(ctx, sqlite.Document{Namespace: "message-jobs", Scope: j.Profile.Key(), ID: id, Body: encode(item)})
+		_, e = tx.Put(ctx, storage.Document{Namespace: "message-jobs", Scope: j.Profile.Key(), ID: id, Body: encode(item)})
 		return e
 	})
 	return map[string]string{"accepted_message": id, "kind": kind}, err

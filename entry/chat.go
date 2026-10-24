@@ -9,7 +9,7 @@ import (
 
 	"github.com/D1-2004/eino-employee-loop/contextbuilder"
 	"github.com/D1-2004/eino-employee-loop/interaction"
-	"github.com/D1-2004/eino-employee-loop/storage/sqlite"
+	"github.com/D1-2004/eino-employee-loop/storage"
 	"github.com/D1-2004/eino-employee-loop/work"
 	"github.com/cloudwego/eino/components/tool"
 )
@@ -210,7 +210,7 @@ func (s *standalone) Resume(ctx context.Context, id string, answer Input, target
 	}
 	scope := j.Profile.Scope(j.Input.Scene)
 	src, ref, err := s.context.Source(ctx, scope, answer.ID)
-	if errors.Is(err, sqlite.ErrNotFound) {
+	if errors.Is(err, storage.ErrNotFound) {
 		src, err = s.context.Admit(ctx, scope, contextbuilder.Source{ID: answer.ID, Actor: answer.Actor, Text: answer.Text})
 		if err == nil {
 			src, ref, err = s.context.Source(ctx, scope, answer.ID)

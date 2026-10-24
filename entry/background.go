@@ -10,8 +10,7 @@ import (
 
 	"github.com/D1-2004/eino-employee-loop/contextbuilder"
 	"github.com/D1-2004/eino-employee-loop/execution"
-	"github.com/D1-2004/eino-employee-loop/storage/markdown"
-	"github.com/D1-2004/eino-employee-loop/storage/sqlite"
+	"github.com/D1-2004/eino-employee-loop/storage"
 	"github.com/D1-2004/eino-employee-loop/work"
 	"github.com/cloudwego/eino/components/tool"
 )
@@ -60,25 +59,25 @@ func (s *standalone) backgroundOnce(ctx context.Context) (bool, error) {
 			}
 			if task.State == work.Stopped || task.State == work.Paused || run.State == work.RunCancelling {
 				if !run.ExitProven {
-					record, e := s.executor.Lookup(ctx, scope, run.SubmitKey)
-					if errors.Is(e, sqlite.ErrNotFound) {
-						_, e = s.work.AbortLocalSubmission(ctx, scope, task.ID, run.ID)
-						return true, e
-					}
+					record, e := s.executor.Cancel(ctx, execution.TargetFor(task))
 					if e != nil {
 						return false, e
 					}
-					if record.State != "exited" {
-						record, e = s.executor.Stop(ctx, scope, run.SubmitKey)
-						if e != nil {
-							return false, e
-						}
+					if e = s.validateExecutionRecord(ctx, record, task); e != nil {
+						return false, e
+					}
+					if record.NeverSubmitted {
+						_, e = s.work.RecordNeverSubmitted(ctx, scope, task.ID, run.ID, record.ID)
+						return true, e
+					}
+					if record.State != "exited" || !record.Result.Exited {
+						continue
 					}
 					state := work.RunStopped
 					if record.Result.Failure == "" {
 						state = work.RunSucceeded
 					}
-					_, e = s.work.RecordExecution(ctx, scope, task.ID, "local-exit-"+record.ID, work.ExecutionFact{RunID: run.ID, ExecutionID: record.ID, State: state, ExitProven: true, Output: record.Result.Output, Failure: record.Result.Failure, Artifacts: record.Result.Artifacts})
+					_, e = s.work.RecordExecution(ctx, scope, task.ID, "provider-exit-"+record.ID, work.ExecutionFact{RunID: run.ID, ExecutionID: record.ID, State: state, ExitProven: true, Output: record.Result.Output, Failure: record.Result.Failure, Artifacts: record.Result.Artifacts})
 					return true, e
 				}
 				continue
@@ -91,36 +90,35 @@ func (s *standalone) backgroundOnce(ctx context.Context) (bool, error) {
 				if err != nil {
 					return true, err
 				}
-				frame, err := s.context.Build(ctx, scope, contextbuilder.Execution, "", task.ID)
-				if err != nil {
-					return true, err
-				}
-				record, err := s.executor.Submit(ctx, execution.Request{Task: task, Frame: frame, Configuration: task.Definition.Configuration})
-				if err != nil {
-					return true, err
-				}
-				_, err = s.work.Submission(ctx, scope, task.ID, run.ID, record.ID, false)
-				return true, err
+				return s.submitExecution(ctx, task)
 			}
-			if run.State == work.RunPreparing || run.State == work.RunUnknown {
+			if run.State == work.RunPreparing {
+				return s.submitExecution(ctx, task)
+			}
+			if run.State == work.RunUnknown {
 				record, err := s.executor.Lookup(ctx, scope, run.SubmitKey)
-				if errors.Is(err, sqlite.ErrNotFound) && run.State == work.RunPreparing {
-					frame, e := s.context.Build(ctx, scope, contextbuilder.Execution, "", task.ID)
-					if e != nil {
-						return false, e
-					}
-					record, err = s.executor.Submit(ctx, execution.Request{Task: task, Frame: frame, Configuration: task.Definition.Configuration})
-				}
 				if err != nil {
 					return false, err
+				}
+				if err = s.validateExecutionRecord(ctx, record, task); err != nil {
+					return false, err
+				}
+				if record.NeverSubmitted {
+					return false, execution.ErrUnknown
 				}
 				_, err = s.work.Submission(ctx, scope, task.ID, run.ID, record.ID, false)
 				return true, err
 			}
 			if run.State == work.RunActive || run.State == work.RunCancelling {
-				record, err := s.executor.Advance(ctx, scope, run.SubmitKey, s.execute)
+				record, err := s.executor.Poll(ctx, scope, run.SubmitKey)
 				if err != nil {
 					return true, err
+				}
+				if err = s.validateExecutionRecord(ctx, record, task); err != nil {
+					return true, err
+				}
+				if record.NeverSubmitted {
+					return true, execution.ErrUnknown
 				}
 				if record.State == "interrupted" {
 					waits := []work.Wait{}
@@ -151,6 +149,96 @@ func (s *standalone) backgroundOnce(ctx context.Context) (bool, error) {
 	}
 	return false, nil
 }
+
+// submitExecution freezes the exact request before external I/O. The unknown
+// state is committed before Submit, so a crash cannot cause a new submission
+// merely because a remote provider's Lookup currently reports NotFound.
+func (s *standalone) submitExecution(ctx context.Context, task work.Task) (bool, error) {
+	run := task.CurrentRun()
+	if run == nil {
+		return false, work.ErrState
+	}
+	scopeKey, err := task.Scope.Key()
+	if err != nil {
+		return false, err
+	}
+	var request execution.Request
+	d, err := s.db.Get(ctx, "execution-requests", scopeKey, run.SubmitKey)
+	if errors.Is(err, storage.ErrNotFound) {
+		frame, e := s.context.Build(ctx, task.Scope, contextbuilder.Execution, "", task.ID)
+		if e != nil {
+			return true, e
+		}
+		request = execution.Request{Task: task, Frame: frame, Configuration: task.Definition.Configuration}
+		if _, e = s.db.Put(ctx, storage.Document{Namespace: "execution-requests", Scope: scopeKey, ID: run.SubmitKey, Body: encode(request)}); e != nil {
+			return true, e
+		}
+	} else if err != nil {
+		return true, err
+	} else if err = json.Unmarshal(d.Body, &request); err != nil {
+		return true, err
+	}
+	if request.Task.ID != task.ID || request.Task.Scope != task.Scope || request.Task.CurrentRun() == nil || request.Task.CurrentRun().ID != run.ID || request.Task.CurrentRun().SubmitKey != run.SubmitKey || string(request.Configuration) != string(task.Definition.Configuration) {
+		return true, work.ErrScope
+	}
+	if err = s.authorize(ctx, task.Scope); err != nil {
+		return true, err
+	}
+	if err = s.context.Revalidate(ctx, request.Frame); err != nil {
+		return true, err
+	}
+	if _, err = s.work.Submission(ctx, task.Scope, task.ID, run.ID, "", true); err != nil {
+		return true, err
+	}
+	// Recheck immediately before crossing a replaceable provider boundary. A
+	// recovered frozen request is evidence, never continuing read authority.
+	if err = s.authorize(ctx, task.Scope); err != nil {
+		return true, err
+	}
+	if err = s.context.Revalidate(ctx, request.Frame); err != nil {
+		return true, err
+	}
+	record, err := s.executor.Submit(ctx, request)
+	if err != nil {
+		return true, err
+	}
+	if err = s.validateExecutionRecord(ctx, record, task); err != nil {
+		return true, err
+	}
+	if record.NeverSubmitted {
+		return true, execution.ErrUnknown
+	}
+	_, err = s.work.Submission(ctx, task.Scope, task.ID, run.ID, record.ID, false)
+	return true, err
+}
+
+func (s *standalone) validateExecutionRecord(ctx context.Context, record execution.Record, task work.Task) error {
+	if err := execution.ValidateForTask(record, task); err != nil {
+		return err
+	}
+	if record.NeverSubmitted {
+		return nil
+	}
+	key, err := task.Scope.Key()
+	if err != nil {
+		return err
+	}
+	d, err := s.db.Get(ctx, "execution-requests", key, task.CurrentRun().SubmitKey)
+	// Older Local records predate the Entry request journal. Their own persisted
+	// request remains the migration baseline, with scope/config/identity checked.
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var frozen execution.Request
+	if err = json.Unmarshal(d.Body, &frozen); err != nil {
+		return err
+	}
+	return execution.ValidateRequest(record, frozen)
+}
+
 func (s *standalone) execute(ctx context.Context, record execution.Record) (execution.Result, error) {
 	task := record.Request.Task
 	runCtx, cancel := context.WithCancel(ctx)
@@ -213,25 +301,25 @@ func (s *standalone) execute(ctx context.Context, record execution.Record) (exec
 		fingerprint := contextbuilder.Digest(encode(a))
 		// Reserve immutable tool arguments before touching the filesystem. Native
 		// IDs may reappear in a later model batch, so per-batch validation is insufficient.
-		e := s.db.Transaction(c, func(tx *sqlite.Tx) error {
+		e := s.db.Transact(c, func(tx storage.Tx) error {
 			prior, e := tx.Get(c, "execution-file-effects", scopeKey, effectID)
 			if e == nil {
 				if string(prior.Body) != string(encode(fingerprint)) {
-					return sqlite.ErrConflict
+					return storage.ErrConflict
 				}
 				return nil
 			}
-			if !errors.Is(e, sqlite.ErrNotFound) {
+			if !errors.Is(e, storage.ErrNotFound) {
 				return e
 			}
-			_, e = tx.Put(c, sqlite.Document{Namespace: "execution-file-effects", Scope: scopeKey, ID: effectID, Body: encode(fingerprint)})
+			_, e = tx.Put(c, storage.Document{Namespace: "execution-file-effects", Scope: scopeKey, ID: effectID, Body: encode(fingerprint)})
 			return e
 		})
 		if e != nil {
 			return nil, e
 		}
 		old, e := s.files.Read(c, p)
-		var doc markdown.Document
+		var doc storage.File
 		if e == nil && old.Body == body {
 			doc = old
 		} else {
@@ -249,19 +337,19 @@ func (s *standalone) execute(ctx context.Context, record execution.Record) (exec
 		}
 		artifact := work.Artifact{Path: doc.Path, SHA256: doc.SHA256, Bytes: int64(len(doc.Body))}
 		key := effectID
-		err = s.db.Transaction(c, func(tx *sqlite.Tx) error {
+		err = s.db.Transact(c, func(tx storage.Tx) error {
 			d, e := tx.Get(c, "execution-artifacts", scopeKey, key)
 			raw := encode(artifact)
 			if e == nil {
 				if string(d.Body) != string(raw) {
-					return sqlite.ErrConflict
+					return storage.ErrConflict
 				}
 				return nil
 			}
-			if !errors.Is(e, sqlite.ErrNotFound) {
+			if !errors.Is(e, storage.ErrNotFound) {
 				return e
 			}
-			_, e = tx.Put(c, sqlite.Document{Namespace: "execution-artifacts", Scope: scopeKey, ID: key, Body: raw})
+			_, e = tx.Put(c, storage.Document{Namespace: "execution-artifacts", Scope: scopeKey, ID: key, Body: raw})
 			return e
 		})
 		return artifact, err

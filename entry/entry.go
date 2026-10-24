@@ -20,6 +20,7 @@ import (
 )
 
 type Profile struct {
+	Modules                                                                             ModuleSelection
 	Plugins                                                                             []PluginRef
 	Version, ID, Revision, Workspace, Tenant, Employee, Owner, Name, Backend, ModelName string
 	Scenes                                                                              []string
@@ -43,10 +44,10 @@ func (p Profile) Validate() error {
 	for _, group := range []struct {
 		names   []string
 		allowed map[string]bool
-	}{{p.OwnerLoops, map[string]bool{"attention": true, "memory": true, "dreaming": true, "tone": true, "reflection": true, "summary": true}}, {p.DeliveryLoops, map[string]bool{"expression": true, "package": true}}} {
+	}{{p.OwnerLoops, nil}, {p.DeliveryLoops, map[string]bool{"expression": true, "package": true}}} {
 		seen := map[string]bool{}
 		for _, name := range group.names {
-			if !group.allowed[name] || seen[name] {
+			if name == "" || seen[name] || (group.allowed != nil && !group.allowed[name]) {
 				return errors.New("entry: unknown or duplicate loop")
 			}
 			seen[name] = true
@@ -94,28 +95,32 @@ type Backend interface {
 	Close() error
 }
 type Options struct {
-	Directory string
-	Now       func() time.Time
-	Profile   Profile
-	Models    Models
-	Delivery  interaction.Port
-	Callbacks []callbacks.Handler
-	Plugins   *Registry
+	Modules              *ModuleRegistry
+	AudiencePolicy       contextbuilder.AudiencePolicy
+	RequiredCapabilities []Capability
+	Directory            string
+	Now                  func() time.Time
+	Profile              Profile
+	Models               Models
+	Delivery             interaction.Port
+	Callbacks            []callbacks.Handler
+	Plugins              *Registry
 	// Private DTO adapters register their complete business backend here; never
 	// underneath the standalone Execution Bridge as another business Task API.
 	Backends map[string]func(context.Context, Options) (Backend, error)
 }
 type Entry struct {
-	backend  Backend
-	profile  Profile
-	mu       sync.Mutex
-	closed   bool
-	life     context.Context
-	cancel   context.CancelFunc
-	ops      sync.WaitGroup
-	done     chan struct{}
-	closeErr error
-	stops    []func()
+	backend      Backend
+	capabilities map[Capability]bool
+	profile      Profile
+	mu           sync.Mutex
+	closed       bool
+	life         context.Context
+	cancel       context.CancelFunc
+	ops          sync.WaitGroup
+	done         chan struct{}
+	closeErr     error
+	stops        []func()
 }
 
 func Open(ctx context.Context, opts Options) (*Entry, error) {
@@ -129,6 +134,8 @@ func Open(ctx context.Context, opts Options) (*Entry, error) {
 	opts.Profile.DeliveryLoops = append([]string(nil), opts.Profile.DeliveryLoops...)
 	opts.Profile.Plugins = append([]PluginRef(nil), opts.Profile.Plugins...)
 	opts.Callbacks = append([]callbacks.Handler(nil), opts.Callbacks...)
+	opts.RequiredCapabilities = append([]Capability(nil), opts.RequiredCapabilities...)
+
 	if err := opts.Profile.Validate(); err != nil {
 		return nil, err
 	}
@@ -140,6 +147,9 @@ func Open(ctx context.Context, opts Options) (*Entry, error) {
 		return nil, err
 	}
 	opts.Directory = dir
+	if err := opts.Modules.validate(opts.Profile.Modules); err != nil {
+		return nil, err
+	}
 	if _, err := opts.Plugins.Resolve(opts.Profile.Plugins, native.Config{}); err != nil {
 		return nil, err
 	}
@@ -154,13 +164,21 @@ func Open(ctx context.Context, opts Options) (*Entry, error) {
 		b, err = factory(ctx, opts)
 	}
 	if err != nil {
+		if !nilModule(b) {
+			err = errors.Join(err, b.Close())
+		}
 		return nil, err
 	}
-	if b == nil {
+	if nilModule(b) {
 		return nil, errors.New("entry: backend unavailable")
 	}
+	caps, err := backendCapabilities(b, opts)
+	if err != nil {
+		_ = b.Close()
+		return nil, err
+	}
 	life, cancel := context.WithCancel(context.Background())
-	return &Entry{backend: b, profile: opts.Profile, life: life, cancel: cancel, done: make(chan struct{})}, nil
+	return &Entry{backend: b, profile: opts.Profile, capabilities: caps, life: life, cancel: cancel, done: make(chan struct{})}, nil
 }
 
 // operation joins the caller's cancellation with Entry shutdown. It registers
@@ -290,6 +308,9 @@ func (e *Entry) Pending(ctx context.Context, scene string) (map[string][]string,
 }
 
 func (e *Entry) Schedule(ctx context.Context, scene string, in work.Schedule) (work.Schedule, error) {
+	if !e.capabilities[CapabilitySchedule] {
+		return work.Schedule{}, ErrUnsupported
+	}
 	c, done, err := e.operation(ctx)
 	if err != nil {
 		return work.Schedule{}, err
@@ -304,6 +325,9 @@ func (e *Entry) Schedule(ctx context.Context, scene string, in work.Schedule) (w
 	return b.Schedule(c, e.profile.Scope(scene), in)
 }
 func (e *Entry) Signal(ctx context.Context, in Input, condition string) error {
+	if !e.capabilities[CapabilitySignal] {
+		return ErrUnsupported
+	}
 	c, done, err := e.operation(ctx)
 	if err != nil {
 		return err
@@ -318,6 +342,9 @@ func (e *Entry) Signal(ctx context.Context, in Input, condition string) error {
 	return b.Signal(c, in, condition)
 }
 func (e *Entry) OwnerDocuments(ctx context.Context, scene string) ([]ownerloop.Document, error) {
+	if !e.capabilities[CapabilityOwner] {
+		return nil, ErrUnsupported
+	}
 	c, done, err := e.operation(ctx)
 	if err != nil {
 		return nil, err
@@ -335,6 +362,9 @@ func (e *Entry) OwnerDocuments(ctx context.Context, scene string) ([]ownerloop.D
 // Retry releases an explicitly selected recovery hold without granting a new
 // physical model budget or changing any accepted source/configuration.
 func (e *Entry) Retry(ctx context.Context, id string) error {
+	if !e.capabilities[CapabilityRetry] {
+		return ErrUnsupported
+	}
 	c, done, err := e.operation(ctx)
 	if err != nil {
 		return err
@@ -350,6 +380,9 @@ func (e *Entry) Retry(ctx context.Context, id string) error {
 }
 
 func (e *Entry) Failures(ctx context.Context, scene string) ([]Failure, error) {
+	if !e.capabilities[CapabilityDiagnostics] {
+		return nil, ErrUnsupported
+	}
 	c, done, err := e.operation(ctx)
 	if err != nil {
 		return nil, err
@@ -359,7 +392,7 @@ func (e *Entry) Failures(ctx context.Context, scene string) ([]Failure, error) {
 		Failures(context.Context, work.Scope) ([]Failure, error)
 	})
 	if !ok {
-		return nil, nil
+		return nil, ErrUnsupported
 	}
 	return b.Failures(c, e.profile.Scope(scene))
 }

@@ -151,7 +151,7 @@ func (s *standalone) runAgent(ctx context.Context, profile Profile, scope work.S
 	}
 	cfg := native.Config{Name: role, Version: "local-el-native/1", Authorize: func(c context.Context, _ native.Request) error { return before(c) }, Factory: factory, Callbacks: s.opts.Callbacks, Stores: func(_ context.Context, request native.Request, version string) (adk.CheckPointStore, error) {
 		key, _ := json.Marshal(request.Key)
-		return s.db.Checkpoints(string(key), version)
+		return s.db.CheckpointStore(string(key), version)
 	}}
 	cfg.ToolsReady = func(_ context.Context, _ native.Request, infos []*schema.ToolInfo) error {
 		for _, info := range infos {
@@ -188,7 +188,7 @@ func (s *standalone) runAgent(ctx context.Context, profile Profile, scope work.S
 	if len(targets) > 0 && targets[0] != nil {
 		return r.Resume(ctx, req, targets[0])
 	}
-	cp, e := s.db.Checkpoints(string(encode(key)), "local-el-native/1")
+	cp, e := s.db.CheckpointStore(string(encode(key)), "local-el-native/1")
 	if e != nil {
 		return native.Result{}, e
 	}

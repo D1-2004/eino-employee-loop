@@ -121,7 +121,7 @@ func TestDerivedOwnerViewChecksOtherSceneEvidenceBeforeAndAfterReconcile(t *test
 	ctx := context.Background()
 	p := testProfile()
 	p.Scenes = []string{"a", "b"}
-	e, err := Open(ctx, Options{Directory: t.TempDir(), Profile: p, Models: models(nil)})
+	e, err := Open(ctx, Options{Directory: t.TempDir(), Profile: p, Models: models(nil), AudiencePolicy: func(context.Context, work.Scope, work.Scope, contextbuilder.View) error { return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}

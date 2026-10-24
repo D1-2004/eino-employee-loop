@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"time"
 
+	native "github.com/D1-2004/eino-employee-loop/agent"
 	"github.com/D1-2004/eino-employee-loop/contextbuilder"
 	"github.com/D1-2004/eino-employee-loop/ownerloop"
 	"github.com/D1-2004/eino-employee-loop/work"
@@ -38,7 +40,7 @@ func (s *standalone) ownerOnce(ctx context.Context) (bool, error) {
 		if len(j.Profile.OwnerLoops) == 0 {
 			continue
 		}
-		worker, e := s.ownerFor(j.Profile)
+		worker, e := s.ownerFor(ctx, j.Profile)
 		if e != nil {
 			return false, e
 		}
@@ -46,12 +48,21 @@ func (s *standalone) ownerOnce(ctx context.Context) (bool, error) {
 			return false, err
 		}
 	}
-	for _, scene := range s.opts.Profile.Scenes {
-		progress, err := s.ownerWorker.Tick(ctx, s.opts.Profile.Scope(scene))
-		if err != nil || progress {
-			return progress, err
+	keys := make([]string, 0, len(s.ownerWorkers))
+	for key := range s.ownerWorkers {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		worker := s.ownerWorkers[key]
+		for _, scene := range s.opts.Profile.Scenes {
+			progress, err := worker.Tick(ctx, s.opts.Profile.Scope(scene))
+			if err != nil || progress {
+				return progress, err
+			}
 		}
 	}
+
 	return false, nil
 }
 func (s *standalone) timingOnce(ctx context.Context) (bool, error) {
@@ -173,7 +184,7 @@ func (s *standalone) cancelExecution(runID string) {
 	}
 }
 
-func (s *standalone) ownerFor(profile Profile) (*ownerloop.Worker, error) {
+func (s *standalone) defaultOwnerFor(profile Profile) (*ownerloop.Worker, error) {
 	roles := []ownerloop.RoleConfig{}
 	for _, name := range profile.OwnerLoops {
 		roles = append(roles, ownerloop.RoleConfig{Name: name, MaxModelCalls: profile.MaxModelCalls})
@@ -181,13 +192,73 @@ func (s *standalone) ownerFor(profile Profile) (*ownerloop.Worker, error) {
 	if len(roles) == 0 {
 		roles = ownerloop.DefaultRoles()
 	} // Tick restores already admitted work; new admission is disabled above.
-	return ownerloop.New(ownerloop.Options{DB: s.db, Files: s.files, Context: s.context, Owner: s.owner, Version: profile.Revision, Configuration: encode(profile), Callbacks: s.opts.Callbacks, Roles: roles, Authorize: s.authorize, Models: func(c context.Context, r ownerloop.Request) (model.ToolCallingChatModel, error) {
-		frozen := profile
-		if len(r.Configuration) > 0 {
-			if err := json.Unmarshal(r.Configuration, &frozen); err != nil {
-				return nil, err
-			}
+	frozenProfile := func(r ownerloop.Request) (Profile, error) {
+		var frozen Profile
+		if len(r.Configuration) == 0 {
+			return frozen, errors.New("entry: owner observation missing frozen profile")
+		}
+		if err := json.Unmarshal(r.Configuration, &frozen); err != nil {
+			return frozen, err
+		}
+		if frozen.Revision != r.Version {
+			return frozen, errors.New("entry: owner observation profile revision mismatch")
+		}
+		return frozen, nil
+	}
+	return ownerloop.New(ownerloop.Options{DB: s.db, Files: s.files, Context: s.context, Owner: s.owner, Version: profile.Revision, Configuration: encode(profile), Callbacks: s.opts.Callbacks, Roles: roles, Authorize: s.authorize, ConfigureRuntime: func(_ context.Context, r ownerloop.Request, cfg native.Config) (native.Config, error) {
+		frozen, err := frozenProfile(r)
+		if err != nil {
+			return native.Config{}, err
+		}
+		return s.opts.Plugins.Resolve(frozen.Plugins, cfg)
+	}, Models: func(c context.Context, r ownerloop.Request) (model.ToolCallingChatModel, error) {
+		frozen, err := frozenProfile(r)
+		if err != nil {
+			return nil, err
 		}
 		return s.opts.Models(c, ModelRequest{Role: "owner_" + r.Role, Receipt: r.Receipt, Scope: r.Scope, Profile: frozen, ModelName: frozen.ModelName})
 	}})
+}
+
+func (s *standalone) defaultScheduler() (SchedulerRuntime, error) {
+	return work.NewScheduler(s.db, s.work, s.authorize, func(c context.Context, scope work.Scope, src work.Source) error {
+		current, _, err := s.context.Source(c, scope, src.Receipt)
+		if err != nil {
+			return err
+		}
+		if current.Actor != src.Actor || current.Text != src.Text {
+			return work.ErrScope
+		}
+		return nil
+	})
+}
+func (s *standalone) ownerFor(ctx context.Context, profile Profile) (OwnerRuntime, error) {
+	if err := s.opts.Modules.validate(profile.Modules); err != nil {
+		return nil, err
+	}
+	id := string(encode(profile))
+	if worker := s.ownerWorkers[id]; worker != nil {
+		return worker, nil
+	}
+	var worker OwnerRuntime
+	var err error
+	if profile.Modules.Owner.effective() == builtinModule {
+		worker, err = s.defaultOwnerFor(profile)
+	} else {
+		s.opts.Modules.mu.RLock()
+		factory := s.opts.Modules.owners[profile.Modules.Owner]
+		s.opts.Modules.mu.RUnlock()
+		worker, err = factory(ctx, s.dependencies(profile))
+	}
+	if worker != nil {
+		s.own(worker)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if nilModule(worker) {
+		return nil, errors.New("entry: owner factory returned nil")
+	}
+	s.ownerWorkers[id] = worker
+	return worker, nil
 }

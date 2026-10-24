@@ -143,3 +143,5 @@ equal. Add a locale by adding files.
 ## License
 
 MIT
+
+[Module composition, replacement boundaries and recovery](docs/module-composition.md).
