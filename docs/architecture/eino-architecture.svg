@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1230" viewBox="0 0 1440 1230">
+<style>text{font-family:"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;fill:#111827}.sub{fill:#64748b;font-size:15px}.label{font-size:16px}.title{font-size:21px;font-weight:600}.small{font-size:14px}</style>
+<defs>
+<marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#2563eb"/></marker>
+<marker id="arrow-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#7c3aed"/></marker>
+<marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#059669"/></marker>
+</defs>
+<rect width="1440" height="1230" fill="#ffffff"/>
+<text x="48" y="56" class="title" text-anchor="start">Eino Employee Loop：当前架构与能力边界</text>
+<text x="48" y="87" class="label" text-anchor="start">审查基线 390746f · Eino v0.9.21 · 蓝色为实际执行，橙色为审查发现</text>
+<rect x="48" y="132" width="280" height="106" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="188.0" y="162" text-anchor="middle" font-size="18" font-weight="600">可信输入</text>
+<text x="188.0" y="188" class="sub" text-anchor="middle">事件 / 当前消息 / receipt</text>
+<text x="188.0" y="211" class="sub" text-anchor="middle">身份与场域来自 Host</text>
+<rect x="404" y="132" width="360" height="106" rx="10" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5"/>
+<text x="584.0" y="162" text-anchor="middle" font-size="18" font-weight="600">Host 准入与装配</text>
+<text x="584.0" y="188" class="sub" text-anchor="middle">可信 scope / receipt / 当前权限</text>
+<text x="584.0" y="211" class="sub" text-anchor="middle">后台：冻结 backend + typed Providers</text>
+<rect x="840" y="132" width="552" height="106" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+<text x="1116.0" y="162" text-anchor="middle" font-size="18" font-weight="600">Profile + Registry（Session 路径）</text>
+<text x="1116.0" y="188" class="sub" text-anchor="middle">精确 Provider/version → Gate → Authorize → lease</text>
+<text x="1116.0" y="211" class="sub" text-anchor="middle">revision / binding 隔离；配置和历史不授予权限</text>
+<path d="M328 185 H404" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<path d="M764 185 H840" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<rect x="48" y="310" width="1344" height="487" rx="16" fill="#faf5ff" stroke="#d8b4fe" stroke-width="1.5" stroke-dasharray="7 5"/>
+<text x="72" y="344" class="title" text-anchor="start">开源库：Eino 负责图调度与模型—工具循环</text>
+<path d="M1116 238 V274 H690 V369" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<path d="M584 132 V112 H1410 V294 H1078 V369" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<rect x="815.0" y="259" width="170" height="23" rx="4" fill="#ffffff" opacity="0.97"/>
+<text x="900" y="275" class="small" text-anchor="middle" style="fill:#475569">Session 入口</text>
+<rect x="921.0" y="97" width="198" height="23" rx="4" fill="#ffffff" opacity="0.97"/>
+<text x="1020" y="113" class="small" text-anchor="middle" style="fill:#475569">独立结构化阶段</text>
+<rect x="72" y="370" width="640" height="400" rx="12" fill="#ffffff" stroke="#d8b4fe"/>
+<text x="94" y="402" class="title" text-anchor="start">workflow.Runtime · compose.Graph</text>
+<rect x="94" y="430" width="124" height="62" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="156.0" y="460" text-anchor="middle" font-size="16" font-weight="600">Prepare</text>
+<rect x="244" y="430" width="124" height="62" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="306.0" y="460" text-anchor="middle" font-size="16" font-weight="600">Agent</text>
+<rect x="394" y="430" width="124" height="62" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="456.0" y="460" text-anchor="middle" font-size="16" font-weight="600">Checkpoint</text>
+<rect x="544" y="430" width="124" height="62" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="606.0" y="460" text-anchor="middle" font-size="16" font-weight="600">Commit</text>
+<path d="M218 461 H244" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<path d="M368 461 H394" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<path d="M518 461 H544" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<rect x="94" y="562" width="288" height="176" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="238.0" y="592" text-anchor="middle" font-size="18" font-weight="600">ADK ChatModelAgent</text>
+<text x="238.0" y="618" class="sub" text-anchor="middle">ReAct：model ⇄ ToolsNode</text>
+<text x="238.0" y="641" class="sub" text-anchor="middle">ShouldRetry + 顺序工具执行</text>
+<text x="238.0" y="664" class="sub" text-anchor="middle">Host hooks 守住预算 / 回执</text>
+<rect x="414" y="562" width="274" height="176" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+<text x="551.0" y="592" text-anchor="middle" font-size="18" font-weight="600">自管 Session Store</text>
+<text x="551.0" y="618" class="sub" text-anchor="middle">file lease / revision / JSON</text>
+<text x="551.0" y="641" class="sub" text-anchor="middle">Completed / Generated / Failed</text>
+<text x="551.0" y="664" class="sub" text-anchor="middle">多轮 history + commit 恢复</text>
+<path d="M306 492 V562" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<path d="M456 492 V562" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arrow-green)" stroke-dasharray="5 3"/>
+<rect x="240.0" y="518" width="132" height="23" rx="4" fill="#ffffff" opacity="0.97"/>
+<text x="306" y="534" class="small" text-anchor="middle" style="fill:#475569">执行本轮</text>
+<rect x="446.0" y="518" width="210" height="23" rx="4" fill="#ffffff" opacity="0.97"/>
+<text x="551" y="534" class="small" text-anchor="middle" style="fill:#059669">生成后保存 / 提交恢复</text>
+<rect x="750" y="370" width="618" height="400" rx="12" fill="#ffffff" stroke="#d8b4fe"/>
+<text x="774" y="402" class="title" text-anchor="start">generation.Run · compose.Graph</text>
+<rect x="774" y="430" width="132" height="62" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="840.0" y="460" text-anchor="middle" font-size="16" font-weight="600">Prepare</text>
+<rect x="920" y="430" width="132" height="62" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="986.0" y="460" text-anchor="middle" font-size="16" font-weight="600">Model</text>
+<rect x="1066" y="430" width="132" height="62" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="1132.0" y="460" text-anchor="middle" font-size="16" font-weight="600">Validate</text>
+<rect x="1212" y="430" width="132" height="62" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="1278.0" y="460" text-anchor="middle" font-size="16" font-weight="600">Journal</text>
+<path d="M906 461 H920" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<path d="M1052 461 H1066" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<path d="M1198 461 H1212" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<path d="M1278 492 V534 H840 V492" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrow-purple)"/>
+<rect x="928.0" y="519" width="262" height="23" rx="4" fill="#ffffff" opacity="0.97"/>
+<text x="1059" y="535" class="small" text-anchor="middle" style="fill:#7c3aed">Retry / Continue（有界）</text>
+<text x="778" y="588" class="label" text-anchor="start">Context / Model / Decision / Journal：typed Providers</text>
+<text x="778" y="617" class="sub" text-anchor="start">状态目前是携带 context 与闭包的 *state 指针</text>
+<rect x="774" y="648" width="570" height="90" rx="10" fill="#fff7ed" stroke="#fdba74" stroke-width="1.5"/>
+<text x="1059.0" y="678" text-anchor="middle" font-size="18" font-weight="600">共同缺口：原生恢复与插件组合</text>
+<text x="1059.0" y="704" class="sub" text-anchor="middle">未接 Runner / Interrupt / Eino CheckPointStore</text>
+<text x="1059.0" y="727" class="sub" text-anchor="middle">Profile 绑定 Provider，尚非可配置 Eino 工作流</text>
+<path d="M238 738 V812 H219 V835" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<path d="M1059 770 V835" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<rect x="881.0" y="800" width="268" height="23" rx="4" fill="#ffffff" opacity="0.97"/>
+<text x="1015" y="816" class="small" text-anchor="middle" style="fill:#475569">沿原 Provider / 事务执行</text>
+<rect x="48" y="835" width="1344" height="178" rx="14" fill="#f8fafc" stroke="#cbd5e1"/>
+<text x="72" y="869" class="title" text-anchor="start">Host / Provider 边界：业务真相与副作用所有权</text>
+<rect x="72" y="890" width="292" height="98" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="218.0" y="920" text-anchor="middle" font-size="18" font-weight="600">Context / Source</text>
+<text x="218.0" y="946" class="sub" text-anchor="middle">当前授权资料与冻结输入</text>
+<rect x="388" y="890" width="292" height="98" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="534.0" y="920" text-anchor="middle" font-size="18" font-weight="600">Model</text>
+<text x="534.0" y="946" class="sub" text-anchor="middle">原路由 / 请求 journal / 预算</text>
+<rect x="704" y="890" width="292" height="98" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="850.0" y="920" text-anchor="middle" font-size="18" font-weight="600">Tool / Decision</text>
+<text x="850.0" y="946" class="sub" text-anchor="middle">授权执行与结构化业务校验</text>
+<rect x="1020" y="890" width="348" height="98" rx="10" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="1194.0" y="920" text-anchor="middle" font-size="18" font-weight="600">Commit / Journal</text>
+<text x="1194.0" y="946" class="sub" text-anchor="middle">原业务事务、真实回执与回读</text>
+<path d="M534 1013 V1064" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arrow-green)" stroke-dasharray="5 3"/>
+<rect x="439.0" y="1026" width="190" height="23" rx="4" fill="#ffffff" opacity="0.97"/>
+<text x="534" y="1042" class="small" text-anchor="middle" style="fill:#059669">持久化 / 可追溯回执</text>
+<path d="M1170 1013 V1064" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<rect x="1080.0" y="1026" width="180" height="23" rx="4" fill="#ffffff" opacity="0.97"/>
+<text x="1170" y="1042" class="small" text-anchor="middle" style="fill:#475569">实际模型 / 业务动作</text>
+<rect x="48" y="1064" width="654" height="92" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+<text x="375.0" y="1094" text-anchor="middle" font-size="18" font-weight="600">业务数据库与原模型 / 工具账本</text>
+<text x="375.0" y="1120" class="sub" text-anchor="middle">Eino checkpoint 不能替代权限、事务或幂等效果账本</text>
+<rect x="752" y="1064" width="640" height="92" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="1072.0" y="1094" text-anchor="middle" font-size="18" font-weight="600">外部模型 / 工具 / 业务系统</text>
+<text x="1072.0" y="1120" class="sub" text-anchor="middle">当前架构候选保持隔离；主干合入不等于云端部署</text>
+<path d="M54 1193 H90" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<text x="100" y="1198" class="small" text-anchor="start">执行路径</text>
+<path d="M253 1193 H289" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arrow-green)" stroke-dasharray="5 3"/>
+<text x="299" y="1198" class="small" text-anchor="start">持久化</text>
+<path d="M424 1193 H460" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#arrow-purple)"/>
+<text x="470" y="1198" class="small" text-anchor="start">有界修复</text>
+<text x="750" y="1198" class="small" text-anchor="start" style="fill:#9a3412">另有审查发现：标准 callback 被隔离；取消后 journal context 已失效</text>
+</svg>
