@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 1110" width="1280" height="1110">
+<style>text{font-family:"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif}</style>
+<defs>
+<marker id="blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#2563eb"/></marker>
+<marker id="purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#9333ea"/></marker>
+</defs>
+<rect width="1280" height="1110" fill="white"/>
+<text x="40" y="48" font-size="30" font-weight="600" fill="#111827">Employee Loop · 三个目录，三种职责</text>
+<text x="40" y="81" font-size="18" font-weight="400" fill="#6b7280">app 负责装配与 Provider；employee 收纳完整框架源码；evals 负责场景与证据。</text>
+<rect x="40" y="164" width="270" height="802" rx="10" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="60" y="205" font-size="26" font-weight="600" fill="#111827">app/</text>
+<text x="60" y="231" font-size="17" font-weight="400" fill="#6b7280">可运行的参考应用</text>
+<rect x="370" y="164" width="540" height="802" rx="10" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="390" y="205" font-size="26" font-weight="600" fill="#111827">employee/</text>
+<text x="390" y="231" font-size="17" font-weight="400" fill="#6b7280">七个业务模块 + 通用底座</text>
+<rect x="970" y="164" width="270" height="802" rx="10" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="990" y="205" font-size="26" font-weight="600" fill="#111827">evals/</text>
+<text x="990" y="231" font-size="17" font-weight="400" fill="#6b7280">用例、运行和验收证据</text>
+<rect x="60" y="272" width="230" height="126" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+<text x="76" y="302" font-size="19" font-weight="600" fill="#111827">local/</text>
+<text x="76" y="331" font-size="16" font-weight="400" fill="#6b7280">main.go · CLI 入口</text>
+<text x="76" y="355" font-size="16" font-weight="400" fill="#6b7280">local.go · 默认装配</text>
+<text x="76" y="379" font-size="16" font-weight="400" fill="#6b7280">go run ./app/local</text>
+<rect x="60" y="468" width="230" height="270" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+<text x="76" y="498" font-size="18" font-weight="600" fill="#111827">local/providers/</text>
+<text x="76" y="527" font-size="16" font-weight="400" fill="#6b7280">storage/ · SQLite / 文件</text>
+<text x="76" y="551" font-size="16" font-weight="400" fill="#6b7280">services/ · 能力与工具</text>
+<text x="76" y="575" font-size="16" font-weight="400" fill="#6b7280">execution/ · 原生执行</text>
+<text x="76" y="599" font-size="16" font-weight="400" fill="#6b7280">delivery/ · 文件投递</text>
+<text x="76" y="623" font-size="16" font-weight="400" fill="#6b7280">channel/ · 输入映射</text>
+<text x="76" y="647" font-size="16" font-weight="400" fill="#6b7280">sessionfile/ · 会话存储</text>
+<rect x="60" y="804" width="230" height="100" rx="10" fill="#fff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="76" y="834" font-size="19" font-weight="600" fill="#111827">dingtalk/</text>
+<text x="76" y="863" font-size="16" font-weight="400" fill="#6b7280">可选的渠道参考应用</text>
+<text x="76" y="887" font-size="16" font-weight="400" fill="#6b7280">独立装配自己的 Provider</text>
+<rect x="390" y="272" width="500" height="110" rx="10" fill="#fff7ed" stroke="#fdba74" stroke-width="1.5"/>
+<text x="406" y="302" font-size="19" font-weight="600" fill="#111827">M7 Entry · entry/</text>
+<text x="406" y="331" font-size="16" font-weight="400" fill="#6b7280">依赖接线、版本选择、生命周期与恢复调度</text>
+<text x="406" y="355" font-size="16" font-weight="400" fill="#6b7280">具体 Provider 通过窄接口和工厂注入</text>
+<rect x="390" y="440" width="235" height="106" rx="10" fill="#fff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="406" y="470" font-size="19" font-weight="600" fill="#111827">M1 Chat · chat/</text>
+<text x="406" y="499" font-size="16" font-weight="400" fill="#6b7280">准入、对话、工具</text>
+<text x="406" y="523" font-size="16" font-weight="400" fill="#6b7280">中断与继续</text>
+<rect x="655" y="440" width="235" height="106" rx="10" fill="#fff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="671" y="470" font-size="19" font-weight="600" fill="#111827">M2 Task · task/</text>
+<text x="671" y="499" font-size="16" font-weight="400" fill="#6b7280">Task / Goal / Run</text>
+<text x="671" y="523" font-size="16" font-weight="400" fill="#6b7280">Review 与状态变更</text>
+<rect x="390" y="596" width="235" height="106" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+<text x="406" y="626" font-size="18" font-weight="600" fill="#111827">M3 Context · context/</text>
+<text x="406" y="655" font-size="16" font-weight="400" fill="#6b7280">来源、视图与引用</text>
+<text x="406" y="679" font-size="16" font-weight="400" fill="#6b7280">受众及撤回校验</text>
+<rect x="655" y="596" width="235" height="106" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+<text x="671" y="626" font-size="18" font-weight="600" fill="#111827">M4 Owner · owner/</text>
+<text x="671" y="655" font-size="16" font-weight="400" fill="#6b7280">六角色加工与投影</text>
+<text x="671" y="679" font-size="16" font-weight="400" fill="#6b7280">基于已准入的证据</text>
+<rect x="390" y="752" width="235" height="106" rx="10" fill="#fff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="406" y="782" font-size="18" font-weight="600" fill="#111827">M5 · execution/</text>
+<text x="406" y="811" font-size="16" font-weight="400" fill="#6b7280">原子 Run 合同与桥接</text>
+<text x="406" y="835" font-size="16" font-weight="400" fill="#6b7280">核验执行返回的事实</text>
+<rect x="655" y="752" width="235" height="106" rx="10" fill="#fff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="671" y="782" font-size="18" font-weight="600" fill="#111827">M6 · interaction/</text>
+<text x="671" y="811" font-size="16" font-weight="400" fill="#6b7280">表达、打包、Outbox</text>
+<text x="671" y="835" font-size="16" font-weight="400" fill="#6b7280">投递合同与回执核验</text>
+<rect x="390" y="892" width="500" height="56" rx="10" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+<text x="406" y="922" font-size="18" font-weight="600" fill="#111827">kernel/ · ports/ · contract/ · internal/</text>
+<rect x="990" y="272" width="230" height="110" rx="10" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+<text x="1006" y="302" font-size="19" font-weight="600" fill="#111827">run.py</text>
+<text x="1006" y="331" font-size="16" font-weight="400" fill="#6b7280">驱动参考应用验收</text>
+<text x="1006" y="355" font-size="16" font-weight="400" fill="#6b7280">保留状态与运行证据</text>
+<rect x="990" y="468" width="230" height="126" rx="10" fill="#fff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="1006" y="498" font-size="19" font-weight="600" fill="#111827">cases/</text>
+<text x="1006" y="527" font-size="16" font-weight="400" fill="#6b7280">Profile、输入、模型脚本</text>
+<text x="1006" y="551" font-size="16" font-weight="400" fill="#6b7280">默认场景不写真实 IM</text>
+<text x="1006" y="575" font-size="16" font-weight="400" fill="#6b7280">验证恢复与重放去重</text>
+<rect x="990" y="704" width="230" height="160" rx="10" fill="#fff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="1006" y="734" font-size="18" font-weight="600" fill="#111827">reports/ · reviews/</text>
+<text x="1006" y="763" font-size="16" font-weight="400" fill="#6b7280">评测结果与评审记录</text>
+<text x="1006" y="787" font-size="16" font-weight="400" fill="#6b7280">architecture/ 历史架构图</text>
+<text x="1006" y="811" font-size="16" font-weight="400" fill="#6b7280">历史结论绑定原版本</text>
+<text x="1006" y="835" font-size="16" font-weight="400" fill="#6b7280">不冒充线上行为验收</text>
+<path d="M290 366 H338 V326 H390" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<path d="M640 382 V414 H507 V440" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<path d="M640 414 H772 V440" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<path d="M640 414 V876" fill="none" stroke="#2563eb" stroke-width="2"/>
+<path d="M640 649 H625" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<path d="M640 649 H655" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<path d="M640 805 H625" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<path d="M640 805 H655" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<path d="M640 876 V892" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<path d="M990 320 H940 V126 H334 V300 H290" fill="none" stroke="#9333ea" stroke-width="2" marker-end="url(#purple)" stroke-dasharray="5 3"/>
+<rect x="497" y="113" width="260" height="25" rx="10" fill="white" stroke="none" stroke-width="1.5"/>
+<text x="501" y="132" font-size="15" font-weight="400" fill="#6b7280">运行场景并核验持久化事实</text>
+<text x="40" y="1009" font-size="18" font-weight="600" fill="#111827">依赖方向：app → employee；employee 的生产代码不引用 app 或 evals。</text>
+<text x="40" y="1040" font-size="17" font-weight="400" fill="#6b7280">M2/state 是唯一业务状态；执行退出、业务完成与消息送达分别核验。</text>
+<path d="M40 1078 H72" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<text x="84" y="1083" font-size="14" font-weight="400" fill="#6b7280">装配 / 委托</text>
+<path d="M300 1078 H332" fill="none" stroke="#9333ea" stroke-width="2" marker-end="url(#purple)" stroke-dasharray="5 3"/>
+<text x="344" y="1083" font-size="14" font-weight="400" fill="#6b7280">本地验收驱动</text>
+</svg>

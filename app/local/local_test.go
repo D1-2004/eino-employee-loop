@@ -1,24 +1,24 @@
-package local
+package main
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
-	localservices "github.com/D1-2004/eino-employee-loop/adapters/services/local"
+	localservices "github.com/D1-2004/eino-employee-loop/app/local/providers/services/local"
 	"strings"
 	"sync/atomic"
 	"testing"
 
-	"github.com/D1-2004/eino-employee-loop/kernel/decision/looptest"
-	contextbuilder "github.com/D1-2004/eino-employee-loop/modules/context"
-	"github.com/D1-2004/eino-employee-loop/modules/entry"
-	"github.com/D1-2004/eino-employee-loop/modules/interaction"
-	work "github.com/D1-2004/eino-employee-loop/modules/task/state"
-	host "github.com/D1-2004/eino-employee-loop/ports/services"
+	contextbuilder "github.com/D1-2004/eino-employee-loop/employee/context"
+	"github.com/D1-2004/eino-employee-loop/employee/entry"
+	"github.com/D1-2004/eino-employee-loop/employee/interaction"
+	"github.com/D1-2004/eino-employee-loop/employee/kernel/decision/looptest"
+	host "github.com/D1-2004/eino-employee-loop/employee/ports/services"
+	work "github.com/D1-2004/eino-employee-loop/employee/task/state"
 	"github.com/cloudwego/eino/components/model"
 )
 
-func native(name, id string, args map[string]any) looptest.Step {
+func nativeStep(name, id string, args map[string]any) looptest.Step {
 	return looptest.Tools(looptest.Call{Name: name, ID: id, Args: args})
 }
 
@@ -45,14 +45,14 @@ func TestDefaultLocalAssemblyRunsNativeHostToolSixOwnersAndRealFileDelivery(t *t
 	source := contextbuilder.Source{ID: "source", Actor: identity.Owner, Text: original}
 	messages := &observedMessages{source: source}
 	ms := map[string]*looptest.Model{
-		"chat":       looptest.New(native("dispatch_task", "dispatch", map[string]any{"source_ref": "source", "goal": original, "instruction": original})),
-		"executor":   looptest.New(native(localservices.ReadSourceTool, "read-admitted", map[string]any{"message_ids": []string{"source"}}), native("write_file", "write", map[string]any{"path": "report.md", "content": "# Verified local result"}), native("finish_run", "exit", map[string]any{"state": "succeeded", "summary": "Actual report written"})),
-		"review":     looptest.New(native("decide_review", "review", map[string]any{"kind": "complete", "summary": "Verified report content and original source"})),
-		"expression": looptest.New(native("publish_result", "expression", map[string]any{"text": "Actual report verified"})),
-		"package":    looptest.New(native("publish_package", "package", map[string]any{"summary": "Actual report and immutable hash included"})),
+		"chat":       looptest.New(nativeStep("dispatch_task", "dispatch", map[string]any{"source_ref": "source", "goal": original, "instruction": original})),
+		"executor":   looptest.New(nativeStep(localservices.ReadSourceTool, "read-admitted", map[string]any{"message_ids": []string{"source"}}), nativeStep("write_file", "write", map[string]any{"path": "report.md", "content": "# Verified local result"}), nativeStep("finish_run", "exit", map[string]any{"state": "succeeded", "summary": "Actual report written"})),
+		"review":     looptest.New(nativeStep("decide_review", "review", map[string]any{"kind": "complete", "summary": "Verified report content and original source"})),
+		"expression": looptest.New(nativeStep("publish_result", "expression", map[string]any{"text": "Actual report verified"})),
+		"package":    looptest.New(nativeStep("publish_package", "package", map[string]any{"summary": "Actual report and immutable hash included"})),
 	}
 	for _, role := range profile.OwnerLoops {
-		ms["owner_"+role] = looptest.New(native("commit_owner_update", "owner-"+role, map[string]any{"body": "Derived from the accepted original", "citations": []map[string]any{{"source_id": "source", "quote": original}}}))
+		ms["owner_"+role] = looptest.New(nativeStep("commit_owner_update", "owner-"+role, map[string]any{"body": "Derived from the accepted original", "citations": []map[string]any{{"source_id": "source", "quote": original}}}))
 	}
 	models := func(_ context.Context, r entry.ModelRequest) (model.ToolCallingChatModel, error) {
 		m := ms[r.Role]

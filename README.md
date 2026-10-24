@@ -3,44 +3,44 @@
 [中文](README.zh-CN.md)
 
 An Employee Loop built on [CloudWeGo Eino](https://github.com/cloudwego/eino).
-The source tree follows the seven business modules. `app/local` assembles their
-default local implementations; a host can replace capability ports or selected
-modules without introducing another Task state machine.
+The repository has three parts:
 
 ```text
-modules/
-├── chat/          M1  Frontline conversation, admission and business commands
-├── task/          M2  Worker, Review, timing and Task/Goal/Run state
-├── context/       M3  Authorized context, source references and frozen views
-├── owner/         M4  Attention, memory, dreaming, tone, reflection and summary
-├── execution/     M5  Atomic Run bridge and native local execution
-├── interaction/   M6  Composition, messages, Outbox and delivery receipts
-└── entry/         M7  Application lifecycle and module assembly
+app/                         Runnable reference applications and their Providers
+├── local/                   SQLite + Markdown + Eino + local execution/delivery
+└── dingtalk/                Lightweight DingTalk channel example
 
-app/local/             Default local assembly: SQLite + Markdown + Eino
-ports/                 External service and persistence contracts
-adapters/              Concrete storage, service and channel implementations
-kernel/                Reusable Eino runtime and decision APIs
-contract/              Shared identity, profile, input and failure values
-cmd/el/                Product CLI
-examples/              Local replay and optional DingTalk integration examples
+employee/                    Reusable Employee Loop framework
+├── chat/                    M1  Frontline conversation and business commands
+├── task/                    M2  Worker, Review, timing and Task/Goal/Run state
+├── context/                 M3  Authorized context and frozen source views
+├── owner/                   M4  Six evidence-based Owner processing roles
+├── execution/               M5  Atomic Run bridge and execution contracts
+├── interaction/             M6  Composition, Outbox and delivery contracts
+├── entry/                   M7  Lifecycle and module assembly
+├── kernel/                  Shared Eino runtime and decision APIs
+├── ports/                   External service and persistence contracts
+├── contract/                Shared identity, profile, input and failure values
+├── internal/                Framework implementation helpers
+└── docs/                    Current framework guides and contracts
+
+evals/                       Cases, evaluation runner and versioned evidence
 ```
 
-Run the complete local example from the repository root; use a fresh state directory:
+Run the local application from the repository root with a fresh state directory:
 
 ```sh
-go run ./cmd/el -profile examples/local-el/allloops-profile.json -dir /tmp/el-demo -script examples/local-el/allloops-script.json replay -in examples/local-el/allloops-input.ndjson
+go run ./app/local -profile evals/cases/local/allloops-profile.json -dir /tmp/el-demo -script evals/cases/local/allloops-script.json replay -in evals/cases/local/allloops-input.ndjson
 ```
 
-This uses scripted model decisions with real local persistence and file effects.
-A local-file receipt proves a local write; it does not establish DingTalk delivery
-or full behavioral parity with an online Buddy service.
+Scripted decisions use real local persistence and file effects. Local-file receipts
+prove local writes; they do not prove DingTalk delivery or full online Buddy parity.
 
-- [Architecture and import migration](ARCHITECTURE.md) — module ownership and dependencies.
-- [Default assembly and replacement](docs/module-composition.md) — `app/local`, ports and lifecycle.
-- [Local CLI guide](docs/local-entry.md) — replay, tasks, recovery and model setup.
-- [Behavior contracts](docs/specs/README.md) — authority, execution, storage, plugins and delivery.
-- [Kernel APIs](docs/kernel/README.md) — decision, events, workflow and generation.
+- [Architecture and import migration](ARCHITECTURE.md)
+- [Run the local application](app/local/README.md)
+- [Embed and assemble the framework](employee/docs/module-composition.md)
+- [Behavior contracts](employee/docs/specs/README.md)
+- [Evaluation cases and evidence](evals/README.md)
 
-MIT licensed. Import paths changed with the module layout; old root paths have no
-compatibility wrappers. See the migration table in [ARCHITECTURE.md](ARCHITECTURE.md#import-migration).
+Import `employee/entry` to embed the framework and supply your own Providers.
+`app/local` is an executable, not an application library. MIT licensed.

@@ -1,23 +1,25 @@
-// Package localapp is the default local composition root. It opens SQLite,
+// Package main is the default local reference application. It opens SQLite,
 // Markdown, native Eino, local execution and one business aggregate. Remote
 // capabilities replace individual ports; the default needs no module registry.
-package local
+package main
 
 import (
 	"context"
 	"errors"
-	einotools "github.com/D1-2004/eino-employee-loop/adapters/services/eino"
-	localservices "github.com/D1-2004/eino-employee-loop/adapters/services/local"
-	"github.com/D1-2004/eino-employee-loop/adapters/storage/markdown"
-	"github.com/D1-2004/eino-employee-loop/adapters/storage/sqlite"
-	"github.com/D1-2004/eino-employee-loop/ports/storage"
+	"github.com/D1-2004/eino-employee-loop/app/local/providers/delivery"
+	localexec "github.com/D1-2004/eino-employee-loop/app/local/providers/execution"
+	einotools "github.com/D1-2004/eino-employee-loop/app/local/providers/services/eino"
+	localservices "github.com/D1-2004/eino-employee-loop/app/local/providers/services/local"
+	"github.com/D1-2004/eino-employee-loop/app/local/providers/storage/markdown"
+	"github.com/D1-2004/eino-employee-loop/app/local/providers/storage/sqlite"
+	"github.com/D1-2004/eino-employee-loop/employee/ports/storage"
 	"path/filepath"
 	"time"
 
-	"github.com/D1-2004/eino-employee-loop/modules/entry"
-	"github.com/D1-2004/eino-employee-loop/modules/execution"
-	"github.com/D1-2004/eino-employee-loop/modules/interaction"
-	host "github.com/D1-2004/eino-employee-loop/ports/services"
+	"github.com/D1-2004/eino-employee-loop/employee/entry"
+	"github.com/D1-2004/eino-employee-loop/employee/execution"
+	"github.com/D1-2004/eino-employee-loop/employee/interaction"
+	host "github.com/D1-2004/eino-employee-loop/employee/ports/services"
 	"github.com/cloudwego/eino/callbacks"
 )
 
@@ -71,6 +73,13 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 			return nil, nil, err
 		}
 		return db, files, nil
+	}
+	assembled.DefaultExecutor = func(_ context.Context, d entry.ExecutorDependencies) (execution.Port, error) {
+		native := &localexec.Native{State: d.State, Artifacts: d.Artifacts, Tasks: d.Tasks, Context: d.Context, Runner: d.Runner}
+		return &localexec.Local{DB: d.State, Owner: d.Owner, Authorize: d.Authorize, Run: native.Execute, InterruptRun: native.Cancel}, nil
+	}
+	assembled.DefaultDelivery = func(_ context.Context, d entry.DeliveryDependencies) (interaction.Port, error) {
+		return delivery.Local{Files: d.Artifacts}, nil
 	}
 	assembled.BuildServices = localservices.NewLocal
 	assembled.PrepareTools = einotools.Build
