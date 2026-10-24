@@ -46,8 +46,8 @@ func TestArchitectureDependenciesAndModuleOwnership(t *testing.T) {
 		}
 	}
 	sort.Strings(roots)
-	if strings.Join(roots, ",") != "app,employee,evals" {
-		t.Fatalf("top-level responsibilities must be app/employee/evals: %v", roots)
+	if strings.Join(roots, ",") != "app,docs,employee,evals" {
+		t.Fatalf("top-level responsibilities must be app/employee/evals with root docs: %v", roots)
 	}
 	base := "github.com/D1-2004/eino-employee-loop/"
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {

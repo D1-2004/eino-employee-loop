@@ -1,4 +1,4 @@
-> This guide covers the reusable kernel or reference example. For the application and M1–M7 ownership, see [ARCHITECTURE.md](../../../ARCHITECTURE.md).
+> This guide covers the reusable kernel or reference example. For the application and M1–M7 ownership, see [ARCHITECTURE.md](../../ARCHITECTURE.md).
 
 # Versioned workflows and multi-turn sessions
 

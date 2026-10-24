@@ -1,6 +1,6 @@
 # 本地持久化 Employee Loop Entry
 
-`app/local` 是直接可运行的参考应用，向 M7 `employee/entry.Open` 注入自己的具体 Provider。它不是供其他应用导入的库。七模块职责见[架构说明](../../ARCHITECTURE.md)。身份、场景、业务后端、模型名称、预算和配置修订由 profile 显式声明。SQLite 保存业务状态、输入回执、模型账本和 Eino checkpoint；Markdown 保存任务文件和本地交付回执。独立钉钉接入例子位于 `app/dingtalk`，其内存会话不能代替这里的持久化任务运行时。
+`app/local` 是直接可运行的参考应用，向 M7 `employee/entry.Open` 注入自己的具体 Provider。它不是供其他应用导入的库。七模块职责见[架构说明](../ARCHITECTURE.md)。身份、场景、业务后端、模型名称、预算和配置修订由 profile 显式声明。SQLite 保存业务状态、输入回执、模型账本和 Eino checkpoint；Markdown 保存任务文件和本地交付回执。独立钉钉接入例子位于 `app/dingtalk`，其内存会话不能代替这里的持久化任务运行时。
 
 这些命令操作本地回放输入和本地文件 outbox。没有创建 DWS 订阅，没有向钉钉发消息；`local-file/...` 回执只证明本地文件已写入并回读。真实 IM 通道需要独立实现 `interaction.Port` 的提交、查询和回执核验。
 

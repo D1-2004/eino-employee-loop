@@ -3,7 +3,7 @@
 [中文](README.zh-CN.md)
 
 An Employee Loop built on [CloudWeGo Eino](https://github.com/cloudwego/eino).
-The repository has three parts:
+Code and evaluation have three roots; documentation is kept separately:
 
 ```text
 app/                         Runnable reference applications and their Providers
@@ -21,10 +21,10 @@ employee/                    Reusable Employee Loop framework
 ├── kernel/                  Shared Eino runtime and decision APIs
 ├── ports/                   External service and persistence contracts
 ├── contract/                Shared identity, profile, input and failure values
-├── internal/                Framework implementation helpers
-└── docs/                    Current framework guides and contracts
+└── internal/                Framework implementation helpers
 
 evals/                       Cases, evaluation runner and versioned evidence
+docs/                        Architecture, guides and contracts
 ```
 
 Run the local application from the repository root with a fresh state directory:
@@ -38,8 +38,9 @@ prove local writes; they do not prove DingTalk delivery or full online Buddy par
 
 - [Architecture and import migration](ARCHITECTURE.md)
 - [Run the local application](app/local/README.md)
-- [Embed and assemble the framework](employee/docs/module-composition.md)
-- [Behavior contracts](employee/docs/specs/README.md)
+- [Embed and assemble the framework](docs/module-composition.md)
+- [Behavior contracts](docs/specs/README.md)
+- [Host alignment and integration boundaries](docs/specs/host-alignment.md)
 - [Evaluation cases and evidence](evals/README.md)
 
 Import `employee/entry` to embed the framework and supply your own Providers.

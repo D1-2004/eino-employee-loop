@@ -1,4 +1,4 @@
-> This guide covers the reusable kernel or reference example. For the application and M1–M7 ownership, see [ARCHITECTURE.md](../../../ARCHITECTURE.md).
+> This guide covers the reusable kernel or reference example. For the application and M1–M7 ownership, see [ARCHITECTURE.md](../../ARCHITECTURE.md).
 
 # Host 要实现什么
 
@@ -125,7 +125,7 @@ Host 自己的钩子（`ValidateBatch`、`ValidateText`、`ValidateDecision`、p
 
 ## 存储
 
-[`employee/docs/reference/host.sql`](../reference/host.sql) 是上述表的参考 PostgreSQL DDL。没有外键（每张表有自己的保留期），索引用 `CONCURRENTLY` 创建。
+[`docs/reference/host.sql`](../reference/host.sql) 是上述表的参考 PostgreSQL DDL。没有外键（每张表有自己的保留期），索引用 `CONCURRENTLY` 创建。
 
 ## 示例：Multica
 

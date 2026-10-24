@@ -5,14 +5,14 @@
 <marker id="purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#9333ea"/></marker>
 </defs>
 <rect width="1280" height="1110" fill="white"/>
-<text x="40" y="48" font-size="30" font-weight="600" fill="#111827">Employee Loop · 三个目录，三种职责</text>
-<text x="40" y="81" font-size="18" font-weight="400" fill="#6b7280">app 负责装配与 Provider；employee 收纳完整框架源码；evals 负责场景与证据。</text>
+<text x="40" y="48" font-size="30" font-weight="600" fill="#111827">Employee Loop · 源码集中，应用与文档独立</text>
+<text x="40" y="81" font-size="18" font-weight="400" fill="#6b7280">app 负责装配；employee 收纳框架；evals 负责评测；根目录 docs 保存架构与合同。</text>
 <rect x="40" y="164" width="270" height="802" rx="10" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="60" y="205" font-size="26" font-weight="600" fill="#111827">app/</text>
 <text x="60" y="231" font-size="17" font-weight="400" fill="#6b7280">可运行的参考应用</text>
 <rect x="370" y="164" width="540" height="802" rx="10" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="390" y="205" font-size="26" font-weight="600" fill="#111827">employee/</text>
-<text x="390" y="231" font-size="17" font-weight="400" fill="#6b7280">七个业务模块 + 通用底座</text>
+<text x="390" y="231" font-size="17" font-weight="400" fill="#6b7280">业务职责组件 + 通用底座</text>
 <rect x="970" y="164" width="270" height="802" rx="10" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="990" y="205" font-size="26" font-weight="600" fill="#111827">evals/</text>
 <text x="990" y="231" font-size="17" font-weight="400" fill="#6b7280">用例、运行和验收证据</text>
@@ -38,7 +38,7 @@
 <text x="406" y="331" font-size="16" font-weight="400" fill="#6b7280">依赖接线、版本选择、生命周期与恢复调度</text>
 <text x="406" y="355" font-size="16" font-weight="400" fill="#6b7280">具体 Provider 通过窄接口和工厂注入</text>
 <rect x="390" y="440" width="235" height="106" rx="10" fill="#fff" stroke="#d1d5db" stroke-width="1.5"/>
-<text x="406" y="470" font-size="19" font-weight="600" fill="#111827">M1 Chat · chat/</text>
+<text x="406" y="470" font-size="19" font-weight="600" fill="#111827">M1 Interaction · chat/</text>
 <text x="406" y="499" font-size="16" font-weight="400" fill="#6b7280">准入、对话、工具</text>
 <text x="406" y="523" font-size="16" font-weight="400" fill="#6b7280">中断与继续</text>
 <rect x="655" y="440" width="235" height="106" rx="10" fill="#fff" stroke="#d1d5db" stroke-width="1.5"/>
@@ -58,7 +58,7 @@
 <text x="406" y="811" font-size="16" font-weight="400" fill="#6b7280">原子 Run 合同与桥接</text>
 <text x="406" y="835" font-size="16" font-weight="400" fill="#6b7280">核验执行返回的事实</text>
 <rect x="655" y="752" width="235" height="106" rx="10" fill="#fff" stroke="#d1d5db" stroke-width="1.5"/>
-<text x="671" y="782" font-size="18" font-weight="600" fill="#111827">M6 · interaction/</text>
+<text x="671" y="782" font-size="16" font-weight="600" fill="#111827">M6 Delivery · interaction/</text>
 <text x="671" y="811" font-size="16" font-weight="400" fill="#6b7280">表达、打包、Outbox</text>
 <text x="671" y="835" font-size="16" font-weight="400" fill="#6b7280">投递合同与回执核验</text>
 <rect x="390" y="892" width="500" height="56" rx="10" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>

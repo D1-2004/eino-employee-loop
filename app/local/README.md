@@ -23,10 +23,10 @@ it must not create replacement tasks or repeat confirmed effects.
 file implementations. The employee framework never imports these Providers.
 
 For real models, configure the accepted profile/model and local credentials as
-described in the [CLI guide](../../employee/docs/local-entry.md). Local file
+described in the [CLI guide](../../docs/local-entry.md). Local file
 receipts do not establish real DingTalk delivery. DWS capture replay maps input
 records explicitly; it does not authenticate a platform user or send IM messages.
 
-More: [assembly/replacement](../../employee/docs/module-composition.md),
-[behavior contracts](../../employee/docs/specs/README.md),
+More: [assembly/replacement](../../docs/module-composition.md),
+[behavior contracts](../../docs/specs/README.md),
 [evaluation cases](../../evals/README.md).

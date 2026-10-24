@@ -1,4 +1,4 @@
-> This guide covers the reusable kernel or reference example. For the application and M1–M7 ownership, see [ARCHITECTURE.md](../../../ARCHITECTURE.md).
+> This guide covers the reusable kernel or reference example. For the application and M1–M7 ownership, see [ARCHITECTURE.md](../../ARCHITECTURE.md).
 
 # 接入本循环
 
@@ -58,7 +58,7 @@ Host 的策略以挂点接入，只读冻结数据和交给它的状态：
 
 ### 状态
 
-循环在两次运行之间不保存任何东西。一次 `Run` 期间，它在内存里持有对话记录、预算计数和当前批次；重新领取从空状态开始，重放 journal。所有持久状态都属于 Host；[`employee/docs/reference/host.sql`](../reference/host.sql) 有参考表。
+循环在两次运行之间不保存任何东西。一次 `Run` 期间，它在内存里持有对话记录、预算计数和当前批次；重新领取从空状态开始，重放 journal。所有持久状态都属于 Host；[`docs/reference/host.sql`](../reference/host.sql) 有参考表。
 
 | 状态 | 为什么 | 参考 | 没有它 |
 | --- | --- | --- | --- |
@@ -79,13 +79,13 @@ Host 的策略以挂点接入，只读冻结数据和交给它的状态：
 | --- | --- | --- |
 | 兼容 OpenAI、支持原生工具调用的聊天端点 | 是 | 设置 `RequireNativeToolCall` 时需要 `tool_choice: "required"`；关掉 SDK 重试（[host.zh-CN.md §6](host.zh-CN.md#6-让模型可持久)） |
 | Go 1.26.1 或更高、CloudWeGo Eino | 是 | 版本见 `go.mod`；Eino 版本由你的依赖解析决定 |
-| 存放上述状态的存储 | 生产环境需要 | `employee/docs/reference/host.sql` 是 PostgreSQL，没有外键 |
+| 存放上述状态的存储 | 生产环境需要 | `docs/reference/host.sql` 是 PostgreSQL，没有外键 |
 | 收发消息的渠道 | 是 | 归 Host |
 | Langfuse | 否 | trace 由 Host（或 `local`）写；循环只调用观察者 |
 
 ## 3. 一致性检查
 
-在 Host 自己的测试里，用真实的 Host 和模型适配器、外接假传输（假渠道、测试库里的发件箱、`httptest` 起的 provider）运行 [`employee/kernel/decision/hosttest`](../../kernel/decision/hosttest/hosttest.go)（契约见 [host.zh-CN.md](host.zh-CN.md#一致性检查)）：
+在 Host 自己的测试里，用真实的 Host 和模型适配器、外接假传输（假渠道、测试库里的发件箱、`httptest` 起的 provider）运行 [`employee/kernel/decision/hosttest`](../../employee/kernel/decision/hosttest/hosttest.go)（契约见 [host.zh-CN.md](host.zh-CN.md#一致性检查)）：
 
 ```go
 target := hosttest.Target{Host: host, Identity: id, Effects: outbox.Len}

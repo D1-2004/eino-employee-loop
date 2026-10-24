@@ -1,11 +1,12 @@
 # Current behavior contracts
 
-These contracts apply to the current seven-module implementation. Read
-[ARCHITECTURE.md](../../../ARCHITECTURE.md) for ownership and physical package names,
+These contracts apply to the current business components and shared runtime. Read
+[ARCHITECTURE.md](../../ARCHITECTURE.md) for ownership and physical package names,
 and the [assembly guide](../module-composition.md) for Go usage.
 
 | Contract | Owner |
 | --- | --- |
+| [Host alignment and state ownership](host-alignment.md) | Business responsibilities, integration choices and explicit parity gaps |
 | [Local runtime](local-el-runtime.md) | M7 lifecycle and the M1–M6 collaboration |
 | [Module composition](module-composition.md) | M7 exact-version assembly and resource lifetime |
 | [Audience isolation](audience-isolation.md) | M3 Context and M4 Owner evidence |
@@ -16,5 +17,5 @@ and the [assembly guide](../module-composition.md) for Go usage.
 | [Plugins](plugins.md) | M7 registry and native Eino extension composition |
 
 A contract is not an online acceptance record. Version-specific reviews and
-validation results remain in [evals](../../../evals/README.md); historical framework
+validation results remain in [evals](../../evals/README.md); historical framework
 plans remain in [the archive](../archive/README.md).

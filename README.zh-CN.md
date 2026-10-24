@@ -3,7 +3,7 @@
 [English](README.md)
 
 基于 [CloudWeGo Eino](https://github.com/cloudwego/eino) 的 Employee Loop。
-仓库只有三个部分：
+代码和评测分为三个部分，文档独立放在根目录：
 
 ```text
 app/                         可运行的参考应用，以及各自的具体 Provider
@@ -21,13 +21,13 @@ employee/                    可嵌入的 Employee Loop 框架
 ├── kernel/                  通用 Eino 运行和决策能力
 ├── ports/                   外部服务与持久化接口
 ├── contract/                身份、配置、输入、失败等共享值
-├── internal/                框架内部辅助
-└── docs/                    当前框架指南与合同
+└── internal/                框架内部辅助
 
 evals/                       用例、评测入口和带版本的证据
+docs/                        架构、指南和行为合同
 ```
 
-![目录与模块架构](employee/docs/architecture/module-composition.png)
+![目录与模块架构](docs/architecture/module-composition.png)
 
 在仓库根目录运行本地应用，使用新的状态目录：
 
@@ -40,8 +40,9 @@ go run ./app/local -profile evals/cases/local/allloops-profile.json -dir /tmp/el
 
 - [架构与 import 迁移](ARCHITECTURE.md)
 - [运行本地参考应用](app/local/README.md)
-- [嵌入与装配框架](employee/docs/module-composition.md)
-- [行为合同](employee/docs/specs/README.md)
+- [嵌入与装配框架](docs/module-composition.md)
+- [行为合同](docs/specs/README.md)
+- [Host 职责对齐与接入边界](docs/specs/host-alignment.md)
 - [评测用例与证据](evals/README.md)
 
 其他应用从 `employee/entry` 嵌入框架并提供自己的 Provider；`app/local` 是可执行程序，

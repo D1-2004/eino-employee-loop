@@ -1,4 +1,4 @@
-> This guide covers the reusable kernel or reference example. For the application and M1–M7 ownership, see [ARCHITECTURE.md](../../../ARCHITECTURE.md).
+> This guide covers the reusable kernel or reference example. For the application and M1–M7 ownership, see [ARCHITECTURE.md](../../ARCHITECTURE.md).
 
 # Integrating the loop
 
@@ -88,7 +88,7 @@ business vocabulary.
 The loop keeps nothing between runs. During one `Run` it holds the transcript,
 the budget counters and the current batch in memory; a re-claim starts empty
 and replays the journal. Everything durable belongs to the Host;
-[`employee/docs/reference/host.sql`](../reference/host.sql) has reference tables.
+[`docs/reference/host.sql`](../reference/host.sql) has reference tables.
 
 | State | Why | Reference | Without it |
 | --- | --- | --- | --- |
@@ -109,13 +109,13 @@ and replays the journal. Everything durable belongs to the Host;
 | --- | --- | --- |
 | An OpenAI-compatible chat endpoint with native tool calls | Yes | `tool_choice: "required"` if you set `RequireNativeToolCall`; SDK retries off ([host.md §6](host.md#6-make-the-model-durable)) |
 | Go 1.26.1 or later, CloudWeGo Eino | Yes | Versions in `go.mod`; your build list picks Eino |
-| Storage for the state above | In production | `employee/docs/reference/host.sql` is PostgreSQL, without foreign keys |
+| Storage for the state above | In production | `docs/reference/host.sql` is PostgreSQL, without foreign keys |
 | A channel that receives and delivers messages | Yes | Host-owned |
 | Langfuse | No | The Host (or `local`) writes traces; the loop only calls observers |
 
 ## 3. Conformance
 
-Run [`employee/kernel/decision/hosttest`](../../kernel/decision/hosttest/hosttest.go) from your Host's tests
+Run [`employee/kernel/decision/hosttest`](../../employee/kernel/decision/hosttest/hosttest.go) from your Host's tests
 against your real Host and model adapter, with fake transports (a fake
 channel, an outbox in a test database, an `httptest` provider;
 [host.md](host.md#check-conformance) has the contracts):

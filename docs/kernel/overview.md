@@ -1,4 +1,4 @@
-> Historical SDK overview retained during the module layout migration. For the current application, start at [the repository README](../../../README.md). Paths and claims below describe that earlier layout.
+> Historical SDK overview retained during the module layout migration. For the current application, start at [the repository README](../../README.md). Paths and claims below describe that earlier layout.
 
 # Eino Employee Loop
 

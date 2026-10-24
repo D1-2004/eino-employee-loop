@@ -1,6 +1,6 @@
 # Composing an Employee Loop application
 
-The [seven framework modules](../../ARCHITECTURE.md) live directly under
+The [seven framework modules](../ARCHITECTURE.md) live directly under
 `employee/{chat,task,context,owner,execution,interaction,entry}`. M7 assembles and
 manages lifetime; each business module owns its prompts, tools and algorithms.
 One `state.Manager` in `employee/task/state` owns Task/Goal/Run transitions.
@@ -91,7 +91,7 @@ defer runtime.Close()
 
 The factory and binder variables above are supplied by the embedding application.
 For concrete signatures and an assembled recipe, read
-[`app/local/local.go`](../../app/local/local.go). The local application's Providers
+[`app/local/local.go`](../app/local/local.go). The local application's Providers
 live in `app/local/providers`; a different host can implement the same contracts
 in its own application. The framework never imports the reference application.
 A separately registered exact-version factory replaces the selected default;

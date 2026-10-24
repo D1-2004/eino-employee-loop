@@ -1,14 +1,17 @@
 # Employee Loop architecture
 
-Three top-level directories separate the framework, runnable applications and
-evaluation. The framework's physical directories follow the existing M1–M7
-business architecture directly; there is no additional `modules` layer.
+Three source/evaluation roots separate the framework, runnable applications and
+evaluation; root `docs` holds architecture, guides and contracts. The physical
+components retain the M1–M7 labels used by earlier revisions. Business
+responsibilities are mapped explicitly below; assembly and execution plumbing
+are not additional task authorities. There is no extra `modules` layer.
 
 ```text
 app/         application assembly + concrete Providers
     │ depends on
-employee/    seven business modules + reusable kernel and ports
+employee/    business components + reusable kernel and ports
 evals/       cases, runner and evidence; exercises app/employee
+docs/        architecture, contracts, guides and framework plans
 ```
 
 Production code under `employee` must not import `app` or `evals`. A host supplies
@@ -16,19 +19,26 @@ concrete Providers to `employee/entry.Open`. SQLite, Markdown, local execution,
 file delivery and channel implementations belong to the reference application,
 not to the framework.
 
-![Three-root architecture](employee/docs/architecture/module-composition.png)
+![Source and module architecture](docs/architecture/module-composition.png)
 
-## Seven business modules
+## Responsibility and source ownership
 
-| Module | Directory | Owns | Must not own |
+| Component | Directory | Owns | Must not own |
 | --- | --- | --- | --- |
-| M1 Chat | `employee/chat` | Frontline prompt, tools, input admission and business commands | Another Task store or delivery truth |
+| M1 Chat / foreground Interaction | `employee/chat` | Frontline prompt, tools, input admission and business commands | Another Task store or delivery truth |
 | M2 Task | `employee/task` | Worker, Review proposal, timing and attention; `state` owns Task/Goal/Run/Wait/Occurrence transitions | Provider-specific execution state |
 | M3 Context | `employee/context` | Source reads, authorized views, citations, frozen frames and revalidation | Authority inferred from model text |
-| M4 Owner | `employee/owner` | Attention, memory, dreaming, tone, reflection and summary | Business completion or new task authority |
-| M5 Execution | `employee/execution` | Atomic Run bridge, identity checks and provider contracts | A concrete local executor or Goal completion decisions |
-| M6 Interaction | `employee/interaction` | Expression/package/message composition, durable Outbox and receipt reconciliation | Concrete local delivery or another Task state machine |
-| M7 Entry | `employee/entry` | Profile validation, dependency wiring, registry, startup, shutdown and application API | Concrete Providers or module-specific business algorithms |
+| M4 Owner processing | `employee/owner` | Attention, memory, dreaming, tone, reflection and summary | Business completion or new task authority |
+| M5 Task execution boundary | `employee/execution` | Atomic Run bridge, identity checks and provider contracts | A concrete local executor or Goal completion decisions |
+| M6 Delivery (package `interaction`) | `employee/interaction` | Expression/package/message composition, durable Outbox and receipt reconciliation | Concrete local delivery or another Task state machine |
+| M7 Application assembly | `employee/entry` | Profile validation, dependency wiring, registry, startup, shutdown and application API | Concrete Providers or module-specific business algorithms |
+
+Foreground Interaction maps to `chat`; TaskManager to `task` plus its `execution`
+bridge; ContextBuilder to `context`; Memory-related evidence processing to `owner`;
+Delivery to `interaction`. Owner processing is not a complete external Memory
+service. `entry` is the composition/lifecycle boundary, not another business loop.
+See the [Host alignment contract](docs/specs/host-alignment.md) for integration
+choices and gaps.
 
 Task `state` is the single business aggregate. A Review proposes a transition;
 only a validated state command commits it. Execution exit, Goal completion,
@@ -47,7 +57,7 @@ provider acceptance and visible delivery are distinct facts.
   An implementation must preserve atomicity and recovery, not merely JSON CRUD.
 - `employee/contract`: shared Scope, Profile, Input and Failure values.
 - `employee/internal`: private implementation helpers.
-- `employee/docs`: current guides/specs and historical framework plans.
+- `docs`: current guides/specs and historical framework plans.
 
 Go package names match their directory names. Documentation may use explicit
 aliases such as `host "…/employee/ports/services"` or
@@ -151,8 +161,8 @@ consumer upgrade or deployment is implied.
 | `localapp` library, `cmd/el` | Run `go run ./app/local`; embed through `employee/entry` in another application |
 | `local`, `cmd/eel`, `examples/dingtalk` | `app/dingtalk` / `app/dingtalk/runner` |
 | `examples/local-el` | `evals/cases/local` |
-| `docs` | `employee/docs`; historical acceptance records in `evals` |
+| `employee/docs` (intermediate layout) | Root `docs`; historical acceptance records remain in `evals` |
 
 Read [local application usage](app/local/README.md),
-[framework assembly](employee/docs/module-composition.md),
-[contracts](employee/docs/specs/README.md) and [evaluation](evals/README.md).
+[framework assembly](docs/module-composition.md),
+[contracts](docs/specs/README.md) and [evaluation](evals/README.md).

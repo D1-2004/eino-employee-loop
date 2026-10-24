@@ -223,3 +223,48 @@ Three-root results and acceptance:
 - Current diagrams and guides describe these three roots. Historical records
   remain tied to their original versions. GitHub main publication uses Git Data
   API with a verified tree and non-forced ref update.
+
+
+## Shared design alignment and root docs (2026-10-25)
+
+Status: implemented and source-reviewed; affected checks passed. The user permits
+docs at the root and requests alignment
+with Multica's core Direct design and the private EL refactor design.
+
+Scope: move framework documentation to root docs, update active links and the
+layout guard, and establish one responsibility/ownership/integration contract.
+Read the actual pinned Multica dependencies and fixed private EL main/candidate
+sources; distinguish design targets, source implementation and deployed behavior.
+Do not move private source, platform credentials or internal protocol details into
+the public package. Keep exact private-version evidence in the private workspace.
+
+Acceptance: app/employee/evals/docs roots; source dependency direction unchanged;
+active document links and affected architecture test pass; a traceable mapping
+covers Task/Run/Review, execution, continuation/stop, context/identity, delivery,
+Owner and composition. Record equivalent parts and concrete gaps rather than
+claiming end-to-end integration. This slice changes documentation/layout checks;
+real IM, deployment, consumer dependency upgrades and wire-adapter implementation
+are outside this slice. Existing runtime evidence remains version-specific.
+
+
+Alignment results:
+- Root responsibilities are app, employee, evals and docs. Documentation, current
+  diagrams, guides and contracts moved out of employee; source imports did not
+  change. Historical records retain their original version claims.
+- Added specs/host-alignment.md: five business responsibilities mapped onto the
+  existing components, with execution inside Task authority and Entry as assembly.
+  Foreground Interaction and the package named interaction (Delivery) are now
+  explicitly distinguished. Owner processing is not advertised as full Memory.
+- The contract identifies three integration choices and forbids two Task/Goal
+  authorities for one accepted task. Complete service TaskCreate is distinguished
+  from delegated execution. Identity/context/channel/target, physical exit,
+  continuation, Outbox, leases and current authorization retain separate meanings.
+- WorkingState/input-watermark/Outcome, external Memory, rich delivery and full
+  service budget/control protocols are explicit remaining gaps. The private
+  evidence matrix records fixed source versions separately from deployed state.
+- Current relative links passed across 28 documents; the updated architecture
+  guard and `go test ./employee/entry ./app/local` passed. Production Go files are
+  unchanged; runtime E2E is not applicable to this docs/test-only slice. Prior
+  runtime evidence is retained without claiming fresh online acceptance.
+- No consumer upgrade, private remote write, live service interaction or
+  deployment was performed. GitHub publication uses the non-forced Git Data API.

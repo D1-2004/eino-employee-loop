@@ -1,4 +1,4 @@
-> This guide covers the reusable kernel or reference example. For the application and M1–M7 ownership, see [ARCHITECTURE.md](../../../ARCHITECTURE.md).
+> This guide covers the reusable kernel or reference example. For the application and M1–M7 ownership, see [ARCHITECTURE.md](../../ARCHITECTURE.md).
 
 # What a Host implements
 
@@ -235,7 +235,7 @@ every check but `ReusedID`, as its only effect ends the wake.
 
 ## Storage
 
-[`employee/docs/reference/host.sql`](../reference/host.sql) is reference PostgreSQL DDL for the
+[`docs/reference/host.sql`](../reference/host.sql) is reference PostgreSQL DDL for the
 tables above. It has no foreign keys (each table has its own retention) and
 builds indexes `CONCURRENTLY`.
 

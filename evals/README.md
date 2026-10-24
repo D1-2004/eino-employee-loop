@@ -35,11 +35,11 @@ go run ./app/local -profile evals/cases/local/allloops-profile.json -dir /tmp/el
 Use a fresh directory for an independent case. Scripted models validate mechanism
 and recovery behavior; real-model quality and online transport need separate
 acceptance against the tested version/environment. See the [local application
-instructions](../app/local/README.md) and [CLI guide](../employee/docs/local-entry.md).
+instructions](../app/local/README.md) and [CLI guide](../docs/local-entry.md).
 
 Existing reports, reviews and historical diagrams preserve their original SHA,
 paths, commands and environment. Moving a report here does not validate a new
 revision or imply that its old paths are current usage instructions. Original
 locations included `docs/evals`, `docs/reviews` and `docs/architecture`, then
-`docs/archive`; historical framework plans remain under `employee/docs/archive/plans`.
+`docs/archive`; historical framework plans remain under `docs/archive/plans`.
 Probe source attachments use `.go.txt` and do not enter current builds.

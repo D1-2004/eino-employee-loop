@@ -2,7 +2,7 @@
 
 These APIs can be embedded independently of the default Employee Loop application.
 For the seven business modules and default local assembly, start at the
-[repository README](../../../README.md).
+[repository README](../../README.md).
 
 | API | Source | Guide |
 | --- | --- | --- |
@@ -17,5 +17,5 @@ For the seven business modules and default local assembly, start at the
 
 The old [English](overview.md) / [Chinese](overview.zh-CN.md) overviews are retained
 as historical SDK descriptions. Their original path references describe the
-previous source layout; the [migration table](../../../ARCHITECTURE.md#import-migration)
+previous source layout; the [migration table](../../ARCHITECTURE.md#import-migration)
 is authoritative for current imports.

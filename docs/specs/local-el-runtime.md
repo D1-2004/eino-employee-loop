@@ -2,7 +2,7 @@
 
 本合同描述当前七模块协作，不是完整线上协议还原声明。默认实现为本地 SQLite、
 Markdown 和原生 Eino；真实 DWS 身份、消息送达和云端部署需要独立适配与验收。
-历史验收与评审记录见 [evals](../../../evals/README.md)，不自动覆盖新版本。
+历史验收与评审记录见 [evals](../../evals/README.md)，不自动覆盖新版本。
 
 ## 模块与装配
 
@@ -18,7 +18,7 @@ Markdown 和原生 Eino；真实 DWS 身份、消息送达和云端部署需要�
 
 `app/local` 是默认本地参考应用，调用 `employee/entry.Open` 并注入具体 Provider。`employee/contract` 只有共享值，`employee/ports` 定义能力接口，
 `employee/kernel` 提供通用推理与恢复。具体 Provider 位于应用中，框架不导入 `app` 或 `evals`。
-业务实现留在对应 M1–M6，M7 不成为新的业务中心。详见[架构](../../../ARCHITECTURE.md)。
+业务实现留在对应 M1–M6，M7 不成为新的业务中心。详见[架构](../../ARCHITECTURE.md)。
 
 ## 生命周期
 
