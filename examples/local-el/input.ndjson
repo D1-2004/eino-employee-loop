@@ -1,0 +1,1 @@
+{"version":"local-dws-replay/1","id":"local-message-1","scene":"local-scene","actor":"local-owner","text":"请创建 report.md，内容为 # 本地交付\n\nSQLite 保存状态，Markdown 保存文件。完成后返回文件。"}

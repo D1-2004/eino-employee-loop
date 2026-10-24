@@ -33,6 +33,9 @@ type Config struct {
 	Factory       Factory
 	Stores        Stores
 	Callbacks     []callbacks.Handler
+	Extensions    []ExtensionFactory
+	// ToolsReady receives the final code-registered tool schemas before any model I/O.
+	ToolsReady func(context.Context, Request, []*schema.ToolInfo) error
 	// Observe receives private framework events, never a public delivery grant.
 	// Errors stop execution through Eino cancellation, retaining a checkpoint.
 	Observe   func(context.Context, Request, Event) error
@@ -61,39 +64,49 @@ func New(cfg Config) (*Runtime, error) {
 		return nil, errors.New("agent: name/version, admission, factory and scoped checkpoint store required")
 	}
 	cfg.Callbacks = append([]callbacks.Handler(nil), cfg.Callbacks...)
+	cfg.Extensions = append([]ExtensionFactory(nil), cfg.Extensions...)
+	for _, factory := range cfg.Extensions {
+		if factory == nil {
+			return nil, errors.New("agent: nil extension factory")
+		}
+	}
 	return &Runtime{config: cfg}, nil
 }
-func (r *Runtime) prepare(ctx context.Context, req Request) (*adk.Runner, adk.CheckPointStore, error) {
+func (r *Runtime) prepare(ctx context.Context, req Request) (*adk.Runner, adk.CheckPointStore, []callbacks.Handler, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	for _, s := range []string{req.Key.Workspace, req.Key.Tenant, req.Key.Employee, req.Key.Scene, req.Key.Lane, req.Key.Subject, req.Receipt} {
 		if strings.TrimSpace(s) == "" {
-			return nil, nil, ErrDenied
+			return nil, nil, nil, ErrDenied
 		}
 	}
 	if err := r.config.Authorize(ctx, req); err != nil {
-		return nil, nil, errors.Join(ErrDenied, err)
+		return nil, nil, nil, errors.Join(ErrDenied, err)
 	}
 	store, err := r.config.Stores(ctx, req, r.config.Version)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if store == nil {
-		return nil, nil, errors.New("agent: scoped store unavailable")
+		return nil, nil, nil, errors.New("agent: scoped store unavailable")
 	}
 	cfg, err := r.config.Factory(ctx, req)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if cfg == nil || cfg.Model == nil || cfg.Name != r.config.Name || cfg.MaxIterations <= 0 {
-		return nil, nil, errors.New("agent: factory must preserve agent name and bound iterations")
+		return nil, nil, nil, errors.New("agent: factory must preserve agent name and bound iterations")
+	}
+	cfg, handlers, err := r.extend(ctx, req, cfg)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 	a, err := adk.NewChatModelAgent(ctx, cfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return adk.NewRunner(ctx, adk.RunnerConfig{Agent: a, CheckPointStore: store, EnableStreaming: r.config.Streaming}), store, nil
+	return adk.NewRunner(ctx, adk.RunnerConfig{Agent: a, CheckPointStore: store, EnableStreaming: r.config.Streaming}), store, handlers, nil
 }
 func (r *Runtime) Run(ctx context.Context, req Request) (Result, error) {
 	if len(req.Messages) == 0 {
@@ -104,7 +117,7 @@ func (r *Runtime) Run(ctx context.Context, req Request) (Result, error) {
 			return Result{}, errors.New("agent: nil input message")
 		}
 	}
-	runner, store, err := r.prepare(ctx, req)
+	runner, store, handlers, err := r.prepare(ctx, req)
 	if err != nil {
 		return Result{}, err
 	}
@@ -113,7 +126,7 @@ func (r *Runtime) Run(ctx context.Context, req Request) (Result, error) {
 	} else if exists {
 		return Result{}, ErrResumeRequired
 	}
-	return r.execute(ctx, req, runner, nil)
+	return r.execute(ctx, req, runner, handlers, nil, false)
 }
 
 // Resume targets exact interrupt IDs. The Host must authorize the current
@@ -127,13 +140,23 @@ func (r *Runtime) Resume(ctx context.Context, req Request, targets map[string]an
 			return Result{}, errors.New("agent: empty resume target")
 		}
 	}
-	runner, _, err := r.prepare(ctx, req)
+	runner, _, handlers, err := r.prepare(ctx, req)
 	if err != nil {
 		return Result{}, err
 	}
-	return r.execute(ctx, req, runner, targets)
+	return r.execute(ctx, req, runner, handlers, targets, true)
 }
-func (r *Runtime) execute(ctx context.Context, req Request, runner *adk.Runner, targets map[string]any) (Result, error) {
+
+// Recover resumes an engine cancellation checkpoint without fabricating an
+// answer. Business interrupts re-interrupt until explicit targets are supplied.
+func (r *Runtime) Recover(ctx context.Context, req Request) (Result, error) {
+	runner, _, handlers, err := r.prepare(ctx, req)
+	if err != nil {
+		return Result{}, err
+	}
+	return r.execute(ctx, req, runner, handlers, nil, true)
+}
+func (r *Runtime) execute(ctx context.Context, req Request, runner *adk.Runner, handlers []callbacks.Handler, targets map[string]any, resume bool) (Result, error) {
 	cancelOption, cancelAgent := adk.WithCancel()
 	// Let Eino own cancellation/checkpointing, instead of aborting its persistence
 	// context when the entry shuts down. Tools still receive Eino's cancel context.
@@ -141,15 +164,19 @@ func (r *Runtime) execute(ctx context.Context, req Request, runner *adk.Runner, 
 	defer stop()
 	runCtx := context.WithoutCancel(ctx)
 	options := []adk.AgentRunOption{cancelOption, adk.WithCheckPointID(req.Receipt), adk.WithSessionValues(map[string]any{"eel_workspace": req.Key.Workspace, "eel_tenant": req.Key.Tenant, "eel_employee": req.Key.Employee, "eel_scene": req.Key.Scene, "eel_lane": req.Key.Lane, "eel_subject": req.Key.Subject, "eel_receipt": req.Receipt, "eel_version": r.config.Version})}
-	if len(r.config.Callbacks) > 0 {
-		options = append(options, adk.WithCallbacks(r.config.Callbacks...))
+	if len(handlers) > 0 {
+		options = append(options, adk.WithCallbacks(handlers...))
 	}
 	var iter *adk.AsyncIterator[*adk.AgentEvent]
-	if targets == nil {
+	if !resume {
 		iter = runner.Run(runCtx, req.Messages, options...)
 	} else {
 		var err error
-		iter, err = runner.ResumeWithParams(runCtx, req.Receipt, &adk.ResumeParams{Targets: targets}, options...)
+		if targets == nil {
+			iter, err = runner.Resume(runCtx, req.Receipt, options...)
+		} else {
+			iter, err = runner.ResumeWithParams(runCtx, req.Receipt, &adk.ResumeParams{Targets: targets}, options...)
+		}
 		if err != nil {
 			return Result{}, err
 		}

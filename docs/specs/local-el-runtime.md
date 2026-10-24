@@ -1,7 +1,7 @@
 # Local EL Runtime 合同
 
-状态：目标合同。已实现的底座与仍未实现的 Entry/业务模块以当前 Plan 为准，本文不
-宣称完整本地 Runtime 已可用。
+状态：本地 standalone 已实现。工程、回放和真实模型验收分别见当前 Plan 与模型报告；
+真实 DWS IM、可选外部完整业务后端和云端部署不属于本地文件回执的通过范围。
 
 ## Entry 与模块
 
@@ -70,3 +70,31 @@ compose/checkpoint.go 和 components/tool/interrupt.go。沿用原 Host 的幂�
 Task 停止后仍有 preparing/unknown/active Run 时，Execution Bridge 仍须处理其
 lookup/取消/退出回流；不能因为 Task.State=stopped 就跳过资源收尾。待纠正后继受
 预算阻挡时仍保存已证明的退出，并保留原纠正意图，不能回滚为“旧执行还活着”。
+
+## 可选业务 Runtime 接入边界
+
+Entry 在通用认知内核与业务状态所有者之间保留 BusinessRuntime port。standalone
+由本地 SQLite 管理业务状态；已有完整业务后端模式则将 Task/Goal/Review 命令全部
+交给选定后端。它们是可选实现，不是并列执行的两个 TaskManager。旧任务的后端
+绑定持久冻结；unknown 先向原后端 lookup，不创建替代 Task。
+
+完整业务任务 API 与原子 Executor API 必须分开：Execution Bridge 不得通过再建
+一个有独立 Goal/Review 的完整业务任务来模拟原子 Run。具体内部 DTO/SDK 适配放在
+内部消费端，公共模块只暴露通用端口。能力层的 Provider 替换也不代表业务数据库/
+队列已替换；任何新增 backend 都要独立通过完整本地存储与恢复验收。
+
+## 已接通的本地装配
+
+`entry` 持有一个业务后端和进程领导锁，分别启动 Chat、Task/Review、Delivery、
+Scheduler/Attention、Owner workers；同 scope 不因换 profile ID 获得第二个领导权。
+Task、inbox、Owner jobs 与 execution 配置在受理时冻结。原生模型返回先 journal，
+原生工具才可提交。底层模型特有的 opaque options 由不可变工厂配置负责版本化。
+
+`cmd/el` 支持 replay/submit/answer/signal/schedule/drain/status/owner-status/retry/serve；
+DWS native envelope 的导入需要操作者显式 owner/scene 映射，不能当成真实身份认证。
+Greeting/Routine 只由明确来源受理，周期任务经原 Task 的 occurrence 与 Review，
+不在空闲时无依据生成问候。表达和 Package 使用真实读回的 artifacts；实际本地文件
+receipt 回流原 Task，并可唤醒其准确 delivery Wait。
+
+恢复 hold 和失败项提供明确 handle；Retry 不重置物理预算。unknown 原动作只能向
+原 port lookup，不能换 provider 再做一遍。未确认投递不阻塞其他 scene 的已就绪项。

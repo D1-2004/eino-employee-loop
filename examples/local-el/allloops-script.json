@@ -1,0 +1,19 @@
+{
+  "version": "local-el-script/1",
+  "modelName": "scripted-local-demo",
+  "rules": [
+    {"role":"chat","afterTool":"","tool_calls":[{"id":"dispatch-report","name":"dispatch_task","arguments":{"source_ref":"${source}","goal":"创建 report.md 并返回实际文件","instruction":"创建 report.md，内容为 # 本地交付\n\nSQLite 保存状态，Markdown 保存文件。完成后返回文件。","constraints":["只写入任务目录","核验实际文件","简洁中文"]}}]},
+    {"role":"executor","afterTool":"","tool_calls":[{"id":"write-report","name":"write_file","arguments":{"path":"report.md","content":"# 本地交付\n\nSQLite 保存状态，Markdown 保存文件。\n"}}]},
+    {"role":"executor","afterTool":"write_file","tool_calls":[{"id":"finish-report","name":"finish_run","arguments":{"summary":"已写入并回读 report.md，内容符合原始请求。","state":"succeeded"}}]},
+    {"role":"review","afterTool":"","tool_calls":[{"id":"review-report","name":"decide_review","arguments":{"kind":"complete","summary":"report.md 已创建，实际文件内容和 SHA256 已核验。"}}]},
+    {"role":"owner_attention","afterTool":"","tool_calls":[{"id":"update-attention","name":"commit_owner_update","arguments":{"body":"# 关注事项\n\n用户请求创建并返回 report.md。是否完成应读取 Task/Goal 事实，不能由本观察记录判定。","citations":[{"source_id":"${current.id}","quote":"${current.text}"}]}}]},
+    {"role":"owner_memory","afterTool":"","tool_calls":[{"id":"update-memory","name":"commit_owner_update","arguments":{"body":"# 记忆\n\n用户明确偏好简洁中文。本记录保存解释和原始引用，不替代原始指令。","citations":[{"source_id":"${current.id}","quote":"${current.text}"}]}}]},
+    {"role":"owner_dreaming","afterTool":"","tool_calls":[{"id":"update-dreaming","name":"commit_owner_update","arguments":{"body":"# 暂定联想\n\n可以考虑用文件交付清单帮助核验本地结果。这只是待验证的想法，不是用户授权或事实。","citations":[{"source_id":"${current.id}","quote":"${current.text}"}]}}]},
+    {"role":"owner_tone","afterTool":"","tool_calls":[{"id":"update-tone","name":"commit_owner_update","arguments":{"body":"# 表达偏好\n\n用户明确说偏好简洁中文。","citations":[{"source_id":"${current.id}","quote":"${current.text}"}]}}]},
+    {"role":"owner_reflection","afterTool":"","tool_calls":[{"id":"update-reflection","name":"commit_owner_update","arguments":{"body":"# 反思\n\n应区分创建文件、Review 判定和本地交付回执三个事实；原始请求要求返回实际文件。","citations":[{"source_id":"${current.id}","quote":"${current.text}"}]}}]},
+    {"role":"owner_summary","afterTool":"","tool_calls":[{"id":"update-summary","name":"commit_owner_update","arguments":{"body":"# 原始需求摘要\n\n用户要求创建固定内容的 report.md，完成后返回文件，并偏好简洁中文。","citations":[{"source_id":"${current.id}","quote":"${current.text}"}]}}]},
+    {"role":"expression","afterTool":"","tool_calls":[{"id":"publish-expression","name":"publish_result","arguments":{"text":"report.md 已创建并核验。文件与 SHA256 见本地交付记录。"}}]},
+    {"role":"package","afterTool":"","tool_calls":[{"id":"publish-package","name":"publish_package","arguments":{"summary":"report.md 的实际文件、SHA256 和原始任务信息已收集为本地交付包。"}}]},
+    {"role":"task_attention","afterTool":"","tool_calls":[{"id":"attention-skip","name":"decide_attention","arguments":{"kind":"skip","reason":"本例文件任务已完成；这个演示发生项没有新增执行要求。"}}]}
+  ]
+}

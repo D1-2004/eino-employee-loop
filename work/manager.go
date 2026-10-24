@@ -66,6 +66,9 @@ type accepted struct {
 }
 
 func (m *Manager) apply(ctx context.Context, scope Scope, operation string, payload any, id string, create bool, fn func(*Task) error) (Receipt, error) {
+	return m.applyChecked(ctx, scope, operation, payload, id, create, func(_ *sqlite.Tx, t *Task) error { return fn(t) })
+}
+func (m *Manager) applyChecked(ctx context.Context, scope Scope, operation string, payload any, id string, create bool, fn func(*sqlite.Tx, *Task) error) (Receipt, error) {
 	key, err := scope.Key()
 	if err != nil {
 		return Receipt{}, err
@@ -99,7 +102,8 @@ func (m *Manager) apply(ctx context.Context, scope Scope, operation string, payl
 				return e
 			}
 		}
-		if e = fn(&task); e != nil {
+		priorGoal, priorState := task.Goal, task.State
+		if e = fn(tx, &task); e != nil {
 			return e
 		}
 		task.Revision = d.Revision + 1
@@ -122,13 +126,26 @@ func (m *Manager) apply(ctx context.Context, scope Scope, operation string, payl
 		if _, e = tx.Put(ctx, sqlite.Document{Namespace: "work-receipts", Scope: key, ID: operation, Body: raw}); e != nil {
 			return e
 		}
-		event, _ := json.Marshal(map[string]any{"receipt": result, "task_state": task.State, "goal": task.Goal})
-		_, e = tx.Append(ctx, sqlite.Event{Namespace: "work-events", Scope: key, ID: operation, Kind: "task.changed", Body: event})
+		event, _ := json.Marshal(map[string]any{"receipt": result, "task_state": task.State, "goal": task.Goal, "waits": task.Waits, "task": task})
+		kind := "task.changed"
+		if task.State == Completed && (priorState != Completed || priorGoal.Revision != task.Goal.Revision) {
+			kind = "goal.completed"
+		}
+		_, e = tx.Append(ctx, sqlite.Event{Namespace: "work-events", Scope: key, ID: operation, Kind: kind, Body: event})
 		return e
 	})
 	return result, err
 }
 func (m *Manager) Dispatch(ctx context.Context, scope Scope, source Source, call string, d Definition) (Receipt, error) {
+	return m.DispatchWithSources(ctx, scope, source, call, d, nil)
+}
+func (m *Manager) DispatchWithSources(ctx context.Context, scope Scope, source Source, call string, d Definition, extra []Source) (Receipt, error) {
+	for _, s := range extra {
+		if err := validateSource(scope, s, call); err != nil {
+			return Receipt{}, err
+		}
+	}
+
 	if err := validateSource(scope, source, call); err != nil {
 		return Receipt{}, err
 	}
@@ -143,9 +160,10 @@ func (m *Manager) Dispatch(ctx context.Context, scope Scope, source Source, call
 	}
 	op := stableID("dispatch-", []any{scope, source.Receipt, call})
 	id := stableID("task-", []any{scope, source.Receipt, call})
-	return m.apply(ctx, scope, op, []any{source, d}, id, true, func(t *Task) error {
+	return m.apply(ctx, scope, op, []any{source, d, extra}, id, true, func(t *Task) error {
 		t.Definition = d
 		t.Sources = append(t.Sources, source)
+		t.Sources = append(t.Sources, extra...)
 		t.Goal = Goal{Revision: 1, State: Ready}
 		return nextRun(t, d.Instruction)
 	})
@@ -167,6 +185,9 @@ func (m *Manager) Control(ctx context.Context, scope Scope, source Source, call,
 			return ErrState
 		}
 		if kind == "stop" || kind == "pause" {
+			if t.State == Completed || t.State == Failed {
+				return nil
+			}
 			state := Stopped
 			if kind == "pause" {
 				state = Paused
@@ -219,6 +240,18 @@ func (m *Manager) Control(ctx context.Context, scope Scope, source Source, call,
 			t.NeedsReview = true
 			return nil
 		}
+		if kind == "continue" && t.State == Paused {
+			for _, w := range t.Waits {
+				if !w.Resolved {
+					t.State, t.Goal.State = Waiting, Waiting
+					return nil
+				}
+			}
+			if !run.ExitProven {
+				t.Pending = &Pending{Kind: "continue", Instruction: instruction, Source: source}
+				return nil
+			}
+		}
 		if kind == "steer" {
 			t.Pending = &Pending{Kind: kind, Instruction: instruction, Source: source}
 			if !run.ExitProven && run.State != RunQueued {
@@ -233,6 +266,9 @@ func (m *Manager) Control(ctx context.Context, scope Scope, source Source, call,
 			t.Definition.Instruction = instruction
 			t.Pending = nil
 			return nextRun(t, instruction)
+		}
+		if t.NeedsReview {
+			return nil
 		}
 		if !run.ExitProven {
 			return nil
@@ -322,7 +358,7 @@ func (m *Manager) RecordExecution(ctx context.Context, scope Scope, taskID, even
 		run.ExitProven = fact.ExitProven
 		run.Artifacts = append([]Artifact(nil), fact.Artifacts...)
 		t.Runs[len(t.Runs)-1] = *run
-		if t.State == Stopped || t.State == Paused {
+		if t.State == Stopped || t.State == Paused && (t.Pending == nil || t.Pending.Kind != "continue") {
 			return nil
 		}
 		if t.Pending != nil {
@@ -339,7 +375,9 @@ func (m *Manager) RecordExecution(ctx context.Context, scope Scope, taskID, even
 			}
 			instruction := t.Pending.Instruction
 			t.Definition.Instruction = instruction
-			t.Goal.Revision++
+			if t.Pending.Kind == "steer" {
+				t.Goal.Revision++
+			}
 			t.Pending = nil
 			return nextRun(t, instruction)
 		}
@@ -366,6 +404,21 @@ func (m *Manager) ApplyReview(ctx context.Context, scope Scope, taskID, reviewID
 			return ErrStale
 		}
 		switch proposal.Kind {
+		case "resume":
+			if run.State != RunSuspended {
+				return ErrState
+			}
+			for _, w := range t.Waits {
+				if !w.Resolved {
+					return ErrState
+				}
+			}
+			run.State = RunActive
+			run.ExitProven = false
+			t.Runs[len(t.Runs)-1] = *run
+			t.State = Running
+			t.Goal.State = Running
+			t.NeedsReview = false
 		case "complete":
 			if run.State != RunSucceeded || strings.TrimSpace(proposal.Summary) == "" {
 				return ErrState
@@ -404,7 +457,8 @@ func (m *Manager) ApplyReview(ctx context.Context, scope Scope, taskID, reviewID
 				default:
 					return ErrState
 				}
-				w.ID = fmt.Sprintf("%s-wait-%d-%d", t.ID, t.Goal.Revision, i+1)
+				w.ID = fmt.Sprintf("%s-wait-%d-%d-%d", t.ID, t.Goal.Revision, t.Revision, i+1)
+				w.Since = time.Now().UTC()
 				t.Waits = append(t.Waits, w)
 			}
 			t.State = Waiting
@@ -459,6 +513,34 @@ func (m *Manager) Answer(ctx context.Context, scope Scope, source Source, call, 
 		t.State = Ready
 		t.Goal.State = Ready
 		t.NeedsReview = true
+		return nil
+	})
+}
+
+// Suspend records a native execution's durable continuation and inactive writer.
+// Answers still enter the same business Review before the original Run resumes.
+func (m *Manager) Suspend(ctx context.Context, scope Scope, taskID, runID, executionID string, waits []Wait) (Receipt, error) {
+	op := stableID("suspend-", []any{scope, runID, waits})
+	return m.apply(ctx, scope, op, waits, taskID, false, func(t *Task) error {
+		run := t.CurrentRun()
+		if run == nil || run.ID != runID || run.ExecutionID != executionID || run.State != RunActive || t.State != Running || len(waits) == 0 {
+			return ErrStale
+		}
+		for _, w := range waits {
+			if w.ID == "" || w.NativeTarget == "" || w.ExecutionID != executionID || w.Kind != "human" || w.Resolved || w.Prompt == "" {
+				return ErrState
+			}
+		}
+		run.State = RunSuspended
+		run.ExitProven = true
+		t.Runs[len(t.Runs)-1] = *run
+		t.Waits = append([]Wait(nil), waits...)
+		for i := range t.Waits {
+			t.Waits[i].Since = time.Now().UTC()
+		}
+		t.State = Waiting
+		t.Goal.State = Waiting
+		t.NeedsReview = false
 		return nil
 	})
 }

@@ -1,0 +1,26 @@
+{
+  "version": "local-el-script/1",
+  "modelName": "scripted-local-demo",
+  "rules": [
+    {
+      "role": "chat",
+      "afterTool": "",
+      "tool_calls": [{"id":"dispatch-report","name":"dispatch_task","arguments":{"source_ref":"${source}","goal":"创建 report.md 并返回实际文件","instruction":"创建 report.md，内容为 # 本地交付\n\nSQLite 保存状态，Markdown 保存文件。完成后返回文件。","constraints":["只写入任务目录","必须核验实际文件"]}}]
+    },
+    {
+      "role": "executor",
+      "afterTool": "",
+      "tool_calls": [{"id":"write-report","name":"write_file","arguments":{"path":"report.md","content":"# 本地交付\n\nSQLite 保存状态，Markdown 保存文件。\n"}}]
+    },
+    {
+      "role": "executor",
+      "afterTool": "write_file",
+      "tool_calls": [{"id":"finish-report","name":"finish_run","arguments":{"summary":"已写入并回读 report.md，内容符合原始请求。","state":"succeeded"}}]
+    },
+    {
+      "role": "review",
+      "afterTool": "",
+      "tool_calls": [{"id":"review-report","name":"decide_review","arguments":{"kind":"complete","summary":"report.md 已创建，实际文件内容和 SHA256 已核验。"}}]
+    }
+  ]
+}

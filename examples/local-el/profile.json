@@ -1,0 +1,16 @@
+{
+  "version": "local-el-profile/1",
+  "id": "local-demo",
+  "revision": "v1",
+  "workspace": "local-workspace",
+  "tenant": "local-tenant",
+  "employee": "local-employee",
+  "owner": "local-owner",
+  "name": "Local Employee",
+  "backend": "standalone",
+  "modelName": "scripted-local-demo",
+  "scenes": ["local-scene"],
+  "instructions": "Preserve the human's exact goal. Write requested Markdown artifacts and inspect their actual contents before completing work. Never claim real IM delivery from a local-file receipt.",
+  "maxModelCalls": 12,
+  "maxRuns": 4
+}

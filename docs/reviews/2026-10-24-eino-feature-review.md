@@ -1,5 +1,7 @@
 # Eino 特性使用深度审查（2026-10-24）
 
+后续新增本地 Entry 的能力与修复见 [原生 Runtime 复审](2026-10-24-local-el-native-review.md)；本文保留为固定 390746f 基线的历史审查。
+
 审查代码：[`390746f23daf`](https://github.com/D1-2004/eino-employee-loop/commit/390746f23daf83dce03ebf1a1b3d0969d458c626)，Eino 固定版本 **v0.9.21**。该提交已由 Git Data API 快进到 `main`，PR #4 已 merged。本文是合入后的独立能力审查；不把此前行为对齐通过当作架构充分利用的证明。本轮未修改运行时代码或部署服务。
 
 ![当前架构与能力边界](../architecture/eino-architecture.png)

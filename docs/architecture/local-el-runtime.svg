@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1040" viewBox="0 0 1280 1040">
+<style>text{font-family:"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;fill:#111827} .sub{fill:#4b5563;font-size:15px} .title{font-size:20px;font-weight:600}</style>
+<defs>
+<marker id="blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#2563eb"/></marker>
+<marker id="orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#ea580c"/></marker>
+<marker id="green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#059669"/></marker>
+<marker id="purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#7c3aed"/></marker>
+</defs>
+<rect width="1280" height="1040" fill="white"/>
+<text x="48" y="44" font-size="28" fill="#111827" font-weight="600">本地完整 EL · 原生 Eino 编排与业务状态分层</text>
+<text x="48" y="72" font-size="16" fill="#6b7280" font-weight="400">SQLite / Markdown 为本地真相；Channel 只做适配；整个 Task / Goal 只有一个业务所有者</text>
+<rect x="48" y="104" width="280" height="88" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.6"/>
+<text x="66" y="134" font-size="19" fill="#111827" font-weight="600">本地 Channel / CLI</text>
+<text x="66" y="160" font-size="14" fill="#4b5563" font-weight="400">DWS NDJSON 回放 · Console</text>
+<text x="66" y="182" font-size="14" fill="#4b5563" font-weight="400">明确 owner / scene / 原始 source</text>
+<rect x="408" y="104" width="440" height="88" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>
+<text x="426" y="134" font-size="19" fill="#111827" font-weight="600">Entry · 精确配置与生命周期</text>
+<text x="426" y="160" font-size="14" fill="#4b5563" font-weight="400">Open → Start / Submit / Resume → Close</text>
+<text x="426" y="182" font-size="14" fill="#4b5563" font-weight="400">版本冻结 · 进程领导锁 · 注册插件 · 错误可见</text>
+<rect x="928" y="104" width="304" height="88" rx="10" fill="#faf5ff" stroke="#a78bfa" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="946" y="134" font-size="19" fill="#111827" font-weight="600">完整业务后端（可选）</text>
+<text x="946" y="160" font-size="14" fill="#4b5563" font-weight="400">由已注册 Adapter 整体接管业务</text>
+<text x="946" y="182" font-size="14" fill="#4b5563" font-weight="400">与 standalone 互斥；不嵌套 Task</text>
+<path d="M328 148 H408" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<rect x="343" y="120" width="48" height="22" rx="3" fill="white" opacity=".96"/>
+<text x="348" y="136" font-size="13" fill="#111827" font-weight="400">原文</text>
+<path d="M848 148 H928" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#purple)" stroke-dasharray="5 4"/>
+<rect x="865" y="120" width="45" height="22" rx="3" fill="white" opacity=".96"/>
+<text x="870" y="136" font-size="13" fill="#111827" font-weight="400">选择</text>
+<rect x="48" y="248" width="1184" height="560" rx="16" fill="#f8fbff" stroke="#93b4fb" stroke-width="2"/>
+<text x="70" y="276" font-size="17" fill="#2563eb" font-weight="600">standalone · 本地业务 Runtime</text>
+<path d="M628 192 V248" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<rect x="640" y="209" width="120" height="22" rx="3" fill="white" opacity=".96"/>
+<text x="645" y="225" font-size="13" fill="#111827" font-weight="400">唯一后端绑定</text>
+<rect x="80" y="308" width="320" height="108" rx="10" fill="#f0fdf4" stroke="#059669" stroke-width="1.6"/>
+<text x="98" y="338" font-size="19" fill="#111827" font-weight="600">M3 · Context Builder</text>
+<text x="98" y="364" font-size="14" fill="#4b5563" font-weight="400">三视图 · 原始来源 · 缺口</text>
+<text x="98" y="386" font-size="14" fill="#4b5563" font-weight="400">冻结证据 / revision / 撤销水印</text>
+<rect x="480" y="308" width="352" height="108" rx="10" fill="#faf5ff" stroke="#a78bfa" stroke-width="1.6"/>
+<text x="498" y="338" font-size="19" fill="#111827" font-weight="600">M4 · Owner Context Loops</text>
+<text x="498" y="364" font-size="14" fill="#4b5563" font-weight="400">Attention / Memory / Dreaming</text>
+<text x="498" y="386" font-size="14" fill="#4b5563" font-weight="400">Tone / Reflection / Summary</text>
+<rect x="912" y="308" width="288" height="108" rx="10" fill="#fff7ed" stroke="#fdba74" stroke-width="1.6"/>
+<text x="930" y="338" font-size="19" fill="#111827" font-weight="600">Watch / Wait / Occurrence</text>
+<text x="930" y="364" font-size="14" fill="#4b5563" font-weight="400">事件 · 定时 · 周期 · Attention</text>
+<text x="930" y="386" font-size="14" fill="#4b5563" font-weight="400">只唤醒 / 继续原 Task</text>
+<path d="M480 360 H400" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#green)"/>
+<rect x="410" y="332" width="48" height="22" rx="3" fill="white" opacity=".96"/>
+<text x="415" y="348" font-size="13" fill="#111827" font-weight="400">供给</text>
+<rect x="80" y="480" width="240" height="130" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>
+<text x="98" y="510" font-size="19" fill="#111827" font-weight="600">M1 · ChatLoop</text>
+<text x="98" y="536" font-size="14" fill="#4b5563" font-weight="400">查 / 派发 / 纠正 / 继续</text>
+<text x="98" y="558" font-size="14" fill="#4b5563" font-weight="400">停止 / 问答 / 关注</text>
+<text x="98" y="580" font-size="14" fill="#4b5563" font-weight="400">原始 source 绑定</text>
+<rect x="400" y="480" width="352" height="130" rx="10" fill="#fff7ed" stroke="#ea580c" stroke-width="1.6"/>
+<text x="418" y="510" font-size="19" fill="#111827" font-weight="600">M2 · TaskManager + Review</text>
+<text x="418" y="536" font-size="14" fill="#4b5563" font-weight="400">Task / Goal revision / Run / Budget</text>
+<text x="418" y="558" font-size="14" fill="#4b5563" font-weight="400">原子命令与真实退出事实</text>
+<text x="418" y="580" font-size="14" fill="#4b5563" font-weight="400">Run 成功 → 独立 Review → Goal</text>
+<rect x="832" y="480" width="368" height="130" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>
+<text x="850" y="510" font-size="19" fill="#111827" font-weight="600">M5 · Execution Bridge</text>
+<text x="850" y="536" font-size="14" fill="#4b5563" font-weight="400">prepare → submit / lookup → exit</text>
+<text x="850" y="558" font-size="14" fill="#4b5563" font-weight="400">unknown 保留原稳定键</text>
+<text x="850" y="580" font-size="14" fill="#4b5563" font-weight="400">本地 Executor · 文件写入与 SHA 回读</text>
+<path d="M200 416 V480" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#green)"/>
+<rect x="210" y="435" width="82" height="22" rx="3" fill="white" opacity=".96"/>
+<text x="215" y="451" font-size="13" fill="#111827" font-weight="400">本轮视图</text>
+<path d="M320 545 H400" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<rect x="334" y="515" width="50" height="22" rx="3" fill="white" opacity=".96"/>
+<text x="339" y="531" font-size="13" fill="#111827" font-weight="400">命令</text>
+<path d="M752 545 H832" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<rect x="767" y="515" width="50" height="22" rx="3" fill="white" opacity=".96"/>
+<text x="772" y="531" font-size="13" fill="#111827" font-weight="400">Run</text>
+<path d="M832 584 H752" fill="none" stroke="#ea580c" stroke-width="2" marker-end="url(#orange)"/>
+<rect x="768" y="556" width="48" height="22" rx="3" fill="white" opacity=".96"/>
+<text x="773" y="572" font-size="13" fill="#111827" font-weight="400">回流</text>
+<path d="M1056 416 V448 H576 V480" fill="none" stroke="#ea580c" stroke-width="2" marker-end="url(#orange)"/>
+<rect x="743" y="421" width="170" height="22" rx="3" fill="white" opacity=".96"/>
+<text x="748" y="437" font-size="13" fill="#111827" font-weight="400">发生次 / 回原 Review</text>
+<rect x="80" y="700" width="400" height="86" rx="10" fill="#fff7ed" stroke="#ea580c" stroke-width="1.6"/>
+<text x="98" y="730" font-size="19" fill="#111827" font-weight="600">M6 · Interaction &amp; Delivery</text>
+<text x="98" y="756" font-size="14" fill="#4b5563" font-weight="400">表达 / 打包 / Greeting / Routine / Outbox</text>
+<text x="98" y="778" font-size="14" fill="#4b5563" font-weight="400">真实回执入账；答案回原 Task / Continuation</text>
+<rect x="560" y="700" width="640" height="86" rx="10" fill="#f0fdfa" stroke="#0d9488" stroke-width="1.6"/>
+<text x="578" y="730" font-size="19" fill="#111827" font-weight="600">共享原生 Eino 内核</text>
+<text x="578" y="756" font-size="14" fill="#4b5563" font-weight="400">Runner · ChatModelAgent · ToolsNode · ModelRetry</text>
+<text x="578" y="778" font-size="14" fill="#4b5563" font-weight="400">SQLite Checkpoint · Targeted Resume · Middleware / AgentAsTool</text>
+<path d="M200 610 V700" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<rect x="207" y="649" width="80" height="22" rx="3" fill="white" opacity=".96"/>
+<text x="212" y="665" font-size="13" fill="#111827" font-weight="400">回复意图</text>
+<path d="M480 610 V652 H360 V700" fill="none" stroke="#ea580c" stroke-width="2" marker-end="url(#orange)"/>
+<rect x="374" y="626" width="108" height="22" rx="3" fill="white" opacity=".96"/>
+<text x="379" y="642" font-size="13" fill="#111827" font-weight="400">完成 / 问题</text>
+<path d="M480 744 H520 V626 H576 V610" fill="none" stroke="#ea580c" stroke-width="2" marker-end="url(#orange)"/>
+<rect x="523" y="650" width="110" height="22" rx="3" fill="white" opacity=".96"/>
+<text x="528" y="666" font-size="13" fill="#111827" font-weight="400">答案 / 回执</text>
+<path d="M1016 610 V700" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#purple)"/>
+<rect x="1025" y="647" width="120" height="22" rx="3" fill="white" opacity=".96"/>
+<text x="1030" y="663" font-size="13" fill="#111827" font-weight="400">执行同一 Run</text>
+<rect x="80" y="872" width="520" height="100" rx="10" fill="#f0fdf4" stroke="#059669" stroke-width="1.6"/>
+<text x="98" y="902" font-size="19" fill="#111827" font-weight="600">SQLite · 事务性真相</text>
+<text x="98" y="928" font-size="14" fill="#4b5563" font-weight="400">来源 / 配置 / Task / Run / Wait / Occurrence</text>
+<text x="98" y="950" font-size="14" fill="#4b5563" font-weight="400">模型物理预算 / effect journal / native checkpoint / outbox</text>
+<rect x="680" y="872" width="520" height="100" rx="10" fill="#f0fdf4" stroke="#059669" stroke-width="1.6"/>
+<text x="698" y="902" font-size="19" fill="#111827" font-weight="600">Markdown · 可读资料与真实产物</text>
+<text x="698" y="928" font-size="14" fill="#4b5563" font-weight="400">Owner 视图 / Task 文件 / Package / 本地交付</text>
+<text x="698" y="950" font-size="14" fill="#4b5563" font-weight="400">安全路径 · Hash CAS · 原子替换 · 独立回读</text>
+<path d="M336 808 V872" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#green)"/>
+<rect x="347" y="833" width="120" height="22" rx="3" fill="white" opacity=".96"/>
+<text x="352" y="849" font-size="13" fill="#111827" font-weight="400">持久化与恢复</text>
+<path d="M944 808 V872" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#green)"/>
+<rect x="955" y="833" width="110" height="22" rx="3" fill="white" opacity=".96"/>
+<text x="960" y="849" font-size="13" fill="#111827" font-weight="400">文件与投影</text>
+<path d="M64 1012 H94" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<text x="106" y="1017" font-size="14" fill="#4b5563" font-weight="400">业务命令</text>
+<path d="M264 1012 H294" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#green)"/>
+<text x="306" y="1017" font-size="14" fill="#4b5563" font-weight="400">上下文 / 存储</text>
+<path d="M510 1012 H540" fill="none" stroke="#ea580c" stroke-width="2" marker-end="url(#orange)"/>
+<text x="552" y="1017" font-size="14" fill="#4b5563" font-weight="400">事件 / 答案 / 回执</text>
+<path d="M850 1012 H880" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#purple)"/>
+<text x="892" y="1017" font-size="14" fill="#4b5563" font-weight="400">编排 / 可选后端</text>
+</svg>

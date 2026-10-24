@@ -1,0 +1,7 @@
+{
+  "version": "local-dws-replay/1",
+  "id": "local-signal-1",
+  "scene": "local-scene",
+  "actor": "local-owner",
+  "text": "报告更新条件已满足。"
+}

@@ -43,28 +43,43 @@ Runtime，并逐步替代旧 chat-only harness 的默认使用说明。
 
 | 要求 | 证明方式 | 当前 |
 | --- | --- | --- |
-| 明确 Entry、ready/start/close 与配置版本 | 实际 CLI 启动、关闭、非法配置拒绝 | pending |
-| Eino Runner/原生 checkpoint/定向 resume | 进程重建后中断点恢复；已完成工具不重复 | pending |
-| 标准 callbacks/middleware/组合 | span context 传入 Provider，标准插件实际运行 | pending |
-| SQLite/Markdown 持久化 | 独立数据库/文件回读；重启继续；原子事务/路径边界 | pending |
-| M1 Chat：查/派发/纠正/继续/停止 | 实际输入到相应业务效果，作用于同一 Task | pending |
-| M2 Review/Goal/Wait/Watch/Attention/定时 | Run 完成不等于 Goal 完成；回答/事件回原 Review | pending |
-| M3 Context：选材/冻结/缺口/三视图 | 当前授权 source 与版本，撤回/跨场域隔离 | pending |
-| M4 Owner Context/Memory/Dreaming/Tone/反馈 | 独立加工、实际写入与回读，不人为强依赖 | pending |
-| M5 Execution Bridge | submit/lookup/events/exit、unknown 恢复不重复提交 | pending |
-| M6 表达/Package/例行/问题/文件/投递 | 原材料完整、真实回执、答案和交付事实回原 Review | pending |
-| 本地 DWS 模拟可运行 | 实际 dws CLI 或明确回放入口跑完整业务并回读 | pending |
-| 自有模型本地全链路 | 使用本机模型，核对真实效果并做定性 judge | pending |
-| 文档/示例/发布 | 一条可复制命令，依赖/存储/边界清晰，固定版本 | pending |
+| 明确 Entry、ready/start/close 与配置版本 | CLI、非法配置、切片权限冻结、Close 取消显式调用、目录领导权测试 | passed |
+| Eino Runner/原生 checkpoint/定向 resume | 真进程退出恢复、前序工具不重复；真实模型问答恢复 | passed |
+| 标准 callbacks/middleware/组合 | 节点 context、精确注册插件、原生 middleware/AgentAsTool 实际执行 | passed |
+| SQLite/Markdown 持久化 | 独立文件/数据库回读；重启、CAS、事务、路径和来源边界测试 | passed |
+| M1 Chat：查/派发/纠正/继续/停止 | 实际 native 工具进入同一 Task 聚合；暂停/继续并发意图保存 | passed |
+| M2 Review/Goal/Wait/Watch/Attention/定时 | 原 Task 的 Wait/Review、timer/event/occurrence/ack 崩溃恢复测试 | passed |
+| M3 Context：选材/冻结/缺口/三视图 | 当前授权原文、Owner 跨 scene 证据、撤回和 epoch 测试 | passed |
+| M4 Owner Context/Memory/Dreaming/Tone/反馈 | 六原生 Agent、独立预算；真实模型文档与 SQLite 原文引用逐一回读 | passed |
+| M5 Execution Bridge | 原稳定键 submit/lookup/退出；未提交证明、取消、unknown 和冲突测试 | passed |
+| M6 表达/Package/例行/问题/文件/投递 | 真模型表达、Package、Greeting/Routine；过期 Question 不发送、回执回流测试 | passed |
+| 本地 DWS 模拟可运行 | cmd/el + channel NDJSON 回放；真实工具写文件、Review、本地 receipt | passed（回放） |
+| 自有模型本地全链路 | 冻结源码/二进制、SHA 回读、原文引用和独立 grounded judge | passed（详见覆盖边界） |
+| 文档/示例/发布 | 运行说明、完整 profile/script、SVG/PNG 架构图、深审报告 | 随本提交交付，GitHub main SHA 由交付消息回读 |
 
 ## 当前状态
 
-实现：进行中。上一轮是 progress（review/探针/主干提交）；本目标当前从现场代码
-确认了 local.Employee 只有内存历史和 reply/stay_quiet，background 不执行。
-这不满足完整本地 EL。已读取附图和现有代码，接下来先完成 Eino 基础与持久化，
-再实现业务状态聚合和明确 Entry。验收 Automatic（本地）；未通过项目仍保持 pending。
-本机模型凭据仅进进程环境；不入库/不进 md/不提交。外部真实 DWS 对象与授权缺失时
-不发真人消息，先完成可独立验证的本地运行与 CLI 合同，不降低剩余验收口径。
+实现与本地工程验证已完成，验收 Automatic（本地）。新入口为 `entry.Open` / `cmd/el`，
+旧 chat-only `cmd/eel` 不作为完整运行时交付。全库 `go test -race ./... -count=1`、
+`go vet ./...` 通过；最后的 Entry/CLI 权限快照和故障恢复增量另跑定向 race 通过。
+完整日志：`/private/tmp/eino-local-el-final-race-20261024.log`。
+
+真实模型主任务、六 Owner、表达、Package、Greeting/Routine 和问答恢复已通过；
+独立 evidence、源码/二进制指纹及 judge 以 [模型报告](../evals/local-el-realmodel-20261024.md)
+的最终状态为准。32 条真实 native 响应覆盖 13 个角色；11 份文件 SHA、36 条 SQLite
+原文引用均实际核验。另一个最小问答在原 Chat root 回答 Q3，后续仅产生一个 Task/Run。
+最终独立 grounded judge 输入 1625 tokens，返回有效 JSON / pass；此前空输出失败保留。
+精确最终源码另跑全配置及幂等回放：core SHA256
+`6e721b680b32b13d98b856f0edda596b5ad2400ee5c2c8d0fef3e786d1aab675`；
+1 Task、1 Run、1 delivery、6 Owner 文档、failures=[]。与冻结真模型仅三个恢复/诊断/
+配置别名文件增量的关系已在模型报告说明，未将脚本当第二轮真实模型。
+
+实施、本地验收和报告已完成。发布通过 Git Data API 提交与 main 快进，保留全部父提交；
+确切 GitHub SHA 在交付消息中由远端回读，不在本文件中循环硬编码自身提交。
+本机凭据只进子进程，未入库或提交。真实 DWS IM、云端部署、可选完整业务后端的
+实际适配/迁移不在本地回放验收内；接入调查不宣称后端已验收。
+
+以下各组为历史实施进度，未完成列表以本节当前状态及上表为准。
 
 ### 第一组：原生 Eino、SQLite/Markdown、Task 聚合基础（progress）
 
@@ -106,3 +121,13 @@ DWS 现场：本机 CLI v1.0.63-beta.1；确认 event +listen-im 与 chat +messa
 Delivery、owner 小 Loop、DWS 本地完整模拟及自有模型全链路。验收表继续 pending。
 下一组：先构建 Context + 明确 Entry，接通 Chat → Task → 本地 Executor → Review →
 SQLite outbox/Markdown 交付；再补齐所有独立小 Loop，不能在这个切片停作完成。
+
+### 既有业务 Runtime 接入补充
+
+用户追加了现有完整业务实现的接入调查。后续 Entry 在继续扩展前先明确
+BusinessRuntime seam：本地 standalone 和既有业务后端只能由一个拥有 Task/Goal/
+Run/Review；不得在 Execution Bridge 下调用“完整业务任务创建”来嵌套另一套 Goal。
+backend/profile/version 在受理时冻结，不以失败后的自动 fallback 切换状态所有者。
+具体协议绑定位于消费端 adapter，公共库不增加私有模块的默认依赖。Host 能力可
+注入不等于内部数据库/队列可替换；SQLite/Markdown、本地 DWS 和全部小 Loop
+仍按原验收矩阵完成，不用远程服务或其他数据库成功替代。只读调查不构成接入通过。

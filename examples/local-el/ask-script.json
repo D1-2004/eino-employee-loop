@@ -1,0 +1,16 @@
+{
+  "version": "local-el-script/1",
+  "modelName": "scripted-local-demo",
+  "rules": [
+    {
+      "role": "chat",
+      "afterTool": "",
+      "tool_calls": [{"id":"ask-detail","name":"ask_input","arguments":{"source_ref":"${source}","prompt":"请补充报告标题。"}}]
+    },
+    {
+      "role": "chat",
+      "afterTool": "ask_input",
+      "tool_calls": [{"id":"reply-detail","name":"reply","arguments":{"source_ref":"${source}","text":"补充信息已通过原中断目标接收。此示例仅验证问答恢复，没有创建报告任务。"}}]
+    }
+  ]
+}

@@ -46,6 +46,7 @@ const (
 )
 
 type Definition struct {
+	Configuration     json.RawMessage
 	Goal, Instruction string
 	Constraints       []string
 	MaxRuns           int
@@ -62,6 +63,7 @@ const (
 	RunPreparing  RunState = "preparing"
 	RunUnknown    RunState = "unknown"
 	RunActive     RunState = "running"
+	RunSuspended  RunState = "suspended"
 	RunSucceeded  RunState = "succeeded"
 	RunFailed     RunState = "failed"
 	RunCancelling RunState = "cancelling"
@@ -83,7 +85,9 @@ type Artifact struct {
 }
 type Wait struct {
 	ID, Kind, Prompt, Condition, Answer string
+	NativeTarget, ExecutionID           string
 	Due                                 time.Time
+	Since                               time.Time
 	Resolved                            bool
 	SourceReceipt                       string
 }
@@ -92,6 +96,7 @@ type Pending struct {
 	Source            Source
 }
 type Task struct {
+	Deliveries           []DeliveryFact
 	ID                   string
 	Scope                Scope
 	Revision             uint64

@@ -4,6 +4,12 @@
 
 基于 [CloudWeGo Eino](https://github.com/cloudwego/eino) 的、由事件 + 场域驱动的数字员工决策循环。每次唤醒只回答一个问题——*这个场域刚发生了这些事，员工该调用哪些工具，做完了没有？*——其余一切交给嵌入它的 Host。
 
+完整本地 Host 使用 **`entry.Open` / `cmd/el`**：SQLite 保存业务状态，Markdown 保存
+资料和产物，原生 Eino 负责模型/工具编排及中断恢复。独立 Owner 小 Loop、Task Review、
+周期发生次、表达、打包和 DWS 回放均从同一 Entry 装配。见
+[运行说明](docs/local-entry.md)、[架构图](docs/architecture/local-el-runtime.png) 和
+[原生能力复审](docs/reviews/2026-10-24-local-el-native-review.md)。
+
 ```
             Host（你的系统）                               本模块
  ┌──────────────────────────────────────────┐      ┌────────────────────────────┐
@@ -18,6 +24,10 @@
 
 | 包 | 作用 |
 | --- | --- |
+| `entry`、`cmd/el`、`channel` | 明确生命周期、冻结配置、单一业务后端、CLI 与 DWS 回放。 |
+| `agent`、`journal` | 原生 Runner、checkpoint/resume、注册 middleware/AgentAsTool、物理模型账本和预算。 |
+| `work`、`execution`、`interaction` | Task/Goal/Run/Review、Wait/Watch/发生次、本地执行、outbox 与真实回执。 |
+| `contextbuilder`、`ownerloop`、`storage` | 来源授权视图、六个 Owner 加工 worker、SQLite 事务与 Markdown CAS。 |
 | `event` | 给输入分类（类别 × 性质），路由到所在场域的通道与会话，处理抢占与撤销。标准目录在 `event/events.json`。 |
 | `loop` | 在 Eino ADK `ChatModelAgent`（底层是 `ToolCallingChatModel`）上跑一次唤醒：原生工具批次、任何效果之前先校验、效果必须有回执、终态决定、预算、修复轮。 |
 | `loop/looptest` | 给 Host 测试用的脚本化 Eino 模型。 |
@@ -67,6 +77,8 @@ out, err := loop.New(loop.Config{
 路由让每个场域有**一个前台交互会话**（来自人的被动触发业务事件，串行处理，人的输入优先），以及若干**排队的后台会话**——`observation`（主动监听，可被抢占）、`follow_up`（每个任务一个）、`routine`（每个例行任务一个）、`lifecycle`——外加一条不唤醒模型、由 Host 直接应用事实的 **host 通道**。有人找员工会抢占旁听窗口；策略或订阅变化会撤销它们。详见 [docs/events.zh-CN.md](docs/events.zh-CN.md)。
 
 ## 本地运行
+
+持久化任务 Entry 使用 `cmd/el`，支持 SQLite/md、任务执行与 Review、原生中断恢复和本地回放交付，见 [本地 Entry 运行说明](docs/local-entry.md)。它的 DWS NDJSON 回放是本地模拟，Markdown 回执不表示真实 IM 送达。下面的 `cmd/eel` 是独立的旧聊天验证工具。
 
 ```bash
 export LLM_BASE_URL=... LLM_API_KEY=... LLM_MODEL=...      # 任意 OpenAI 兼容端点

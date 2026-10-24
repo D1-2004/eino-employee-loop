@@ -1,0 +1,14 @@
+{
+  "version": "local-el-schedule/1",
+  "id": "report-watch-1",
+  "taskId": "REPLACE_WITH_ACTUAL_TASK_ID",
+  "goalRevision": 1,
+  "source": {
+    "receipt": "allloops-message-1",
+    "actor": "local-owner",
+    "text": "请创建 report.md，内容为 # 本地交付\n\nSQLite 保存状态，Markdown 保存文件。完成后返回文件。我偏好简洁中文。"
+  },
+  "condition": "report.updated",
+  "every": "0s",
+  "limit": 1
+}

@@ -7,6 +7,12 @@ An event + scene driven decision loop for digital employees, built on
 wake — *given what just happened in this scene, which tools should the employee
 call, and is it done?* — and leaves everything else to the Host that embeds it.
 
+For the complete local Host, use **`entry.Open` / `cmd/el`**: SQLite business state,
+native Eino checkpoint/resume, Markdown artifacts, independent owner-context
+workers and source-bound DWS replay. See the [local runtime guide](docs/local-entry.md),
+[architecture](docs/architecture/local-el-runtime.png) and
+[native feature review](docs/reviews/2026-10-24-local-el-native-review.md).
+
 ```
             Host (yours)                                   this module
  ┌──────────────────────────────────────────┐      ┌────────────────────────────┐
@@ -21,6 +27,10 @@ call, and is it done?* — and leaves everything else to the Host that embeds it
 
 | Package | What it does |
 | --- | --- |
+| `entry`, `cmd/el`, `channel` | Explicit local application lifecycle, immutable profiles, one business backend, CLI and DWS replay. |
+| `agent`, `journal` | Native Runner, checkpoint/resume, registered middleware/AgentAsTool, physical model journal and budgets. |
+| `work`, `execution`, `interaction` | Task/Goal/Run/Review, Wait/Watch/occurrences, local execution and reconciled outbox receipts. |
+| `contextbuilder`, `ownerloop`, `storage` | Authorized source views, six independent owner workers, SQLite transactions and Markdown CAS. |
 | `event` | Classifies inputs (class × mode) and routes them to a lane and session of their scene, with preemption and revocation. Standard catalog in `event/events.json`. |
 | `loop` | Runs one wake on an Eino ADK `ChatModelAgent` over a `ToolCallingChatModel`: native tool batches, validation before any effect, receipts for effects, terminal decisions, budgets, repair turns. |
 | `loop/looptest` | A scripted Eino model for Host tests. |
@@ -29,6 +39,7 @@ call, and is it done?* — and leaves everything else to the Host that embeds it
 | `schema` | JSON Schema of `event.Event` and reference PostgreSQL storage for a durable Host. |
 | `workflow`, `workflow/filestore` | Opt-in Eino workflow with versioned Providers, scoped multi-turn sessions, commit recovery and a private local reference Store. |
 | `generation` | Bounded Eino prepare/model/validate/journal/retry graph with typed Context, Model, Decision and Journal Providers for structured decisions. |
+| `entry`, `cmd/el`, `channel` | Explicit persistent local Entry, SQLite/md tasks and artifacts, native interrupt resume, and authorized NDJSON replay. See the [local Entry guide](docs/local-entry.md); local-file receipts do not prove real IM delivery. |
 
 For the isolated workflow API, Provider contracts and local real-model acceptance,
 see [workflows](docs/workflows.md). This API does not change existing `loop.Run`
