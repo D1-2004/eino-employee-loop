@@ -7,6 +7,7 @@ import (
 	contextbuilder "github.com/D1-2004/eino-employee-loop/employee/context"
 	"github.com/D1-2004/eino-employee-loop/employee/contract"
 	native "github.com/D1-2004/eino-employee-loop/employee/kernel/eino"
+	"github.com/D1-2004/eino-employee-loop/employee/kernel/journal"
 	ownerloop "github.com/D1-2004/eino-employee-loop/employee/owner"
 	taskmodule "github.com/D1-2004/eino-employee-loop/employee/task"
 	work "github.com/D1-2004/eino-employee-loop/employee/task/state"
@@ -121,7 +122,18 @@ func (s *standalone) ownerDependencies(profile Profile) OwnerDependencies {
 		if err != nil {
 			return nil, err
 		}
-		return models(c, ModelRequest{Role: "owner_" + r.Role, Receipt: r.Receipt, Scope: r.Scope, Profile: frozen, ModelName: frozen.ModelName})
+		request, err := contract.ResolveModelRequest(frozen, "owner_"+r.Role, r.Receipt, r.Scope)
+		if err != nil {
+			return nil, err
+		}
+		delegate, err := models(c, request)
+		if err != nil {
+			return nil, err
+		}
+		if request.Binding.Provider != "" {
+			delegate = journal.WithIdentity(delegate, request.Binding.Identity())
+		}
+		return delegate, nil
 	}}
 }
 

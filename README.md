@@ -1,13 +1,15 @@
-# Eino Employee Loop
+# DingTalk Employee Loop
 
 [中文](README.zh-CN.md)
 
-An Employee Loop built on [CloudWeGo Eino](https://github.com/cloudwego/eino).
+An Employee Loop SDK for DingTalk IM, with native Agent execution provided by
+[CloudWeGo Eino](https://github.com/cloudwego/eino).
 Code and evaluation have three roots; documentation is kept separately:
 
 ```text
 app/                         Runnable reference applications and their Providers
 ├── local/                   SQLite + Markdown + Eino + local execution/delivery
+├── eval/                    Deterministic replay and evidence verification
 └── dingtalk/                Lightweight DingTalk channel example
 
 employee/                    Reusable Employee Loop framework
@@ -37,6 +39,7 @@ Scripted decisions use real local persistence and file effects. Local-file recei
 prove local writes; they do not prove DingTalk delivery or full online Buddy parity.
 
 - [Architecture and import migration](ARCHITECTURE.md)
+- [Local, eval and server assembly](docs/local-server-assembly.md)
 - [Run the local application](app/local/README.md)
 - [Embed and assemble the framework](docs/module-composition.md)
 - [Behavior contracts](docs/specs/README.md)

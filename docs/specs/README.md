@@ -6,6 +6,7 @@ and the [assembly guide](../module-composition.md) for Go usage.
 
 | Contract | Owner |
 | --- | --- |
+| [Model composition](model-composition.md) | Frozen per-role Provider/model/effort and native model journals |
 | [Host alignment and state ownership](host-alignment.md) | Business responsibilities, integration choices and explicit parity gaps |
 | [Local runtime](local-el-runtime.md) | M7 lifecycle and the M1–M6 collaboration |
 | [Module composition](module-composition.md) | M7 exact-version assembly and resource lifetime |

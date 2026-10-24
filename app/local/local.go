@@ -6,14 +6,7 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/D1-2004/eino-employee-loop/app/local/providers/delivery"
-	localexec "github.com/D1-2004/eino-employee-loop/app/local/providers/execution"
-	einotools "github.com/D1-2004/eino-employee-loop/app/local/providers/services/eino"
-	localservices "github.com/D1-2004/eino-employee-loop/app/local/providers/services/local"
-	"github.com/D1-2004/eino-employee-loop/app/local/providers/storage/markdown"
-	"github.com/D1-2004/eino-employee-loop/app/local/providers/storage/sqlite"
-	"github.com/D1-2004/eino-employee-loop/employee/ports/storage"
-	"path/filepath"
+	"github.com/D1-2004/eino-employee-loop/app/local/providers/defaults"
 	"time"
 
 	"github.com/D1-2004/eino-employee-loop/employee/entry"
@@ -62,27 +55,7 @@ func Open(ctx context.Context, opts Options) (*Runtime, error) {
 		return nil, errors.New("localapp: standalone profile required; use entry.Open for complete service backends")
 	}
 	assembled := entry.Options{Directory: opts.Directory, Profile: opts.Profile, Models: opts.Models, Services: opts.Services, Delivery: opts.Delivery, ResolveDelivery: opts.ResolveDelivery, AuthorizeDelivery: opts.AuthorizeDelivery, Callbacks: opts.Callbacks, Plugins: opts.Plugins, Now: opts.Now}
-	assembled.DefaultStorage = func(ctx context.Context, d entry.StorageDependencies) (storage.State, storage.Artifacts, error) {
-		db, err := sqlite.Open(ctx, filepath.Join(d.Directory, "state"))
-		if err != nil {
-			return nil, nil, err
-		}
-		files, err := markdown.Open(filepath.Join(d.Directory, "workspace"))
-		if err != nil {
-			err = errors.Join(err, db.Close())
-			return nil, nil, err
-		}
-		return db, files, nil
-	}
-	assembled.DefaultExecutor = func(_ context.Context, d entry.ExecutorDependencies) (execution.Port, error) {
-		native := &localexec.Native{State: d.State, Artifacts: d.Artifacts, Tasks: d.Tasks, Context: d.Context, Runner: d.Runner}
-		return &localexec.Local{DB: d.State, Owner: d.Owner, Authorize: d.Authorize, Run: native.Execute, InterruptRun: native.Cancel}, nil
-	}
-	assembled.DefaultDelivery = func(_ context.Context, d entry.DeliveryDependencies) (interaction.Port, error) {
-		return delivery.Local{Files: d.Artifacts}, nil
-	}
-	assembled.BuildServices = localservices.NewLocal
-	assembled.PrepareTools = einotools.Build
+	assembled = defaults.Configure(assembled)
 	if opts.Executor != nil {
 		if opts.ExecutorRef.Name == "" || opts.ExecutorRef.Version == "" {
 			return nil, errors.New("localapp: exact executor name/version required")

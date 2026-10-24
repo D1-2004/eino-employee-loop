@@ -15,7 +15,8 @@ Old registered factories must remain available until old work is drained.
 Factories have separate minimal dependency types, never the Host `Options` or a
 universal service container. Storage receives its directory and a Profile snapshot.
 Context receives stores, authorization/audience policy and a read-only task reader;
-Executor receives State, lease identity, authorization and the native Run callback.
+Executor receives State, lease identity, authorization, Artifacts, read-only Tasks,
+native Context and an Agent Runner; the application constructs its executor.
 Review receives authorization and a Profile snapshot, and only proposes changes.
 Scheduler alone receives the Work manager plus the source reader needed to validate
 signals. Owner receives stores, its Context contract, authorization, lease identity,

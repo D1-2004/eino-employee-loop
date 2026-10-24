@@ -30,9 +30,9 @@
 <text x="76" y="623" font-size="16" font-weight="400" fill="#6b7280">channel/ · 输入映射</text>
 <text x="76" y="647" font-size="16" font-weight="400" fill="#6b7280">sessionfile/ · 会话存储</text>
 <rect x="60" y="804" width="230" height="100" rx="10" fill="#fff" stroke="#d1d5db" stroke-width="1.5"/>
-<text x="76" y="834" font-size="19" font-weight="600" fill="#111827">dingtalk/</text>
-<text x="76" y="863" font-size="16" font-weight="400" fill="#6b7280">可选的渠道参考应用</text>
-<text x="76" y="887" font-size="16" font-weight="400" fill="#6b7280">独立装配自己的 Provider</text>
+<text x="76" y="834" font-size="19" font-weight="600" fill="#111827">eval/</text>
+<text x="76" y="863" font-size="16" font-weight="400" fill="#6b7280">Go 重放与事实验收</text>
+<text x="76" y="887" font-size="16" font-weight="400" fill="#6b7280">驱动同一个 local 应用</text>
 <rect x="390" y="272" width="500" height="110" rx="10" fill="#fff7ed" stroke="#fdba74" stroke-width="1.5"/>
 <text x="406" y="302" font-size="19" font-weight="600" fill="#111827">M7 Entry · entry/</text>
 <text x="406" y="331" font-size="16" font-weight="400" fill="#6b7280">依赖接线、版本选择、生命周期与恢复调度</text>
@@ -64,9 +64,9 @@
 <rect x="390" y="892" width="500" height="56" rx="10" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
 <text x="406" y="922" font-size="18" font-weight="600" fill="#111827">kernel/ · ports/ · contract/ · internal/</text>
 <rect x="990" y="272" width="230" height="110" rx="10" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
-<text x="1006" y="302" font-size="19" font-weight="600" fill="#111827">run.py</text>
-<text x="1006" y="331" font-size="16" font-weight="400" fill="#6b7280">驱动参考应用验收</text>
-<text x="1006" y="355" font-size="16" font-weight="400" fill="#6b7280">保留状态与运行证据</text>
+<text x="1006" y="302" font-size="19" font-weight="600" fill="#111827">cases/ + run.py</text>
+<text x="1006" y="331" font-size="16" font-weight="400" fill="#6b7280">夹具与兼容入口</text>
+<text x="1006" y="355" font-size="16" font-weight="400" fill="#6b7280">保留版本与运行证据</text>
 <rect x="990" y="468" width="230" height="126" rx="10" fill="#fff" stroke="#d1d5db" stroke-width="1.5"/>
 <text x="1006" y="498" font-size="19" font-weight="600" fill="#111827">cases/</text>
 <text x="1006" y="527" font-size="16" font-weight="400" fill="#6b7280">Profile、输入、模型脚本</text>

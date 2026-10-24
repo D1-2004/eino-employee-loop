@@ -30,3 +30,11 @@ records explicitly; it does not authenticate a platform user or send IM messages
 More: [assembly/replacement](../../docs/module-composition.md),
 [behavior contracts](../../docs/specs/README.md),
 [evaluation cases](../../evals/README.md).
+
+
+Replay acceptance runs through `go run ./app/eval`. For another server, use the
+importable `providers/defaults.Configure(entry.Options)` assembly or supply your
+own typed factories; see [local/eval/server assembly](../../docs/local-server-assembly.md).
+Models can vary by loop role and effort through immutable
+[model bindings](../../docs/specs/model-composition.md). The module import path is
+unchanged while the project name remains under discussion.

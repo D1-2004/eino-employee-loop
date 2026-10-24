@@ -56,6 +56,7 @@ func (m ModuleSelection) Core() ModuleSelection {
 }
 
 type Profile struct {
+	ModelBindings                                                                       map[string]ModelBinding `json:",omitempty"`
 	HostTools                                                                           bool
 	Modules                                                                             ModuleSelection
 	Plugins                                                                             []PluginRef
@@ -75,6 +76,14 @@ func (p Profile) Key() string {
 	return Digest(raw)
 }
 func (p Profile) Validate() error {
+	for role, binding := range p.ModelBindings {
+		if !modelRole(role) {
+			return errors.New("contract: invalid model role")
+		}
+		if err := binding.Validate(); err != nil {
+			return err
+		}
+	}
 	if p.Version != "local-el-profile/1" || p.ID == "" || p.Revision == "" || p.Workspace == "" || p.Tenant == "" || p.Employee == "" || p.Owner == "" || p.Backend == "" || p.ModelName == "" || len(p.Scenes) == 0 || p.MaxModelCalls < 1 || p.MaxModelCalls > 128 || p.MaxRuns < 1 || p.MaxRuns > 512 {
 		return errors.New("entry: invalid immutable profile")
 	}
@@ -116,6 +125,7 @@ type Admission struct {
 	Replay                              bool
 }
 type ModelRequest struct {
+	Binding                  ModelBinding
 	Role, Receipt, ModelName string
 	Scope                    Scope
 	Profile                  Profile

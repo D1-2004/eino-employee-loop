@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/D1-2004/eino-employee-loop/app/local/providers/storage/sqlite"
+	"github.com/D1-2004/eino-employee-loop/employee/contract"
 	"github.com/D1-2004/eino-employee-loop/employee/kernel/journal"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -223,5 +224,37 @@ func TestKilledProcessReconcilesPendingModelReservationWithinBudget(t *testing.T
 	}
 	if calls.Load() != 1 {
 		t.Fatal(calls.Load())
+	}
+}
+
+func TestExplicitEffortIdentitySeparatesJournalResponses(t *testing.T) {
+	ctx := context.Background()
+	db := open(t, t.TempDir())
+	calls := 0
+	delegate := modelFunc(func(context.Context, []*schema.Message) (*schema.Message, error) {
+		calls++
+		return schema.AssistantMessage("answer", nil), nil
+	})
+	m := bind(db, delegate)
+	binding := contract.ModelBinding{Provider: "p", Version: "1", Model: "reasoner", Effort: "low"}
+	m.Delegate = journal.WithIdentity(delegate, binding.Identity())
+	input := []*schema.Message{schema.UserMessage("same input")}
+	if _, err := m.Generate(ctx, input); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Generate(ctx, input); err != nil || calls != 1 {
+		t.Fatal("same binding failed replay", err, calls)
+	}
+	binding.Effort = "high"
+	m.Delegate = journal.WithIdentity(delegate, binding.Identity())
+	bound, err := m.WithTools(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = bound.Generate(ctx, input); err != nil || calls != 2 {
+		t.Fatal("changed effort reused response", err, calls)
+	}
+	if _, err = bound.Generate(ctx, input); err != nil || calls != 2 {
+		t.Fatal("bound identity lost during tools", err, calls)
 	}
 }

@@ -21,6 +21,7 @@ var ErrBudget = errors.New("journal: physical model budget exhausted")
 type book struct{ Calls int }
 type call struct {
 	Owner, State, Error string
+	ModelIdentity       string `json:",omitempty"`
 	Response            *schema.Message
 }
 type Model struct {
@@ -43,6 +44,10 @@ func (m *Model) WithTools(tools []*schema.ToolInfo) (model.ToolCallingChatModel,
 	return &cp, nil
 }
 func (m *Model) Generate(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	name := m.Name
+	if identified, ok := m.Delegate.(interface{ ModelIdentity() string }); ok {
+		name = identified.ModelIdentity()
+	}
 	if m.DB == nil || m.Delegate == nil || m.Scope == "" || m.Receipt == "" || m.Owner == "" || m.Name == "" || m.Limit < 1 {
 		return nil, errors.New("journal: complete scoped model binding required")
 	}
@@ -93,7 +98,7 @@ func (m *Model) Generate(ctx context.Context, messages []*schema.Message, opts .
 		}
 	}
 	raw, err := json.Marshal(map[string]any{
-		"model": m.Name, "model_override": options.Model, "messages": copies,
+		"model": name, "model_override": options.Model, "messages": copies,
 		"tools": schemas, "deferred_tools": deferred, "tool_search": search,
 		"tool_choice": options.ToolChoice, "agentic_tool_choice": options.AgenticToolChoice,
 		"allowed_tools": options.AllowedToolNames, "temperature": options.Temperature,
@@ -145,7 +150,7 @@ func (m *Model) Generate(ctx context.Context, messages []*schema.Message, opts .
 			return e
 		}
 		reservation = storage.Document{Namespace: "model-calls", Scope: scope, ID: id, Revision: prior.Revision}
-		reservation.Body, _ = json.Marshal(call{Owner: m.Owner, State: "pending"})
+		reservation.Body, _ = json.Marshal(call{Owner: m.Owner, State: "pending", ModelIdentity: name})
 		rev, e := tx.Put(ctx, reservation)
 		reservation.Revision = rev
 		return e
@@ -157,7 +162,7 @@ func (m *Model) Generate(ctx context.Context, messages []*schema.Message, opts .
 		return cached, nil
 	}
 	response, callErr := m.Delegate.Generate(ctx, messages, opts...)
-	state := call{Owner: m.Owner, State: "complete", Response: response}
+	state := call{Owner: m.Owner, State: "complete", Response: response, ModelIdentity: name}
 	if callErr != nil {
 		state.State = "failed"
 		state.Error = callErr.Error()

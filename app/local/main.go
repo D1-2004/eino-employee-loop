@@ -19,11 +19,10 @@ import (
 
 	"github.com/D1-2004/eino-employee-loop/app/local/providers/channel"
 
+	modelproviders "github.com/D1-2004/eino-employee-loop/app/local/providers/models"
 	"github.com/D1-2004/eino-employee-loop/employee/contract"
 	"github.com/D1-2004/eino-employee-loop/employee/entry"
 	work "github.com/D1-2004/eino-employee-loop/employee/task/state"
-	openaimodel "github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino/components/model"
 )
 
 func main() {
@@ -374,16 +373,6 @@ func modelFactory(script string) (entry.Models, error) {
 	if script != "" {
 		return loadRuleModels(script)
 	}
-	// Opening and reading persisted state do not need network credentials. A
-	// model-consuming command reports missing credentials at the actual call.
-	return func(ctx context.Context, request entry.ModelRequest) (model.ToolCallingChatModel, error) {
-		base, key, name := os.Getenv("LLM_BASE_URL"), os.Getenv("LLM_API_KEY"), os.Getenv("LLM_MODEL")
-		if base == "" || key == "" || name == "" {
-			return nil, errors.New("set LLM_BASE_URL, LLM_API_KEY and LLM_MODEL, or use -script")
-		}
-		if name != request.ModelName {
-			return nil, errors.New("LLM_MODEL must equal frozen profile.modelName")
-		}
-		return openaimodel.NewChatModel(ctx, &openaimodel.ChatModelConfig{BaseURL: base, APIKey: key, Model: name})
-	}, nil
+	// Credentials are read by the selected Provider only when a model is used.
+	return modelproviders.OpenAIEnvironment().Models, nil
 }

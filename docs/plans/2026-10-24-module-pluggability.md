@@ -268,3 +268,58 @@ Alignment results:
   runtime evidence is retained without claiming fresh online acceptance.
 - No consumer upgrade, private remote write, live service interaction or
   deployment was performed. GitHub publication uses the non-forced Git Data API.
+
+
+## Runnable SDK assembly, eval mode and Provider review (2026-10-25)
+
+Status: implemented; design/source review and Linux local acceptance passed.
+Native macOS launch remains limited by observed host AMFI rejection. Acceptance
+is design alignment plus actual local startup
+and repeatable evaluation. The project is DingTalk IM oriented; renaming the
+repository/module is deliberately deferred. Use native Eino Extensions,
+middleware, callbacks and subagents with typed Provider composition. Do not clone
+a dynamic service container or introduce another business loop.
+
+Scope: app/eval replay mode using the same reference app; reusable default
+assembly for another server consumer; role-specific versioned model/effort
+Provider selection and frozen journal identity; storage schema/transaction review;
+consumer convergence map for Multica and the independent EL repository.
+The default app must remain credential-free under replay and work on a portable
+Linux build. Actual external deployment has no designated target in this slice;
+record build/run evidence separately from remote service acceptance.
+
+Acceptance: local full Task/six Owner/delivery and native continuation/replay run;
+new eval mode returns useful failure evidence; role model/effort selection and
+restart retain frozen settings; typed modules/native Extensions continue working;
+SDK defaults can be embedded without importing a main package; review existing
+storage tables and fix only proven blockers. Run appropriate full checks for the
+new runtime selection and regression risks. No consumer upgrade, private remote
+write, production deployment or real IM send is authorized by this work.
+
+
+Runnable assembly results:
+- app/eval is a pure Go replay/evidence mode that invokes the same local CLI.
+  The old Python entry delegates to it. No second Employee business loop exists.
+- app/local/providers/defaults.Configure exposes the reference assembly to server
+  hosts and respects supplied typed factories. Native extension composition stays
+  within Eino types; no dynamic service container, plugin DSL or hot-unload system.
+- Frozen Profile.ModelBindings now select Provider/version/model/effort per role;
+  old JSON and legacy journal identities remain compatible. Explicit identities
+  bind physical model journal requests, including Owner jobs and restart.
+- Built and executed a no-base-image Linux/arm64 bundle/container, non-root and
+  offline. Final full replay passed 111 assertions. Corrupt input failed clearly;
+  previous evidence was preserved. Independent review found one output-directory
+  race, reproduced it and verified the atomic exclusive-claim correction.
+- Full unit/contract tests, vet and race passed; later eval ownership correction
+  passed its affected race checks. Current links passed across 32 documents.
+- Native macOS latest child launch was rejected by AMFI (kernel signing logs);
+  failed evidence remains preserved. Do not claim that native path passed or
+  silently retry unknown effects. Local acceptance uses the Linux container.
+- Tables were reviewed with query-plan evidence; no local P1 blocker. Server
+  projection, body growth, event-index and migration/fencing gaps remain recorded.
+- Two consuming services were compared and a gradual shared-kernel/projection
+  route recorded privately. They retain their own Task authority until an explicit
+  complete ownership migration. Their dependency/API upgrades and online parity
+  are not completed by this SDK change.
+- Evidence and limits: evals/reports/2026-10-25-sdk-local-assembly.md. No remote
+  environment was selected or deployed; production and actual IM remain untouched.

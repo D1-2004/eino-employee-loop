@@ -22,6 +22,7 @@ import (
 type Profile = contract.Profile
 type Input = contract.Input
 type Admission = contract.Admission
+type ModelBinding = contract.ModelBinding
 type ModelRequest = contract.ModelRequest
 type Models = contract.Models
 type Backend interface {
@@ -77,10 +78,7 @@ func Open(ctx context.Context, opts Options) (*Entry, error) {
 	}
 	// The caller may reuse its configuration buffers for a later revision.
 	// Admission and permission checks retain the exact snapshot opened here.
-	opts.Profile.Scenes = append([]string(nil), opts.Profile.Scenes...)
-	opts.Profile.OwnerLoops = append([]string(nil), opts.Profile.OwnerLoops...)
-	opts.Profile.DeliveryLoops = append([]string(nil), opts.Profile.DeliveryLoops...)
-	opts.Profile.Plugins = append([]PluginRef(nil), opts.Profile.Plugins...)
+	opts.Profile = profileSnapshot(opts.Profile)
 	opts.Callbacks = append([]callbacks.Handler(nil), opts.Callbacks...)
 	opts.RequiredCapabilities = append([]Capability(nil), opts.RequiredCapabilities...)
 

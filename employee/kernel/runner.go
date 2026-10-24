@@ -144,13 +144,22 @@ func (s *Runner) Run(ctx context.Context, call Invocation) (native.Result, error
 			nativeTools = append(nativeTools, f)
 		}
 	}
-	modelRequest := contract.ModelRequest{Role: role, Receipt: receipt, Scope: scope, Profile: profile, ModelName: profile.ModelName}
+	modelRequest, err := contract.ResolveModelRequest(profile, role, receipt, scope)
+	if err != nil {
+		return native.Result{}, err
+	}
 	delegate, err := s.Models(ctx, modelRequest)
 	if err != nil {
 		return native.Result{}, err
 	}
+	if delegate == nil {
+		return native.Result{}, errors.New("kernel: model factory returned nil")
+	}
+	if modelRequest.Binding.Provider != "" {
+		delegate = journal.WithIdentity(delegate, modelRequest.Binding.Identity())
+	}
 	scopeKey, _ := scope.Key()
-	durable := &journal.Model{DB: s.State, Scope: scopeKey + "/" + role, Receipt: receipt, Owner: s.Owner, Name: profile.ModelName, Limit: profile.MaxModelCalls, Delegate: delegate, Before: before}
+	durable := &journal.Model{DB: s.State, Scope: scopeKey + "/" + role, Receipt: receipt, Owner: s.Owner, Name: modelRequest.Binding.Identity(), Limit: profile.MaxModelCalls, Delegate: delegate, Before: before}
 	validate := func(msg *schema.Message) error {
 		if msg == nil || msg.ResponseMeta == nil {
 			return errors.New("missing complete response metadata")

@@ -1,13 +1,15 @@
-# Eino Employee Loop
+# DingTalk Employee Loop
 
 [English](README.md)
 
-基于 [CloudWeGo Eino](https://github.com/cloudwego/eino) 的 Employee Loop。
+面向钉钉 IM 的 Employee Loop SDK，使用
+[CloudWeGo Eino](https://github.com/cloudwego/eino) 原生 Agent 运行能力。
 代码和评测分为三个部分，文档独立放在根目录：
 
 ```text
 app/                         可运行的参考应用，以及各自的具体 Provider
 ├── local/                   SQLite + Markdown + Eino + 本地执行和投递
+├── eval/                    重放、恢复测试与事实验收
 └── dingtalk/                轻量钉钉通道接入例子
 
 employee/                    可嵌入的 Employee Loop 框架
@@ -39,6 +41,7 @@ go run ./app/local -profile evals/cases/local/allloops-profile.json -dir /tmp/el
 不能当作钉钉消息送达或完整线上 Buddy 行为还原。
 
 - [架构与 import 迁移](ARCHITECTURE.md)
+- [本地、eval 与 server 装配](docs/local-server-assembly.md)
 - [运行本地参考应用](app/local/README.md)
 - [嵌入与装配框架](docs/module-composition.md)
 - [行为合同](docs/specs/README.md)

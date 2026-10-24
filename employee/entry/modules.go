@@ -204,13 +204,7 @@ func (r *ModuleRegistry) validate(m ModuleSelection) error {
 	}
 	return nil
 }
-func profileSnapshot(p Profile) Profile {
-	p.Scenes = append([]string(nil), p.Scenes...)
-	p.OwnerLoops = append([]string(nil), p.OwnerLoops...)
-	p.DeliveryLoops = append([]string(nil), p.DeliveryLoops...)
-	p.Plugins = append([]PluginRef(nil), p.Plugins...)
-	return p
-}
+func profileSnapshot(p Profile) Profile { return p.Snapshot() }
 
 type taskReader struct{ manager *work.Manager }
 
