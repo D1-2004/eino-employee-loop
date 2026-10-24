@@ -262,3 +262,41 @@ func TestCloseCancelsExplicitRunOnceBeforeClosingStorage(t *testing.T) {
 		t.Fatal("read after Close")
 	}
 }
+
+func TestDispatchOptionalReplyAck(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	ms := map[string]*looptest.Model{
+		"chat": looptest.New(looptest.Func(func(in []*schema.Message) looptest.Step {
+			f := frameOf(t, in)
+			return call("dispatch_task", "dispatch", map[string]any{
+				"goal": f.Current.Text, "instruction": f.Current.Text, "source_ref": f.Current.ID,
+				"reply": "收到，已接单。",
+			})
+		})),
+		"executor": looptest.New(
+			call("write_file", "file", map[string]any{"path": "note.md", "content": "hello"}),
+			call("read_file", "read", map[string]any{"path": "note.md"}),
+			call("finish_run", "done", map[string]any{"state": "succeeded", "summary": "Wrote note.md"}),
+		),
+		"review": looptest.New(reviewStep(t)),
+	}
+	e := openTest(t, dir, ms)
+	defer e.Close()
+	if _, err := e.Submit(ctx, testInput("src-ack", "Write a local note")); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Drain(ctx, 40); err != nil {
+		t.Fatal(err)
+	}
+	ds, err := e.Deliveries(ctx, "dm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range ds {
+		if d.Intent.Kind == "reply" && strings.Contains(d.Intent.Body, "已接单") {
+			return
+		}
+	}
+	t.Fatalf("missing dispatch ack delivery: %+v", ds)
+}
