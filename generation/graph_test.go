@@ -65,7 +65,10 @@ func TestGraphCancellationSettlesPreparedAttemptWithoutAnotherModel(t *testing.T
 	p := generation.Providers[int, string, string]{Context: generation.ContextFunc[int](func(context.Context, int) (int, error) { return 1, nil }), Model: generation.ModelFunc[int, string](func(context.Context, int) (string, error) { models++; cancel(); return "late response", nil }), Decision: generation.DecisionFunc[int, string, string](func(context.Context, int, string) (string, error) {
 		t.Error("cancelled result was accepted")
 		return "", nil
-	}), Journal: generation.JournalFunc[int, string, string](func(_ context.Context, a generation.Attempt[int, string, string]) error {
+	}), Journal: generation.JournalFunc[int, string, string](func(settleCtx context.Context, a generation.Attempt[int, string, string]) error {
+		if settleCtx.Err() != nil {
+			t.Fatal("prepared attempt cannot settle after cancellation", settleCtx.Err())
+		}
 		saves++
 		if !errors.Is(a.ModelError, context.Canceled) {
 			t.Error("cancelled attempt lost its cause")

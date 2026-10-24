@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/D1-2004/eino-employee-loop/internal/runcontext"
 	"github.com/D1-2004/eino-employee-loop/loop"
 	"github.com/cloudwego/eino/compose"
 )
@@ -155,8 +156,8 @@ func (r *Runtime) Run(ctx context.Context, request Request) (result Result, err 
 	}
 	previous := compose.START
 	for _, node := range nodes {
-		if err = g.AddLambdaNode(node.name, compose.InvokableLambda(func(_ context.Context, state *execution) (*execution, error) {
-			return node.fn(ctx, state)
+		if err = g.AddLambdaNode(node.name, compose.InvokableLambda(func(nodeCtx context.Context, state *execution) (*execution, error) {
+			return node.fn(runcontext.Operation(ctx, nodeCtx), state)
 		})); err != nil {
 			return result, err
 		}

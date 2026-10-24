@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
+	"github.com/D1-2004/eino-employee-loop/internal/runcontext"
 
 	"github.com/cloudwego/eino/compose"
 )
@@ -66,7 +69,7 @@ func Run[A, R, D any](ctx context.Context, cfg Config[A, R, D], p Providers[A, R
 	return s.result, errors.Join(s.err, err)
 }
 
-func prepare[A, R, D any](_ context.Context, s *state[A, R, D]) (*state[A, R, D], error) {
+func prepare[A, R, D any](nodeCtx context.Context, s *state[A, R, D]) (*state[A, R, D], error) {
 	s.result.Attempts++
 	s.result.Last = Attempt[A, R, D]{Number: s.result.Attempts}
 	a := &s.result.Last
@@ -74,10 +77,10 @@ func prepare[A, R, D any](_ context.Context, s *state[A, R, D]) (*state[A, R, D]
 		a.PrepareError = err
 		return s, nil
 	}
-	a.Input, a.PrepareError = s.providers.Context.Prepare(s.ctx, a.Number)
+	a.Input, a.PrepareError = s.providers.Context.Prepare(runcontext.Operation(s.ctx, nodeCtx), a.Number)
 	return s, nil
 }
-func generate[A, R, D any](_ context.Context, s *state[A, R, D]) (*state[A, R, D], error) {
+func generate[A, R, D any](nodeCtx context.Context, s *state[A, R, D]) (*state[A, R, D], error) {
 	a := &s.result.Last
 	if a.PrepareError != nil {
 		return s, nil
@@ -86,10 +89,10 @@ func generate[A, R, D any](_ context.Context, s *state[A, R, D]) (*state[A, R, D
 		a.ModelError = err
 		return s, nil
 	}
-	a.Response, a.ModelError = s.providers.Model.Generate(s.ctx, a.Input)
+	a.Response, a.ModelError = s.providers.Model.Generate(runcontext.Operation(s.ctx, nodeCtx), a.Input)
 	return s, nil
 }
-func validate[A, R, D any](_ context.Context, s *state[A, R, D]) (*state[A, R, D], error) {
+func validate[A, R, D any](nodeCtx context.Context, s *state[A, R, D]) (*state[A, R, D], error) {
 	a := &s.result.Last
 	if a.PrepareError != nil || a.ModelError != nil {
 		return s, nil
@@ -98,15 +101,18 @@ func validate[A, R, D any](_ context.Context, s *state[A, R, D]) (*state[A, R, D
 		a.ModelError = err
 		return s, nil
 	}
-	a.Decision, a.ValidationError = s.providers.Decision.Validate(s.ctx, a.Input, a.Response)
+	a.Decision, a.ValidationError = s.providers.Decision.Validate(runcontext.Operation(s.ctx, nodeCtx), a.Input, a.Response)
 	return s, nil
 }
-func save[A, R, D any](_ context.Context, s *state[A, R, D]) (*state[A, R, D], error) {
+func save[A, R, D any](nodeCtx context.Context, s *state[A, R, D]) (*state[A, R, D], error) {
 	a := s.result.Last
 	// Preparation errors carry no prepared input/reservation. The Context
 	// Provider owns atomic cleanup if its own preparation fails partway.
 	if a.PrepareError == nil {
-		if err := s.providers.Journal.Save(s.ctx, a); err != nil {
+		settleCtx, cancel := context.WithTimeout(context.WithoutCancel(runcontext.Operation(s.ctx, nodeCtx)), 3*time.Second)
+		err := s.providers.Journal.Save(settleCtx, a)
+		cancel()
+		if err != nil {
 			s.err = errors.Join(a.Error(), err)
 			return s, nil
 		}
