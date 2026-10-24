@@ -1,7 +1,7 @@
 {
   "version": "local-el-profile/1",
   "id": "local-allloops-demo",
-  "revision": "v1",
+  "revision": "v2",
   "workspace": "local-workspace",
   "tenant": "local-tenant",
   "employee": "local-employee",
@@ -10,6 +10,7 @@
   "backend": "standalone",
   "modelName": "scripted-local-demo",
   "scenes": ["local-scene"],
+  "hostTools": true,
   "ownerLoops": ["attention", "memory", "dreaming", "tone", "reflection", "summary"],
   "deliveryLoops": ["expression", "package"],
   "instructions": "Preserve the original goal and source quotes. All owner interpretations need exact raw-source citations. Speculative dreaming is tentative. Explicit preferences require evidence. Complete work only after actual tool/file verification. Local-file receipts do not establish real IM delivery.",

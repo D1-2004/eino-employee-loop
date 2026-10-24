@@ -64,3 +64,52 @@ execution reference; no performance-only redesign.
   the final handoff records the verified ref/commit. No server dependency upgrade
   or shared integration branch deployment is included.
 - Online deployment/business acceptance: not applicable to this SDK change.
+
+## Follow-up: simple local assembly and online service seams
+
+Status: implemented and locally accepted after user clarified flexibility, online interface alignment
+and a default local assembly. Baseline is public main 2bbb2cc.
+
+Result: narrow per-module dependencies without whole Options, one explicit local
+preset, independently replaceable capability services and a richer existing
+delivery envelope. Advanced versioned registry remains for long-lived recovery;
+default users do not register six factories. No second business aggregate/outbox.
+
+Reference: current Buddy's fixed deployed source and candidate service contracts
+were compared separately. They differ in agent/task call binding and background
+Task vs atomic Run execution. Generic groups guide seams, not wire compatibility.
+Private DTO mapping stays in internal consumers, no private dependency or copied
+implementation is introduced into this public module.
+
+Acceptance: local preset -> actual file work/Review/outbox + six Owner workers;
+service Config/Message/Resource/Tool/File calls return real local facts and explicit
+coverage; override one provider without rebuilding other modules; target and
+provider-accepted/delivered receipts retain exact identity and unknown behavior.
+Real-model quality and live service interoperability are not inferred from these
+mechanism checks. Scoped checks, full tests/vet and relevant race checks required.
+No IM writes, new subscriptions, service deployment or server dependency upgrades.
+
+Follow-up results:
+
+- Deleted the all-purpose dependency bag. Each module receives its required
+  interfaces, detached profile and scoped functions; no complete Options.
+- `localapp.Open` and `DefaultProfile` supply the normal SQLite/Markdown/native
+  composition; CLI uses the same root. Five Host service groups are independently
+  replaceable; execution/delivery retain their existing ports and state owners.
+- Read-only Host tools are actually called by native execution, with their catalog
+  frozen per Run. Effects are explicitly unsupported by this convenience adapter.
+- Existing Outbox now freezes typed destination/payload and retains provider
+  accepted vs delivered vs local applied evidence. Current target authority is
+  checked separately. Task facts preserve stage/transport/fingerprints.
+- Review caught an exported service lifetime gap: all borrowed clients now use
+  Entry's existing cancellation/join boundary, reject calls after Close, and
+  retain genuine effect receipts alongside cancellation. Regression checks pass.
+- Full Go tests, vet, relevant race suites and actual CLI replay passed. Default
+  assembly produced 1 completed Task, 1 Run, 6 Owner documents, 1 local-applied
+  file delivery and no duplicate on reopening/replay. The CLI's native executor
+  uses the read-source service before creating the real artifact. Private evidence:
+  `/private/tmp/el-local-services-20261024-8i1e1hcg/summary.json`.
+- Protocol alignment is at capability/authority/fact boundaries. No live service
+  adapter, actual DWS delivery, private dependency, server upgrade or deployment
+  is claimed. Read-only convenience services do not emulate unsupported upload,
+  expiring network access, rich cards or effect tools.

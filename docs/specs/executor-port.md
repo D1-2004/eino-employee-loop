@@ -6,8 +6,8 @@ provider must not create another Task or decide that a Goal is complete.
 
 The Host selects an exact executor ModuleRef through ModuleRegistry; Profile
 freezes that ref and an existing directory cannot silently switch its core
-executor. A factory receives shared State/Artifacts capabilities and the native
-Run function. These are trusted Go capabilities, not a sandbox or a permission
+executor. A factory receives scoped State, authorization, owner identity and the optional
+local native Run function; it does not receive Work, Artifacts or all Options. These are trusted Go capabilities, not a sandbox or a permission
 grant to model-generated code.
 
 `execution.Port` provides Submit, Lookup, Poll and Cancel. Poll does not receive

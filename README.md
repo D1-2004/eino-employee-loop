@@ -145,3 +145,5 @@ equal. Add a locale by adding files.
 MIT
 
 [Module composition, replacement boundaries and recovery](docs/module-composition.md).
+
+Default local composition: `localapp.Open`; override config, messages, resources, tools and files independently.

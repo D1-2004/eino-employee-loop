@@ -20,6 +20,7 @@ import (
 	"github.com/D1-2004/eino-employee-loop/channel"
 	"github.com/D1-2004/eino-employee-loop/entry"
 	"github.com/D1-2004/eino-employee-loop/internal/jsoncheck"
+	"github.com/D1-2004/eino-employee-loop/localapp"
 	"github.com/D1-2004/eino-employee-loop/work"
 	openaimodel "github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
@@ -93,7 +94,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if err != nil {
 		return err
 	}
-	e, err := entry.Open(ctx, entry.Options{Directory: *directory, Profile: profile, Models: models, Plugins: plugins})
+	e, err := localapp.Open(ctx, localapp.Options{Directory: *directory, Profile: profile, Models: models, Plugins: plugins})
 	if err != nil {
 		return err
 	}

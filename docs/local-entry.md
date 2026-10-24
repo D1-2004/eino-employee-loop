@@ -1,6 +1,6 @@
 # 本地持久化 Employee Loop Entry
 
-`cmd/el` 通过 `entry.Open` 装配独立本地运行时。身份、场景、业务后端、模型名称、预算和配置修订由 profile 显式声明。SQLite 保存业务状态、输入回执、模型账本和 Eino checkpoint；Markdown 保存任务文件和本地交付回执。`cmd/eel` 仍是旧聊天验证工具，其内存会话不能代替这里的持久化任务运行时。
+`cmd/el` 通过默认的 `localapp.Open` 装配本地运行时，底层复用同一个 `entry.Open`。身份、场景、业务后端、模型名称、预算和配置修订由 profile 显式声明。SQLite 保存业务状态、输入回执、模型账本和 Eino checkpoint；Markdown 保存任务文件和本地交付回执。`cmd/eel` 仍是旧聊天验证工具，其内存会话不能代替这里的持久化任务运行时。
 
 这些命令操作本地回放输入和本地文件 outbox。没有创建 DWS 订阅，没有向钉钉发消息；`local-file/...` 回执只证明本地文件已写入并回读。真实 IM 通道需要独立实现 `interaction.Port` 的提交、查询和回执核验。
 
@@ -122,3 +122,14 @@ Greeting/Routine 通过 ChatLoop 的 `compose_message` 显式受理，`kind` 为
 或 routine。各自使用原生 Agent 和独立预算，结果进入同一 outbox；空闲定时器不自动
 发送问候。真正周期工作用 `schedule_task` / `schedule` 绑定同一个 Task，发生次经
 Task Attention 继续原 Task 并核验退出，不创建替代任务。
+
+## 服务能力与默认装配
+
+Go 嵌入入口、各组服务覆盖和线上适配边界见[模块组合](module-composition.md)。
+默认本地 Config、Messages、Resources、Tools、Files 均返回真实本地事实；模型只读
+工具通过冻结的 hostTools 显式启用。allloops profile v2 和对应脚本实际调用
+host_read_source，随后写文件、Review 和交付；原有持久 profile 不会被静默开启新工具。
+
+结果的 local_applied/local-file 表示本地文件回读。远端通道的 provider_accepted
+保留待查询状态，只有 Lookup 的 delivered 才记入任务交付；PrepareIntent 冻结目的地，
+当前 AuthorizeDelivery 再检查目标权限。默认 Local 不支持的附件/卡片明确拒绝。

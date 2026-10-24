@@ -11,6 +11,7 @@ import (
 	"github.com/D1-2004/eino-employee-loop/contextbuilder"
 	"github.com/D1-2004/eino-employee-loop/ownerloop"
 	"github.com/D1-2004/eino-employee-loop/work"
+	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/components/model"
 )
 
@@ -192,6 +193,14 @@ func (s *standalone) defaultOwnerFor(profile Profile) (*ownerloop.Worker, error)
 	if len(roles) == 0 {
 		roles = ownerloop.DefaultRoles()
 	} // Tick restores already admitted work; new admission is disabled above.
+	d := s.ownerDependencies(profile)
+	return ownerloop.New(ownerloop.Options{DB: d.State, Files: d.Artifacts, Context: d.Context, Owner: d.Owner, Version: d.Profile.Revision, Configuration: encode(d.Profile), Callbacks: d.Callbacks, Roles: roles, Authorize: d.Authorize, ConfigureRuntime: d.Plugins, Models: d.Models})
+}
+
+func (s *standalone) ownerDependencies(profile Profile) OwnerDependencies {
+	// Capture only the factories needed by Owner. Every recovered observation
+	// selects its own immutable Profile rather than the current admission profile.
+	models, plugins := s.opts.Models, s.opts.Plugins
 	frozenProfile := func(r ownerloop.Request) (Profile, error) {
 		var frozen Profile
 		if len(r.Configuration) == 0 {
@@ -205,19 +214,19 @@ func (s *standalone) defaultOwnerFor(profile Profile) (*ownerloop.Worker, error)
 		}
 		return frozen, nil
 	}
-	return ownerloop.New(ownerloop.Options{DB: s.db, Files: s.files, Context: s.context, Owner: s.owner, Version: profile.Revision, Configuration: encode(profile), Callbacks: s.opts.Callbacks, Roles: roles, Authorize: s.authorize, ConfigureRuntime: func(_ context.Context, r ownerloop.Request, cfg native.Config) (native.Config, error) {
+	return OwnerDependencies{State: s.db, Artifacts: s.files, Context: s.context, Owner: s.owner, Authorize: s.authorize, Profile: profileSnapshot(profile), Callbacks: append([]callbacks.Handler(nil), s.opts.Callbacks...), Plugins: func(_ context.Context, r ownerloop.Request, cfg native.Config) (native.Config, error) {
 		frozen, err := frozenProfile(r)
 		if err != nil {
 			return native.Config{}, err
 		}
-		return s.opts.Plugins.Resolve(frozen.Plugins, cfg)
+		return plugins.Resolve(frozen.Plugins, cfg)
 	}, Models: func(c context.Context, r ownerloop.Request) (model.ToolCallingChatModel, error) {
 		frozen, err := frozenProfile(r)
 		if err != nil {
 			return nil, err
 		}
-		return s.opts.Models(c, ModelRequest{Role: "owner_" + r.Role, Receipt: r.Receipt, Scope: r.Scope, Profile: frozen, ModelName: frozen.ModelName})
-	}})
+		return models(c, ModelRequest{Role: "owner_" + r.Role, Receipt: r.Receipt, Scope: r.Scope, Profile: frozen, ModelName: frozen.ModelName})
+	}}
 }
 
 func (s *standalone) defaultScheduler() (SchedulerRuntime, error) {
@@ -248,7 +257,7 @@ func (s *standalone) ownerFor(ctx context.Context, profile Profile) (OwnerRuntim
 		s.opts.Modules.mu.RLock()
 		factory := s.opts.Modules.owners[profile.Modules.Owner]
 		s.opts.Modules.mu.RUnlock()
-		worker, err = factory(ctx, s.dependencies(profile))
+		worker, err = factory(ctx, s.ownerDependencies(profile))
 	}
 	if worker != nil {
 		s.own(worker)

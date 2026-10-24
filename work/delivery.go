@@ -3,11 +3,15 @@ package work
 import "context"
 
 type DeliveryFact struct {
-	IntentID, ProviderID, BodySHA256, Kind string
-	GoalRevision                           uint64
+	Stage, Transport, IntentSHA256, TargetSHA256 string `json:",omitempty"`
+	IntentID, ProviderID, BodySHA256, Kind       string
+	GoalRevision                                 uint64
 }
 
 func (m *Manager) RecordDelivery(ctx context.Context, scope Scope, taskID string, fact DeliveryFact) (Receipt, error) {
+	if fact.Stage != "" && (fact.Stage != "delivered" && fact.Stage != "local_applied" || fact.Transport == "") {
+		return Receipt{}, ErrState
+	}
 	if fact.IntentID == "" || fact.ProviderID == "" || fact.BodySHA256 == "" || fact.GoalRevision == 0 {
 		return Receipt{}, ErrState
 	}

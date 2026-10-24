@@ -104,3 +104,5 @@ go run ./cmd/eel -channel console -v -model-script local/testdata/console.json  
 MIT
 
 [模块装配、可替换边界与恢复约束](docs/module-composition.md)。
+
+默认本地装配入口：`localapp.Open`；配置、消息、资源、工具和文件服务可按组替换。

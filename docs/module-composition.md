@@ -4,9 +4,78 @@ The native Eino runtime and the business Host are separate. Eino runs cognition
 and continuations; one `work.Manager` owns Task/Goal/Run transitions. A module is
 trusted compiled Go code, not a downloadable script selected by JSON.
 
-![Module boundaries](architecture/module-composition.png)
+![Default local assembly](architecture/local-services.png)
 
-## Select exact implementations
+## Default local assembly
+
+Use `localapp.Open` for the normal local application. It needs no registry:
+
+```go
+profile := localapp.DefaultProfile(localapp.Identity{
+    Workspace: "local-workspace", Tenant: "local-tenant",
+    Employee: "local-employee", Owner: "local-owner", Scenes: []string{"local-scene"},
+}, modelName)
+app, err := localapp.Open(ctx, localapp.Options{
+    Directory: privateDir, Profile: profile, Models: models,
+})
+if err != nil { return err }
+defer app.Close()
+```
+
+`DefaultProfile` supplies behavior and budgets, never authentication. Identity
+must be explicitly supplied. It enables six Owner workers, expression/package,
+and the read-only Host tool catalog. A supplied Profile is honored without
+silently enabling new features; bump its revision when changing configuration.
+The CLI now opens this same composition root. A complete runnable example is:
+
+```sh
+go run ./cmd/el -profile examples/local-el/allloops-profile.json \
+  -dir /tmp/el-services-demo -script examples/local-el/allloops-script.json \
+  replay -in examples/local-el/allloops-input.ndjson
+```
+
+The default is SQLite + Markdown + native Eino + local atomic execution + the
+existing local-file outbox. `app.Services` exposes real local Config, Messages,
+Resources, Tools and Files. Replace any group through `Options.Services`; default
+tools read the final substituted providers. `Options.Executor` plus an exact
+ExecutorRef swaps atomic execution; complete task services use `entry.Open`'s
+Backend instead. No TaskCreate is hidden underneath the local Run executor.
+
+Execution's read-tool catalog is frozen per Run. A changed catalog on recovery
+is rejected; a read tool cannot be relabeled as an effect. Effect tools need a
+trusted native-call journal adapter. The service Config snapshot is an explicit
+capability read: replacing Config does not silently change the accepted profile,
+model, budgets or old task configuration.
+
+Services supplied by the caller are borrowed; the caller owns their external
+client lifecycle. Module factories return owned instances with the documented
+Close contract. Default local services reject use after Entry closes.
+
+## Aligning service boundaries
+
+| Service group | Default local implementation | Online adapter responsibility |
+| --- | --- | --- |
+| Config | Immutable Profile snapshot; frozen task config when Task-bound | Map exact configuration version and trusted binding |
+| Messages | Exact admitted-source IDs, explicit missing IDs and coverage | Authenticate actor/conversation; preserve provider timestamps and gaps |
+| Resources | Task/Run/path/hash-bound content bytes | Map immutable version/hash and expiring access; no guessed URL |
+| Tools | Read-only discover/call and native schemas | Permissions, stable native call ID, durable receipts for effects |
+| Files | List real artifacts and verify their contents | Map Task/Run file identity and access grants |
+| Execution | Existing Submit/Lookup/Poll/Cancel/Close | Translate atomic Run/Command facts, not a second business Task |
+| Delivery | Existing outbox with typed Target/Payload and staged receipts | Resolve and authorize target; query actual provider outcome |
+
+The current service and a newer candidate differ in agent/task binding and
+background Task vs atomic Run APIs. These ports align semantic boundaries;
+they do not claim wire compatibility or a working deployed adapter. See
+[Host service contract](specs/host-services.md).
+
+Remote delivery needs all of Delivery, ResolveDelivery and AuthorizeDelivery.
+The resolver freezes a destination once. The authorization hook checks that exact
+frozen destination before Send; changing the resolver cannot redirect a replay.
+Provider acceptance remains pending until Lookup proves delivery. Task facts retain
+stage, transport and fingerprints, so local-file application cannot be mistaken
+for platform delivery. Local rejects rich resources/cards it does not implement.
+
+## Advanced module replacement
 
 `Profile.Modules` selects independent Storage, Context, Executor, Review, Scheduler
 and Owner implementations. Omitted references select `builtin@1`; an explicit
@@ -21,7 +90,7 @@ For example, an embedding Host can use the independent memory adapter:
 ```go
 registry := entry.NewModuleRegistry()
 ref := entry.ModuleRef{Name: "memory", Version: "1"}
-err := registry.RegisterStorage(ref, func(ctx context.Context, opts entry.Options) (storage.State, storage.Artifacts, error) {
+err := registry.RegisterStorage(ref, func(ctx context.Context, deps entry.StorageDependencies) (storage.State, storage.Artifacts, error) {
     return memory.New(), memory.NewArtifacts(), nil
 })
 if err != nil { return err }
@@ -48,10 +117,13 @@ continues to provide the persistent local runtime.
 | Scheduler | Conditions/occurrences/attention on existing Work | Same Task aggregate, occurrence and authorization contracts |
 | Delivery | Send/Lookup receipts | Durable intent, unknown lookup obligation and accepted outcome |
 
-`ModuleDependencies` provides the shared State/Artifacts/Work, Context,
-authorization, frozen Profile, models/options and optional local native Run
-function. An independent remote Executor does not call that Run function. It
-must be an atomic execution service, not a second business Task/Goal API.
+Each factory has its own small dependency type. Storage gets directory/profile;
+Context gets read-only Tasks; Executor gets scoped State/authorization and the
+optional local Run function; Review gets authorization and a frozen profile;
+Scheduler gets the shared Work and a source reader; Owner gets its required
+stores and frozen model/plugin functions. No factory receives the whole Options.
+An independent remote Executor does not call the local Run function and must not
+create a second business Task/Goal API.
 
 A Reviewer only returns a proposal. The Host checks its original Task revision,
 Goal revision and Run ID, revalidates the input, then applies the proposal. An
@@ -120,3 +192,5 @@ Native composition follows Eino's [ChatModelAgent](https://www.cloudwego.io/docs
 and [Runner/extension](https://www.cloudwego.io/docs/eino/core_modules/eino_adk/agent_extension/)
 contracts, checked against the pinned v0.9.21 source. No custom JSON workflow
 interpreter is introduced.
+
+The [advanced module diagram](architecture/module-composition.png) shows the lower-level replacement seams.

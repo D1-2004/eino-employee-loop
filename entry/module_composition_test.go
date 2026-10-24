@@ -62,7 +62,7 @@ func (s *compositionScheduler) Close() error {
 // proves that restoration must drive the selected module, rather than relying
 // on a builtin implementation that happens to scan every version's records.
 type compositionOwner struct {
-	d      ModuleDependencies
+	d      OwnerDependencies
 	ticks  *int
 	ready  *bool
 	closed func()
@@ -152,13 +152,19 @@ func TestModuleFactoriesComposeRealTaskAndOwnerPaths(t *testing.T) {
 	registry := NewModuleRegistry()
 	ref := ModuleRef{"alternate", "1"}
 	builds, ticks, schedules, reviews, ownerTicks := 0, 0, 0, 0, 0
-	if err := registry.RegisterContext(ref, func(_ context.Context, d ModuleDependencies) (ContextRuntime, error) {
-		builder, err := contextbuilder.New(d.State, d.Artifacts, d.Work, func(ctx context.Context, s work.Scope, _ contextbuilder.View) error { return d.Authorize(ctx, s) }, contextbuilder.WithAudiencePolicy(d.Audience))
+	if err := registry.RegisterContext(ref, func(_ context.Context, d ContextDependencies) (ContextRuntime, error) {
+		if _, exposesManager := d.Tasks.(*work.Manager); exposesManager {
+			t.Fatal("context factory received business write authority through task reader")
+		}
+		builder, err := contextbuilder.New(d.State, d.Artifacts, d.Tasks, func(ctx context.Context, s work.Scope, _ contextbuilder.View) error { return d.Authorize(ctx, s) }, contextbuilder.WithAudiencePolicy(d.Audience))
 		return &compositionContext{ContextRuntime: builder, builds: &builds}, err
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.RegisterScheduler(ref, func(_ context.Context, d ModuleDependencies) (SchedulerRuntime, error) {
+	if err := registry.RegisterScheduler(ref, func(_ context.Context, d SchedulerDependencies) (SchedulerRuntime, error) {
+		if _, exposesContextWrites := d.Context.(ContextRuntime); exposesContextWrites {
+			t.Fatal("scheduler factory received mutable context instead of source reader")
+		}
 		scheduler, err := work.NewScheduler(d.State, d.Work, d.Authorize, func(ctx context.Context, s work.Scope, src work.Source) error {
 			actual, _, err := d.Context.Source(ctx, s, src.Receipt)
 			if err != nil {
@@ -173,7 +179,7 @@ func TestModuleFactoriesComposeRealTaskAndOwnerPaths(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.RegisterReview(ref, func(_ context.Context, _ ModuleDependencies) (Reviewer, error) {
+	if err := registry.RegisterReview(ref, func(_ context.Context, _ ReviewDependencies) (Reviewer, error) {
 		return ReviewFunc(func(ctx context.Context, req ReviewRequest) (work.Review, error) {
 			reviews++
 			if len(req.Frame.Materials) != 1 || req.Frame.Materials[0].Body != "# Actual result" {
@@ -184,7 +190,7 @@ func TestModuleFactoriesComposeRealTaskAndOwnerPaths(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.RegisterOwner(ref, func(_ context.Context, d ModuleDependencies) (OwnerRuntime, error) {
+	if err := registry.RegisterOwner(ref, func(_ context.Context, d OwnerDependencies) (OwnerRuntime, error) {
 		return &compositionOwner{d: d, ticks: &ownerTicks}, nil
 	}); err != nil {
 		t.Fatal(err)
@@ -258,7 +264,7 @@ func TestIndependentReviewerCannotBypassSnapshotOrExitAuthority(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			registry := NewModuleRegistry()
 			ref := ModuleRef{"independent-review", "1"}
-			if err := registry.RegisterReview(ref, func(context.Context, ModuleDependencies) (Reviewer, error) {
+			if err := registry.RegisterReview(ref, func(context.Context, ReviewDependencies) (Reviewer, error) {
 				return ReviewFunc(func(ctx context.Context, req ReviewRequest) (work.Review, error) {
 					proposal, err := completeCompositionReview(ctx, req)
 					switch kind {
@@ -302,7 +308,7 @@ func TestFrozenReviewAndOwnerUseOriginalRegisteredModuleAfterReopen(t *testing.T
 	ticks := map[string]*int{}
 	ready := false
 	for _, ref := range []ModuleRef{v1, v2} {
-		if err := registry.RegisterReview(ref, func(_ context.Context, d ModuleDependencies) (Reviewer, error) {
+		if err := registry.RegisterReview(ref, func(_ context.Context, d ReviewDependencies) (Reviewer, error) {
 			return ReviewFunc(func(ctx context.Context, r ReviewRequest) (work.Review, error) {
 				reviews[d.Profile.Modules.Review.Version]++
 				return completeCompositionReview(ctx, r)
@@ -311,7 +317,7 @@ func TestFrozenReviewAndOwnerUseOriginalRegisteredModuleAfterReopen(t *testing.T
 			t.Fatal(err)
 		}
 		ticks[ref.Version] = new(int)
-		if err := registry.RegisterOwner(ref, func(_ context.Context, d ModuleDependencies) (OwnerRuntime, error) {
+		if err := registry.RegisterOwner(ref, func(_ context.Context, d OwnerDependencies) (OwnerRuntime, error) {
 			return &compositionOwner{d: d, ticks: ticks[d.Profile.Modules.Owner.Version], ready: &ready}, nil
 		}); err != nil {
 			t.Fatal(err)
@@ -372,7 +378,7 @@ func TestFrozenReviewRejectsMissingHistoricalModuleWithoutFallback(t *testing.T)
 	ctx := context.Background()
 	v1, v2 := ModuleRef{"independent-review", "1"}, ModuleRef{"independent-review", "2"}
 	registry := NewModuleRegistry()
-	if err := registry.RegisterReview(v1, func(context.Context, ModuleDependencies) (Reviewer, error) {
+	if err := registry.RegisterReview(v1, func(context.Context, ReviewDependencies) (Reviewer, error) {
 		return ReviewFunc(completeCompositionReview), nil
 	}); err != nil {
 		t.Fatal(err)
@@ -390,7 +396,7 @@ func TestFrozenReviewRejectsMissingHistoricalModuleWithoutFallback(t *testing.T)
 	}
 	fallbackCalls := 0
 	opts.Modules = NewModuleRegistry()
-	if err = opts.Modules.RegisterReview(v2, func(context.Context, ModuleDependencies) (Reviewer, error) {
+	if err = opts.Modules.RegisterReview(v2, func(context.Context, ReviewDependencies) (Reviewer, error) {
 		fallbackCalls++
 		return ReviewFunc(completeCompositionReview), nil
 	}); err != nil {
@@ -451,7 +457,7 @@ func TestUnknownModuleAndCoreRebindingFailBeforeFactorySideEffects(t *testing.T)
 	registry := NewModuleRegistry()
 	calls := 0
 	ref := ModuleRef{"new-context", "1"}
-	if err := registry.RegisterContext(ref, func(context.Context, ModuleDependencies) (ContextRuntime, error) {
+	if err := registry.RegisterContext(ref, func(context.Context, ContextDependencies) (ContextRuntime, error) {
 		calls++
 		return nil, errors.New("must not construct changed core")
 	}); err != nil {
@@ -556,7 +562,7 @@ func TestModuleClosersUnwindInReverseOnCloseAndOpenFailure(t *testing.T) {
 			ref := ModuleRef{"lifecycle", "1"}
 			closed := []string{}
 			closeFn := func(name string) func() { return func() { closed = append(closed, name) } }
-			registry.RegisterStorage(ref, func(ctx context.Context, opts Options) (storage.State, storage.Artifacts, error) {
+			registry.RegisterStorage(ref, func(ctx context.Context, opts StorageDependencies) (storage.State, storage.Artifacts, error) {
 				db, err := sqlite.Open(ctx, filepath.Join(opts.Directory, "custom-state"))
 				if err != nil {
 					return nil, nil, err
@@ -568,18 +574,18 @@ func TestModuleClosersUnwindInReverseOnCloseAndOpenFailure(t *testing.T) {
 				}
 				return &compositionState{db, closeFn("state")}, &compositionArtifacts{md, closeFn("artifacts")}, nil
 			})
-			registry.RegisterContext(ref, func(_ context.Context, d ModuleDependencies) (ContextRuntime, error) {
-				builder, err := contextbuilder.New(d.State, d.Artifacts, d.Work, func(ctx context.Context, s work.Scope, _ contextbuilder.View) error { return d.Authorize(ctx, s) })
+			registry.RegisterContext(ref, func(_ context.Context, d ContextDependencies) (ContextRuntime, error) {
+				builder, err := contextbuilder.New(d.State, d.Artifacts, d.Tasks, func(ctx context.Context, s work.Scope, _ contextbuilder.View) error { return d.Authorize(ctx, s) })
 				return &compositionContext{ContextRuntime: builder, builds: new(int), closed: closeFn("context")}, err
 			})
-			registry.RegisterExecutor(ref, func(_ context.Context, d ModuleDependencies) (execution.Port, error) {
+			registry.RegisterExecutor(ref, func(_ context.Context, d ExecutorDependencies) (execution.Port, error) {
 				return &compositionExecutor{&execution.Local{DB: d.State, Owner: d.Owner, Authorize: d.Authorize, Run: d.Run}, closeFn("executor")}, nil
 			})
-			registry.RegisterScheduler(ref, func(_ context.Context, d ModuleDependencies) (SchedulerRuntime, error) {
+			registry.RegisterScheduler(ref, func(_ context.Context, d SchedulerDependencies) (SchedulerRuntime, error) {
 				scheduler, err := work.NewScheduler(d.State, d.Work, d.Authorize, func(context.Context, work.Scope, work.Source) error { return nil })
 				return &compositionScheduler{SchedulerRuntime: scheduler, ticks: new(int), schedules: new(int), closed: closeFn("scheduler")}, err
 			})
-			registry.RegisterOwner(ref, func(_ context.Context, d ModuleDependencies) (OwnerRuntime, error) {
+			registry.RegisterOwner(ref, func(_ context.Context, d OwnerDependencies) (OwnerRuntime, error) {
 				owner := &compositionOwner{d: d, ticks: new(int), closed: closeFn("owner")}
 				if fail {
 					return owner, errors.New("incomplete owner initialization")

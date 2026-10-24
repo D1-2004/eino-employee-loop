@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/D1-2004/eino-employee-loop/contextbuilder"
+	"github.com/D1-2004/eino-employee-loop/host"
 	"github.com/D1-2004/eino-employee-loop/interaction"
 	"github.com/D1-2004/eino-employee-loop/work"
 	"github.com/cloudwego/eino/callbacks"
@@ -20,6 +21,7 @@ import (
 )
 
 type Profile struct {
+	HostTools                                                                           bool
 	Modules                                                                             ModuleSelection
 	Plugins                                                                             []PluginRef
 	Version, ID, Revision, Workspace, Tenant, Employee, Owner, Name, Backend, ModelName string
@@ -95,6 +97,9 @@ type Backend interface {
 	Close() error
 }
 type Options struct {
+	AuthorizeDelivery    func(context.Context, interaction.Intent) error
+	Services             host.Services
+	ResolveDelivery      func(context.Context, interaction.Intent) (interaction.Intent, error)
 	Modules              *ModuleRegistry
 	AudiencePolicy       contextbuilder.AudiencePolicy
 	RequiredCapabilities []Capability

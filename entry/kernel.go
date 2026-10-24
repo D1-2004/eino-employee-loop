@@ -95,6 +95,22 @@ func (s *standalone) runAgent(ctx context.Context, profile Profile, scope work.S
 		}
 		return s.context.Revalidate(c, frame)
 	}
+	if profile.HostTools && role == "executor" {
+		extras, e := s.hostFunctions(ctx, scope, receipt, frame, before)
+		if e != nil {
+			return native.Result{}, e
+		}
+		for _, f := range extras {
+			if _, exists := specs[f.spec.Name]; exists {
+				return native.Result{}, errors.New("entry: Host tool name collides with a business tool")
+			}
+			if e = f.bind(); e != nil {
+				return native.Result{}, e
+			}
+			specs[f.spec.Name] = f.spec
+			nativeTools = append(nativeTools, f)
+		}
+	}
 	modelRequest := ModelRequest{Role: role, Receipt: receipt, Scope: scope, Profile: profile, ModelName: profile.ModelName}
 	delegate, err := s.opts.Models(ctx, modelRequest)
 	if err != nil {

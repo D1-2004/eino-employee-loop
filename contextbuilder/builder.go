@@ -70,17 +70,25 @@ type Frame struct {
 	OwnerFiles       []storage.File
 	Gaps             []string
 }
+
+// Tasks is the read-only business projection needed to assemble model context.
+// The Context builder never changes a Task or Goal.
+type Tasks interface {
+	Get(context.Context, work.Scope, string) (work.Task, error)
+	List(context.Context, work.Scope) ([]work.Task, error)
+}
+
 type Builder struct {
 	db        storage.State
 	md        storage.Artifacts
-	tasks     *work.Manager
+	tasks     Tasks
 	authorize func(context.Context, work.Scope, View) error
 	audience  AudiencePolicy
 }
 
-func New(db storage.State, md storage.Artifacts, tasks *work.Manager, authorize func(context.Context, work.Scope, View) error, options ...Option) (*Builder, error) {
+func New(db storage.State, md storage.Artifacts, tasks Tasks, authorize func(context.Context, work.Scope, View) error, options ...Option) (*Builder, error) {
 	if db == nil || md == nil || tasks == nil || authorize == nil {
-		return nil, errors.New("context: stores, work manager and authorization required")
+		return nil, errors.New("context: stores, task reader and authorization required")
 	}
 	b := &Builder{db: db, md: md, tasks: tasks, authorize: authorize}
 	for _, option := range options {

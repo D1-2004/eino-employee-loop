@@ -9,11 +9,14 @@ import (
 	"sync"
 	"time"
 
+	native "github.com/D1-2004/eino-employee-loop/agent"
 	"github.com/D1-2004/eino-employee-loop/contextbuilder"
 	"github.com/D1-2004/eino-employee-loop/execution"
 	"github.com/D1-2004/eino-employee-loop/ownerloop"
 	"github.com/D1-2004/eino-employee-loop/storage"
 	"github.com/D1-2004/eino-employee-loop/work"
+	"github.com/cloudwego/eino/callbacks"
+	"github.com/cloudwego/eino/components/model"
 )
 
 // ModuleRef selects trusted compiled code, never an import path or command.
@@ -86,27 +89,59 @@ func (f ReviewFunc) Propose(ctx context.Context, r ReviewRequest) (work.Review, 
 	return f(ctx, r)
 }
 
-// ModuleDependencies shares the sole business aggregate. Modules do not own or
-// close State/Artifacts. Run is the native local kernel, used only by Local.
-type ModuleDependencies struct {
+// Factory dependencies expose only the contract needed by that module. Shared
+// resources stay Host-owned; factories must not close State or Artifacts.
+type StorageDependencies struct {
+	Directory string
+	Profile   Profile
+}
+type ContextDependencies struct {
 	State     storage.State
 	Artifacts storage.Artifacts
-	Work      *work.Manager
-	Context   ContextRuntime
+	Tasks     contextbuilder.Tasks
 	Authorize func(context.Context, work.Scope) error
 	Audience  contextbuilder.AudiencePolicy
+}
+type ExecutorDependencies struct {
+	State     storage.State
 	Owner     string
-	Profile   Profile
-	Options   Options
+	Authorize func(context.Context, work.Scope) error
 	Run       func(context.Context, execution.Record) (execution.Result, error)
 }
-type ExecutorDependencies = ModuleDependencies
-type StorageFactory func(context.Context, Options) (storage.State, storage.Artifacts, error)
-type ContextFactory func(context.Context, ModuleDependencies) (ContextRuntime, error)
+type ReviewDependencies struct {
+	Authorize func(context.Context, work.Scope) error
+	Profile   Profile
+}
+
+// SourceReader is the only Context capability required by Scheduler.
+type SourceReader interface {
+	Source(context.Context, work.Scope, string) (contextbuilder.Source, contextbuilder.Ref, error)
+}
+type SchedulerDependencies struct {
+	State     storage.State
+	Work      *work.Manager
+	Context   SourceReader
+	Authorize func(context.Context, work.Scope) error
+}
+type OwnerDependencies struct {
+	State     storage.State
+	Artifacts storage.Artifacts
+	Context   ownerloop.Context
+	Owner     string
+	Authorize func(context.Context, work.Scope) error
+	Profile   Profile
+	Models    func(context.Context, ownerloop.Request) (model.ToolCallingChatModel, error)
+	Callbacks []callbacks.Handler
+	// Plugins resolves the observation's frozen configuration, not the current
+	// Host profile. It does not expose registry mutation or unrelated Options.
+	Plugins func(context.Context, ownerloop.Request, native.Config) (native.Config, error)
+}
+type StorageFactory func(context.Context, StorageDependencies) (storage.State, storage.Artifacts, error)
+type ContextFactory func(context.Context, ContextDependencies) (ContextRuntime, error)
 type ExecutorFactory func(context.Context, ExecutorDependencies) (execution.Port, error)
-type ReviewFactory func(context.Context, ModuleDependencies) (Reviewer, error)
-type SchedulerFactory func(context.Context, ModuleDependencies) (SchedulerRuntime, error)
-type OwnerFactory func(context.Context, ModuleDependencies) (OwnerRuntime, error)
+type ReviewFactory func(context.Context, ReviewDependencies) (Reviewer, error)
+type SchedulerFactory func(context.Context, SchedulerDependencies) (SchedulerRuntime, error)
+type OwnerFactory func(context.Context, OwnerDependencies) (OwnerRuntime, error)
 
 type ModuleRegistry struct {
 	mu         sync.RWMutex
@@ -191,10 +226,39 @@ func (r *ModuleRegistry) validate(m ModuleSelection) error {
 	}
 	return nil
 }
-func (s *standalone) dependencies(p Profile) ModuleDependencies {
-	opts := s.opts
-	opts.Profile = p
-	return ModuleDependencies{State: s.db, Artifacts: s.files, Work: s.work, Context: s.context, Authorize: s.authorize, Audience: s.opts.AudiencePolicy, Owner: s.owner, Profile: p, Options: opts, Run: s.execute}
+func profileSnapshot(p Profile) Profile {
+	p.Scenes = append([]string(nil), p.Scenes...)
+	p.OwnerLoops = append([]string(nil), p.OwnerLoops...)
+	p.DeliveryLoops = append([]string(nil), p.DeliveryLoops...)
+	p.Plugins = append([]PluginRef(nil), p.Plugins...)
+	return p
+}
+
+type taskReader struct{ manager *work.Manager }
+
+func (r taskReader) Get(ctx context.Context, scope work.Scope, id string) (work.Task, error) {
+	return r.manager.Get(ctx, scope, id)
+}
+func (r taskReader) List(ctx context.Context, scope work.Scope) ([]work.Task, error) {
+	return r.manager.List(ctx, scope)
+}
+func (s *standalone) contextDependencies() ContextDependencies {
+	return ContextDependencies{State: s.db, Artifacts: s.files, Tasks: taskReader{s.work}, Authorize: s.authorize, Audience: s.opts.AudiencePolicy}
+}
+func (s *standalone) executorDependencies() ExecutorDependencies {
+	return ExecutorDependencies{State: s.db, Owner: s.owner, Authorize: s.authorize, Run: s.execute}
+}
+func (s *standalone) reviewDependencies(p Profile) ReviewDependencies {
+	return ReviewDependencies{Authorize: s.authorize, Profile: profileSnapshot(p)}
+}
+
+type sourceReader struct{ context ContextRuntime }
+
+func (r sourceReader) Source(ctx context.Context, scope work.Scope, id string) (contextbuilder.Source, contextbuilder.Ref, error) {
+	return r.context.Source(ctx, scope, id)
+}
+func (s *standalone) schedulerDependencies() SchedulerDependencies {
+	return SchedulerDependencies{State: s.db, Work: s.work, Context: sourceReader{s.context}, Authorize: s.authorize}
 }
 func (s *standalone) own(v any) {
 	if c, ok := v.(io.Closer); ok && !nilModule(v) {

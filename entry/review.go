@@ -42,7 +42,7 @@ func (s *standalone) review(ctx context.Context, task work.Task) error {
 		s.opts.Modules.mu.RLock()
 		factory := s.opts.Modules.reviews[profile.Modules.Review]
 		s.opts.Modules.mu.RUnlock()
-		reviewer, err = factory(ctx, s.dependencies(profile))
+		reviewer, err = factory(ctx, s.reviewDependencies(profile))
 		if closer, ok := reviewer.(interface{ Close() error }); ok && !nilModule(reviewer) {
 			defer closer.Close()
 		}

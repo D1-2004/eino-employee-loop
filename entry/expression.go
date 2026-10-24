@@ -140,12 +140,21 @@ func (s *standalone) recordDelivery(ctx context.Context, scope work.Scope, recor
 	if record.State != "applied" || record.Receipt == nil || record.Intent.TaskID == "" {
 		return nil
 	}
-	fact := work.DeliveryFact{IntentID: record.Intent.ID, ProviderID: record.Receipt.ProviderMessageID, BodySHA256: record.Receipt.BodySHA256, Kind: record.Intent.Kind, GoalRevision: record.Intent.GoalRevision}
+	fact := work.DeliveryFact{IntentID: record.Intent.ID, ProviderID: record.Receipt.ProviderMessageID, BodySHA256: record.Receipt.BodySHA256, Kind: record.Intent.Kind, GoalRevision: record.Intent.GoalRevision, Stage: string(record.Receipt.Stage), Transport: record.Receipt.Transport, IntentSHA256: record.Receipt.IntentSHA256, TargetSHA256: record.Receipt.TargetSHA256}
 	_, err := s.work.RecordDelivery(ctx, scope, record.Intent.TaskID, fact)
 	return err
 }
 
 func (s *standalone) validateDelivery(ctx context.Context, in interaction.Intent) error {
+	if in.Target != nil && in.Target.Transport != "local-file" {
+		if s.opts.AuthorizeDelivery == nil {
+			return work.ErrScope
+		}
+		if err := s.opts.AuthorizeDelivery(ctx, in); err != nil {
+			return err
+		}
+	}
+
 	_, _, err := s.context.Source(ctx, in.Scope, in.SourceReceipt)
 	if errors.Is(err, contextbuilder.ErrRevoked) || errors.Is(err, storage.ErrNotFound) {
 		return interaction.ErrObsolete

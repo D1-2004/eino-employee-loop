@@ -15,6 +15,7 @@ import (
 	native "github.com/D1-2004/eino-employee-loop/agent"
 	"github.com/D1-2004/eino-employee-loop/contextbuilder"
 	"github.com/D1-2004/eino-employee-loop/execution"
+	"github.com/D1-2004/eino-employee-loop/host"
 	"github.com/D1-2004/eino-employee-loop/interaction"
 	"github.com/D1-2004/eino-employee-loop/storage"
 	"github.com/D1-2004/eino-employee-loop/storage/markdown"
@@ -24,6 +25,7 @@ import (
 )
 
 type standalone struct {
+	services                     host.Services
 	executionMu                  sync.Mutex
 	executionCancels             map[string]context.CancelFunc
 	ownerWorker                  OwnerRuntime
@@ -84,7 +86,7 @@ func openStandalone(ctx context.Context, opts Options) (result *standalone, err 
 		opts.Modules.mu.RLock()
 		factory := opts.Modules.storage[opts.Profile.Modules.Storage]
 		opts.Modules.mu.RUnlock()
-		db, files, err = factory(ctx, opts)
+		db, files, err = factory(ctx, StorageDependencies{Directory: opts.Directory, Profile: profileSnapshot(opts.Profile)})
 	}
 	if err != nil {
 		if !nilModule(files) {
@@ -130,7 +132,7 @@ func openStandalone(ctx context.Context, opts Options) (result *standalone, err 
 		opts.Modules.mu.RLock()
 		factory := opts.Modules.contexts[opts.Profile.Modules.Context]
 		opts.Modules.mu.RUnlock()
-		s.context, err = factory(ctx, s.dependencies(opts.Profile))
+		s.context, err = factory(ctx, s.contextDependencies())
 	}
 	if err == nil && nilModule(s.context) {
 		err = errors.New("entry: context factory returned nil")
@@ -141,18 +143,22 @@ func openStandalone(ctx context.Context, opts Options) (result *standalone, err 
 	if err != nil {
 		return nil, err
 	}
+	s.services, err = s.localServices()
+	if err != nil {
+		return nil, err
+	}
 	port := opts.Delivery
 	if port == nil {
 		port = interaction.Local{Files: s.files}
 	}
-	s.delivery = &interaction.Manager{DB: db, Port: port, Owner: s.owner, Authorize: s.authorize, ValidateSend: s.validateDelivery}
+	s.delivery = &interaction.Manager{DB: db, Port: port, Owner: s.owner, Authorize: s.authorize, ValidateSend: s.validateDelivery, PrepareIntent: opts.ResolveDelivery}
 	if opts.Profile.Modules.Executor.effective() == builtinModule {
 		s.executor = &execution.Local{DB: db, Owner: s.owner, Authorize: s.authorize, Run: s.execute}
 	} else {
 		opts.Modules.mu.RLock()
 		factory := opts.Modules.executors[opts.Profile.Modules.Executor]
 		opts.Modules.mu.RUnlock()
-		s.executor, err = factory(ctx, s.dependencies(opts.Profile))
+		s.executor, err = factory(ctx, s.executorDependencies())
 	}
 	if s.executor != nil {
 		s.own(s.executor)
@@ -169,7 +175,7 @@ func openStandalone(ctx context.Context, opts Options) (result *standalone, err 
 		opts.Modules.mu.RLock()
 		factory := opts.Modules.schedulers[opts.Profile.Modules.Scheduler]
 		opts.Modules.mu.RUnlock()
-		s.scheduler, err = factory(ctx, s.dependencies(opts.Profile))
+		s.scheduler, err = factory(ctx, s.schedulerDependencies())
 	}
 	if err == nil && nilModule(s.scheduler) {
 		err = errors.New("entry: scheduler factory returned nil")

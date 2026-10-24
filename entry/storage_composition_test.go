@@ -3,6 +3,7 @@ package entry
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -24,7 +25,10 @@ func TestStorageCompositionCompletesRealEntryPathAndReplaysInput(t *testing.T) {
 			var factories atomic.Int32
 			if adapter == "memory" {
 				profile.Modules.Storage = ModuleRef{Name: "memory", Version: "1"}
-				if err := modules.RegisterStorage(profile.Modules.Storage, func(context.Context, Options) (storage.State, storage.Artifacts, error) {
+				if err := modules.RegisterStorage(profile.Modules.Storage, func(_ context.Context, d StorageDependencies) (storage.State, storage.Artifacts, error) {
+					// A factory may retain or edit its configuration; this must not
+					// alter admission authority in the owning Host.
+					d.Profile.Scenes[0] = "factory-private-scene"
 					factories.Add(1)
 					return memory.New(), memory.NewArtifacts(), nil
 				}); err != nil {
@@ -89,7 +93,7 @@ func TestStorageCompositionCompletesRealEntryPathAndReplaysInput(t *testing.T) {
 				t.Fatal("input replay changed Task/Run", again, err)
 			}
 			deliveries, err = e.Deliveries(ctx, "dm")
-			if err != nil || len(deliveries) != 1 || deliveries[0].State != "applied" || deliveries[0].Receipt == nil || *deliveries[0].Receipt != *firstDelivery.Receipt {
+			if err != nil || len(deliveries) != 1 || deliveries[0].State != "applied" || deliveries[0].Receipt == nil || !reflect.DeepEqual(deliveries[0].Receipt, firstDelivery.Receipt) {
 				t.Fatal("input replay changed delivery", deliveries, err)
 			}
 			if ms["chat"].Calls() != 1 || ms["executor"].Calls() != 3 || ms["review"].Calls() != 1 {
@@ -145,7 +149,7 @@ func TestStorageFactoryFailureClosesEveryReturnedResource(t *testing.T) {
 			profile := testProfile()
 			profile.Modules.Storage = ModuleRef{Name: "partial", Version: "1"}
 			registry := NewModuleRegistry()
-			if err := registry.RegisterStorage(profile.Modules.Storage, func(context.Context, Options) (storage.State, storage.Artifacts, error) {
+			if err := registry.RegisterStorage(profile.Modules.Storage, func(context.Context, StorageDependencies) (storage.State, storage.Artifacts, error) {
 				var db storage.State
 				var artifacts storage.Artifacts
 				if tc.state {

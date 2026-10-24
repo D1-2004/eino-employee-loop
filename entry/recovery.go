@@ -179,13 +179,13 @@ func (s *standalone) advanceOutbox(ctx context.Context) (bool, error) {
 		}
 		for _, r := range records {
 			switch r.State {
-			case "cancelled":
+			case "cancelled", "failed":
 				continue
 			case "applied":
 				if err = s.recordDelivery(ctx, scope, r); err != nil {
 					otherErr = errors.Join(otherErr, err)
 				}
-			case "unknown", "submitting":
+			case "unknown", "submitting", "provider_accepted":
 				unknown = append(unknown, pendingDelivery{scope, r})
 			default:
 				ready = append(ready, pendingDelivery{scope, r})
@@ -199,7 +199,9 @@ func (s *standalone) advanceOutbox(ctx context.Context) (bool, error) {
 		}
 		r, err := s.delivery.Deliver(ctx, item.scope, item.record.Intent.ID)
 		if err != nil {
-			if errors.Is(err, interaction.ErrUnknown) || r.State == "unknown" || r.State == "submitting" {
+			if errors.Is(err, interaction.ErrPending) || r.State == "provider_accepted" {
+				unknownErr = errors.Join(unknownErr, interaction.ErrPending)
+			} else if errors.Is(err, interaction.ErrUnknown) || r.State == "unknown" || r.State == "submitting" {
 				unknownErr = errors.Join(unknownErr, interaction.ErrUnknown, err)
 			} else {
 				otherErr = errors.Join(otherErr, err)
@@ -272,6 +274,15 @@ func (s *standalone) Failures(ctx context.Context, scope work.Scope) ([]Failure,
 			if task.Revision == h.TaskRevision {
 				out = append(out, Failure{Kind: "review", ID: h.TaskID, State: h.State, Error: h.Error})
 			}
+		}
+	}
+	records, err := s.delivery.List(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	for _, record := range records {
+		if record.State == "failed" {
+			out = append(out, Failure{Kind: "delivery", ID: record.Intent.ID, State: record.State, Error: record.LastError})
 		}
 	}
 	return out, nil
