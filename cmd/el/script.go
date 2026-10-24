@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/D1-2004/eino-employee-loop/entry"
+	"github.com/D1-2004/eino-employee-loop/modules/entry"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )

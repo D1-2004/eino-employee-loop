@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/D1-2004/eino-employee-loop/entry"
+	"github.com/D1-2004/eino-employee-loop/modules/entry"
 )
 
 func TestCompiledPluginDiscoveryNeedsNoProfileStateOrModel(t *testing.T) {

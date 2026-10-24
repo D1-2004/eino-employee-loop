@@ -2,107 +2,43 @@
 
 [English](README.md)
 
-基于 [CloudWeGo Eino](https://github.com/cloudwego/eino) 的、由事件 + 场域驱动的数字员工决策循环。每次唤醒只回答一个问题——*这个场域刚发生了这些事，员工该调用哪些工具，做完了没有？*——其余一切交给嵌入它的 Host。
+基于 [CloudWeGo Eino](https://github.com/cloudwego/eino) 的 Employee Loop。
+目录直接对应七个业务模块。`app/local` 提供默认本地装配；接入其他宿主时替换能力端口
+或指定模块，保持同一个 Task 状态机。
 
-完整本地 Host 使用 **`entry.Open` / `cmd/el`**：SQLite 保存业务状态，Markdown 保存
-资料和产物，原生 Eino 负责模型/工具编排及中断恢复。独立 Owner 小 Loop、Task Review、
-周期发生次、表达、打包和 DWS 回放均从同一 Entry 装配。见
-[运行说明](docs/local-entry.md)、[架构图](docs/architecture/local-el-runtime.png) 和
-[原生能力复审](docs/reviews/2026-10-24-local-el-native-review.md)。
+```text
+modules/
+├── chat/          M1  前台对话、输入准入、业务命令
+├── task/          M2  Worker、Review、计时与 Task/Goal/Run 状态
+├── context/       M3  来源引用、授权上下文、冻结视图
+├── owner/         M4  Attention、Memory、Dreaming、Tone、Reflection、Summary
+├── execution/     M5  原子 Run 桥接与本地原生执行
+├── interaction/   M6  表达、消息、Outbox、投递与回执
+└── entry/         M7  生命周期、模块装配与注册
 
-```
-            Host（你的系统）                               本模块
- ┌──────────────────────────────────────────┐      ┌────────────────────────────┐
- │ 渠道 ─► event.Event ─► catalog.Route ─────┼─────►│ event：类别·性质·通道      │
- │ 队列 · 窗口 · 上下文装配                  │      │        会话 · 取消         │
- │ 工具 · 权限 · 回执                        │◄────►│ loop： 模型 ↔ 工具、       │
- │ 存储 · 重放 · 送达                        │      │        预算、终态决定      │
- └──────────────────────────────────────────┘      └────────────────────────────┘
-```
-
-## 包
-
-| 包 | 作用 |
-| --- | --- |
-| `entry`、`cmd/el`、`channel` | 明确生命周期、冻结配置、单一业务后端、CLI 与 DWS 回放。 |
-| `agent`、`journal` | 原生 Runner、checkpoint/resume、注册 middleware/AgentAsTool、物理模型账本和预算。 |
-| `work`、`execution`、`interaction` | Task/Goal/Run/Review、Wait/Watch/发生次、本地执行、outbox 与真实回执。 |
-| `contextbuilder`、`ownerloop`、`storage` | 来源授权视图、六个 Owner 加工 worker、SQLite 事务与 Markdown CAS。 |
-| `event` | 给输入分类（类别 × 性质），路由到所在场域的通道与会话，处理抢占与撤销。标准目录在 `event/events.json`。 |
-| `loop` | 在 Eino ADK `ChatModelAgent`（底层是 `ToolCallingChatModel`）上跑一次唤醒：原生工具批次、任何效果之前先校验、效果必须有回执、终态决定、预算、修复轮。 |
-| `loop/looptest` | 给 Host 测试用的脚本化 Eino 模型。 |
-| `loop/hosttest` | Host 在自己的测试里对其 Host 和模型适配器跑的一致性检查。 |
-| `local`、`cmd/eel` | 在本机跑一个员工，接入真实钉钉（经 dws CLI 的账号，或 Stream 模式机器人），并上报 Langfuse。 |
-| `schema` | `event.Event` 的 JSON Schema，以及持久化 Host 的参考 PostgreSQL 存储。 |
-
-## 边界
-
-Host 调用本循环的方式与调用任何决策引擎相同：
-
-```go
-out, err := loop.New(loop.Config{
-	Tools:               tools,          // Host 的能力
-	Budget:              loop.DefaultBudget(),
-	RequireTerminalTool: true,           // 普通文字是私有的，用工具结束
-}, model, host).Run(ctx, loop.Wake{Identity: id, Messages: messages})
+app/local/             默认本地装配：SQLite + Markdown + Eino
+ports/                 外部服务、持久化接口
+adapters/              存储、服务、通道的具体实现
+kernel/                通用 Eino 运行及决策能力
+contract/              身份、配置、输入、失败等共享值
+cmd/el/                产品 CLI
+examples/              本地回放、可选钉钉接入例子
 ```
 
-- **输入：** `Config`（工具、预算、协议开关与挂点）、一个 Eino 模型、一个 `Host`（`Execute(ctx, Identity, ToolCall) (ToolResult, error)`），以及本次唤醒冻结的消息。
-- **输出：** `Outcome`——决定（`reply`、`quiet`、`dispatched`、`waiting`）、回执、按调用顺序的每个工具结果、预算用量、token 用量和被接受的对话记录。
+在仓库根目录运行完整本地例子；使用新的状态目录：
 
-类型与常见的员工内核一一对应（`Tool`、`ToolCall`、`ToolResult`、`Decision`、`Receipt`、`ToolOutcome`、`Outcome`、`Budget`），已有 Host 换引擎只需映射字段，不需要换概念。Host 的策略通过挂点留在模块之外：`ValidateBatch`、`ValidateText`、`ValidateArguments`（用 Host 自己的参数规则代替内置的 schema 检查）、`ValidateDecision`（Host 接受哪些终态决定）、`TurnTools`（每次模型调用提供哪些工具）、`FinalTextAllowed`（哪些普通回答可以结束唤醒）、`Progress`（哪些成功的调用清零连续错误）、`RepairText`、`Permanent`，以及模型调用、工具调用、批次被接受与被拒、失败的观察者。
-
-循环强制的规则：
-
-- 整批校验通过才执行任何调用（未知或本轮未提供的工具、独占工具、静态终态处置冲突、参数 schema 或 Host 的 `ValidateArguments`、Host 规则）——被拒的批次走修复轮，绝不执行一半；
-- 没有 Host 回执的效果永远不算完成；
-- Host 拒绝（`ErrToolRefused`）作为工具结果交回模型；
-- 无效输出永远不进入对话记录；
-- 预算限制有效响应数、连续错误数和模型请求次数。
-
-从 v0.3 起，循环跑在 Eino ADK 的 `adk.ChatModelAgent` 上，不再是手写循环。发给模型的请求与 v0.2 逐字节一致，行为也相同，只有 [`loop` 包文档](loop/loop.go)列出的少数差异（例如 Host、模型或任何 `Config` 回调里的 panic 会变成 `Run` 返回的错误）。`loop/testdata/parity.golden.gz`（从 v0.2.1 录制的 3000 个种子场景）把两者钉住，记录过的唤醒可由任一版本续跑。
-
-## 事件与场域
-
-每个输入都是一个 `event.Event`。它的类型决定**发生了什么**（类别）和**员工为什么收到它**（性质）：
-
-| | triggered（被动触发） | listening（主动监听） |
-| --- | --- | --- |
-| business（业务/场域） | `message.addressed`、`message.follow_up`、`human.response`、`reaction.added` | `message.observed`、`member.changed`、`resource.changed` |
-| execution（执行） | `execution.accepted`、`execution.started`、`execution.progress`、`execution.steered` | |
-| completion（完成） | `execution.result`、`execution.terminal` | |
-| schedule（定时） | | `routine.due`、`observation.due` |
-| enablement（启用） | `employee.enabled`、`employee.disabled`、`subscription.changed`、`policy.changed`、`scene.bound` | |
-
-路由让每个场域有**一个前台交互会话**（来自人的被动触发业务事件，串行处理，人的输入优先），以及若干**排队的后台会话**——`observation`（主动监听，可被抢占）、`follow_up`（每个任务一个）、`routine`（每个例行任务一个）、`lifecycle`——外加一条不唤醒模型、由 Host 直接应用事实的 **host 通道**。有人找员工会抢占旁听窗口；策略或订阅变化会撤销它们。详见 [docs/events.zh-CN.md](docs/events.zh-CN.md)。
-
-## 本地运行
-
-持久化任务 Entry 使用 `cmd/el`，支持 SQLite/md、任务执行与 Review、原生中断恢复和本地回放交付，见 [本地 Entry 运行说明](docs/local-entry.md)。它的 DWS NDJSON 回放是本地模拟，Markdown 回执不表示真实 IM 送达。下面的 `cmd/eel` 是独立的旧聊天验证工具。
-
-```bash
-export LLM_BASE_URL=... LLM_API_KEY=... LLM_MODEL=...      # 任意 OpenAI 兼容端点
-export LANGFUSE_BASE_URL=... LANGFUSE_PUBLIC_KEY=... LANGFUSE_SECRET_KEY=...   # 可选
-go run ./cmd/eel -channel dws -profile <corpId:userId> -locale zh-CN       # 一个钉钉账号
-go run ./cmd/eel -channel robot -robot-client-id <id> -robot-client-secret <secret>   # Stream 机器人
-go run ./cmd/eel -channel console -v -model-script local/testdata/console.json   # 本终端，不接钉钉；带 -model-script 不需要 LLM
+```sh
+go run ./cmd/el -profile examples/local-el/allloops-profile.json -dir /tmp/el-demo -script examples/local-el/allloops-script.json replay -in examples/local-el/allloops-input.ndjson
 ```
 
-各渠道、本地调试、Langfuse trace，以及用评测集对本地员工跑评测，见 [docs/local.zh-CN.md](docs/local.zh-CN.md)。
+脚本只替换模型决策，存储和文件效果实际执行。`local-file` 回执证明本地文件写入，
+不能当成钉钉消息送达或完整线上 Buddy 行为还原。
 
-## 文档
+- [架构与 import 迁移](ARCHITECTURE.md)：模块职责和依赖方向。
+- [默认装配与替换](docs/module-composition.md)：`app/local`、端口和生命周期。
+- [本地 CLI 指南](docs/local-entry.md)：回放、任务、恢复和模型设置。
+- [行为合同](docs/specs/README.md)：授权、执行、存储、插件和投递。
+- [通用内核 API](docs/kernel/README.md)：单次决策、事件、工作流和结构化生成。
 
-- [docs/events.zh-CN.md](docs/events.zh-CN.md)——分类、路由不变量、会话、抢占、扩展类型。
-- [docs/host.zh-CN.md](docs/host.zh-CN.md)——Host 要实现什么：工具、回执、拒绝、唤醒装配、存储、重放、送达。
-- [docs/local.zh-CN.md](docs/local.zh-CN.md)——本地验证。
-- [docs/integration.zh-CN.md](docs/integration.zh-CN.md)——把本循环接入你的平台：最小 Host、状态、一致性检查、驱动、切换引擎、评测。
-
-文案支持多语言：循环的修复指令（`loop/locales`）、本地员工的提示词（`local/locales`）和事件说明（`event/events.json`）都提供 `en` 与 `zh-CN`，并有测试保证键集合一致。新增语言只需新增文件。
-
-## 许可
-
-MIT
-
-[模块装配、可替换边界与恢复约束](docs/module-composition.md)。
-
-默认本地装配入口：`localapp.Open`；配置、消息、资源、工具和文件服务可按组替换。
+MIT 许可。本轮目录调整会改变 Go import，旧根路径不保留兼容包装；迁移表见
+[ARCHITECTURE.md](ARCHITECTURE.md#import-migration)。

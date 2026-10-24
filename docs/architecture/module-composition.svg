@@ -1,100 +1,97 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 1120" width="1360" height="1120">
-<style>text{font-family:"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;fill:#111827}.sub{fill:#6b7280}</style>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1170" width="1200" height="1170">
+<style>text{font-family:"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;fill:#111827}</style>
 <defs>
 <marker id="blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#2563eb"/></marker>
 <marker id="green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#059669"/></marker>
 <marker id="purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#7c3aed"/></marker>
 </defs>
-<rect width="1360" height="1120" fill="#ffffff"/>
-<text x="48" y="48" font-size="30" fill="#111827" font-weight="600">Employee Loop · 精确版本的模块装配</text>
-<text x="48" y="80" font-size="18" fill="#6b7280" font-weight="400">Eino 负责原生推理与恢复；Host 保留唯一 Task / Goal / Run 真相和副作用提交权。</text>
-<rect x="48" y="120" width="350" height="104" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
-<text x="66" y="150" font-size="20" fill="#111827" font-weight="600">Channel / CLI</text>
-<text x="66" y="178" font-size="16" fill="#6b7280" font-weight="400">可信入站适配 · 本地回放</text>
-<text x="66" y="202" font-size="16" fill="#6b7280" font-weight="400">DWS 实际通道需独立接入</text>
-<rect x="492" y="120" width="370" height="104" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
-<text x="510" y="150" font-size="20" fill="#111827" font-weight="600">Entry / Host</text>
-<text x="510" y="178" font-size="16" fill="#6b7280" font-weight="400">配置冻结 · ready / start / close</text>
-<text x="510" y="202" font-size="16" fill="#6b7280" font-weight="400">能力校验 · 错误可见</text>
-<rect x="956" y="120" width="356" height="104" rx="10" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
-<text x="974" y="150" font-size="20" fill="#111827" font-weight="600">Module Registry</text>
-<text x="974" y="178" font-size="16" fill="#6b7280" font-weight="400">按 kind + name + version 选工厂</text>
-<text x="974" y="202" font-size="16" fill="#6b7280" font-weight="400">未知版本拒绝 · 保留历史工厂</text>
-<path d="M398 172 H492" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
-<path d="M956 172 H862" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#purple)"/>
-<rect x="870" y="127" width="79" height="26" rx="3" fill="white" opacity=".97"/>
-<text x="875" y="145" font-size="15" fill="#6b7280" font-weight="400">精确选择</text>
-<path d="M677 224 V288" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
-<rect x="689" y="242" width="112" height="26" rx="3" fill="white" opacity=".97"/>
-<text x="694" y="260" font-size="15" fill="#6b7280" font-weight="400">授权与受理</text>
-<rect x="48" y="288" width="1264" height="112" rx="10" fill="#fff7ed" stroke="#fdba74" stroke-width="1.5"/>
-<text x="66" y="318" font-size="20" fill="#111827" font-weight="600">Work · 唯一业务状态所有者</text>
-<text x="66" y="346" font-size="16" fill="#6b7280" font-weight="400">Task / Goal / Run / Wait / Occurrence · CAS + receipt + event 原子提交</text>
-<text x="66" y="370" font-size="16" fill="#6b7280" font-weight="400">模块只能提供受验证的事实或提案；执行退出不等于业务完成。</text>
-<text x="48" y="446" font-size="21" fill="#111827" font-weight="600">独立模块端口</text>
-<text x="240" y="446" font-size="16" fill="#6b7280" font-weight="400">Context / Executor / Review / Owner / Scheduler：typed factories；Delivery：Send / Lookup port</text>
-<path d="M680 400 V476" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
-<path d="M148 476 H1212" fill="none" stroke="#2563eb" stroke-width="2"/>
-<path d="M140 476 V512" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
-<rect x="48" y="512" width="184" height="116" rx="10" fill="#f0fdfa" stroke="#99f6e4" stroke-width="1.5"/>
-<text x="66" y="542" font-size="20" fill="#111827" font-weight="600">Context</text>
-<text x="66" y="570" font-size="16" fill="#6b7280" font-weight="400">来源 / 受众隔离</text>
-<text x="66" y="594" font-size="16" fill="#6b7280" font-weight="400">冻结 + 重验</text>
-<path d="M356 476 V512" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
-<rect x="264" y="512" width="184" height="116" rx="10" fill="#f0fdfa" stroke="#99f6e4" stroke-width="1.5"/>
-<text x="282" y="542" font-size="20" fill="#111827" font-weight="600">Executor</text>
-<text x="282" y="570" font-size="16" fill="#6b7280" font-weight="400">Submit / Lookup</text>
-<text x="282" y="594" font-size="16" fill="#6b7280" font-weight="400">Poll / Cancel / Close</text>
-<path d="M572 476 V512" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
-<rect x="480" y="512" width="184" height="116" rx="10" fill="#f0fdfa" stroke="#99f6e4" stroke-width="1.5"/>
-<text x="498" y="542" font-size="20" fill="#111827" font-weight="600">Review</text>
-<text x="498" y="570" font-size="16" fill="#6b7280" font-weight="400">证据 → typed 提案</text>
-<text x="498" y="594" font-size="16" fill="#6b7280" font-weight="400">Host 校验后提交</text>
-<path d="M788 476 V512" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
-<rect x="696" y="512" width="184" height="116" rx="10" fill="#f0fdfa" stroke="#99f6e4" stroke-width="1.5"/>
-<text x="714" y="542" font-size="20" fill="#111827" font-weight="600">Owner</text>
-<text x="714" y="570" font-size="16" fill="#6b7280" font-weight="400">独立角色 / 队列</text>
-<text x="714" y="594" font-size="16" fill="#6b7280" font-weight="400">策略 / 插件冻结</text>
-<path d="M1004 476 V512" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
-<rect x="912" y="512" width="184" height="116" rx="10" fill="#f0fdfa" stroke="#99f6e4" stroke-width="1.5"/>
-<text x="930" y="542" font-size="20" fill="#111827" font-weight="600">Scheduler</text>
-<text x="930" y="570" font-size="16" fill="#6b7280" font-weight="400">同 Task 发生项</text>
-<text x="930" y="594" font-size="16" fill="#6b7280" font-weight="400">条件 / Attention</text>
-<path d="M1220 476 V512" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
-<rect x="1128" y="512" width="184" height="116" rx="10" fill="#f0fdfa" stroke="#99f6e4" stroke-width="1.5"/>
-<text x="1146" y="542" font-size="20" fill="#111827" font-weight="600">Delivery</text>
-<text x="1146" y="570" font-size="16" fill="#6b7280" font-weight="400">持久 Outbox</text>
-<text x="1146" y="594" font-size="16" fill="#6b7280" font-weight="400">unknown → Lookup</text>
-<text x="48" y="680" font-size="16" fill="#6b7280" font-weight="400">模块是受信 Go 代码；核心选择绑定目录。</text>
-<rect x="48" y="720" width="1264" height="108" rx="10" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
-<text x="66" y="750" font-size="20" fill="#111827" font-weight="600">原生 Eino Kernel</text>
-<text x="66" y="778" font-size="16" fill="#6b7280" font-weight="400">ChatModelAgent / Runner / middleware / callbacks / AgentAsTool / checkpoint + resume</text>
-<text x="66" y="802" font-size="16" fill="#6b7280" font-weight="400">模型按角色注入；内置 Owner 与各原生角色共用精确插件选择；子 Agent 独立管理权限、预算和资源。</text>
-<path d="M572 628 V720" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#purple)"/>
-<rect x="584" y="662" width="195" height="26" rx="3" fill="white" opacity=".97"/>
-<text x="589" y="680" font-size="15" fill="#6b7280" font-weight="400">Review 等原生认知路径</text>
-<rect x="48" y="908" width="586" height="112" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
-<text x="66" y="938" font-size="20" fill="#111827" font-weight="600">State · 事务与恢复端口</text>
-<text x="66" y="966" font-size="16" fill="#6b7280" font-weight="400">默认 SQLite：CAS / journal / event / checkpoint / lease</text>
-<text x="66" y="990" font-size="16" fill="#6b7280" font-weight="400">独立 memory：同合同验证，限进程内参考使用</text>
-<rect x="726" y="908" width="586" height="112" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
-<text x="744" y="938" font-size="20" fill="#111827" font-weight="600">Artifacts · 资料与文件端口</text>
-<text x="744" y="966" font-size="16" fill="#6b7280" font-weight="400">默认 Markdown：内容 CAS / 原子写入 / 回读</text>
-<text x="744" y="990" font-size="16" fill="#6b7280" font-weight="400">独立 memory artifacts；Owner 文档是派生视图</text>
-<path d="M48 344 H24 V872 H341 V908" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#green)"/>
-<rect x="60" y="850" width="254" height="26" rx="3" fill="white" opacity=".97"/>
-<text x="65" y="868" font-size="15" fill="#6b7280" font-weight="400">Work / journal 原子事务</text>
-<path d="M550 828 V908" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#green)"/>
-<rect x="562" y="852" width="130" height="26" rx="3" fill="white" opacity=".97"/>
-<text x="567" y="870" font-size="15" fill="#6b7280" font-weight="400">checkpoint</text>
-<path d="M1019 828 V908" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#green)" stroke-dasharray="5 3"/>
-<rect x="1030" y="852" width="141" height="26" rx="3" fill="white" opacity=".97"/>
-<text x="1035" y="870" font-size="15" fill="#6b7280" font-weight="400">资料读写与回读</text>
-<path d="M48 1064 H88" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
-<text x="103" y="1070" font-size="15" fill="#6b7280" font-weight="400">Host 业务调用</text>
-<path d="M300 1064 H340" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#purple)"/>
-<text x="355" y="1070" font-size="15" fill="#6b7280" font-weight="400">原生认知 / 工厂选择</text>
-<path d="M622 1064 H662" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#green)"/>
-<text x="677" y="1070" font-size="15" fill="#6b7280" font-weight="400">存储与派生资料</text>
-<text x="48" y="1100" font-size="16" fill="#6b7280" font-weight="400">已验：默认与第二实现的本地合同和恢复。未据此认证：真实 DWS 交付、真实模型质量或完整 Buddy 协议还原。</text>
+<rect width="1200" height="1170" fill="white"/>
+<text x="40" y="48" font-size="30" font-weight="600" fill="#111827">Employee Loop · 目录就是模块边界</text>
+<text x="40" y="81" font-size="18" font-weight="400" fill="#6b7280">七个模块与既定业务架构一一对应；通用内核、外部端口和具体适配独立。</text>
+<rect x="40" y="132" width="360" height="96" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+<text x="56" y="161" font-size="20" font-weight="600" fill="#111827">默认应用 · app/local</text>
+<text x="56" y="189" font-size="16" font-weight="400" fill="#6b7280">选择 SQLite / Markdown / Eino</text>
+<text x="56" y="213" font-size="16" font-weight="400" fill="#6b7280">cmd/el 只有一个产品入口</text>
+<rect x="480" y="132" width="680" height="96" rx="10" fill="#fff7ed" stroke="#fdba74" stroke-width="1.5"/>
+<text x="496" y="161" font-size="20" font-weight="600" fill="#111827">M7 Entry · modules/entry</text>
+<text x="496" y="189" font-size="16" font-weight="400" fill="#6b7280">配置、依赖接线、版本选择、启动、关闭与恢复调度</text>
+<text x="496" y="213" font-size="16" font-weight="400" fill="#6b7280">不定义业务提示词，不拥有其他模块的私有状态</text>
+<path d="M400 180 H480" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<rect x="415" y="133" width="52" height="25" rx="3" fill="white" opacity=".97"/>
+<text x="419" y="151" font-size="15" font-weight="400" fill="#6b7280">装配</text>
+<path d="M820 228 V276 H600 V352" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<rect x="840" y="245" width="162" height="25" rx="3" fill="white" opacity=".97"/>
+<text x="844" y="263" font-size="15" font-weight="400" fill="#6b7280">装配并推进各模块</text>
+<rect x="40" y="316" width="1120" height="382" rx="12" fill="none" stroke="#d1d5db" stroke-width="1.5" stroke-dasharray="6 4"/>
+<rect x="60" y="352" width="300" height="116" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+<text x="76" y="381" font-size="20" font-weight="600" fill="#111827">M1 Chat</text>
+<text x="76" y="409" font-size="16" font-weight="400" fill="#6b7280">modules/chat</text>
+<text x="76" y="433" font-size="16" font-weight="400" fill="#6b7280">准入、对话、工具、中断恢复</text>
+<rect x="450" y="352" width="300" height="116" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+<text x="466" y="381" font-size="20" font-weight="600" fill="#111827">M2 Task</text>
+<text x="466" y="409" font-size="16" font-weight="400" fill="#6b7280">modules/task</text>
+<text x="466" y="433" font-size="16" font-weight="400" fill="#6b7280">Task 状态、Review、发生项</text>
+<rect x="840" y="352" width="300" height="116" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+<text x="856" y="381" font-size="20" font-weight="600" fill="#111827">M5 Execution</text>
+<text x="856" y="409" font-size="16" font-weight="400" fill="#6b7280">modules/execution</text>
+<text x="856" y="433" font-size="16" font-weight="400" fill="#6b7280">提交、查询、取消、原生执行</text>
+<rect x="60" y="532" width="300" height="116" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+<text x="76" y="561" font-size="20" font-weight="600" fill="#111827">M3 Context</text>
+<text x="76" y="589" font-size="16" font-weight="400" fill="#6b7280">modules/context</text>
+<text x="76" y="613" font-size="16" font-weight="400" fill="#6b7280">引用、上下文、受众与撤回</text>
+<rect x="450" y="532" width="300" height="116" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+<text x="466" y="561" font-size="20" font-weight="600" fill="#111827">M4 Owner</text>
+<text x="466" y="589" font-size="16" font-weight="400" fill="#6b7280">modules/owner</text>
+<text x="466" y="613" font-size="16" font-weight="400" fill="#6b7280">六角色加工、证据、投影</text>
+<rect x="840" y="532" width="300" height="116" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+<text x="856" y="561" font-size="20" font-weight="600" fill="#111827">M6 Interaction</text>
+<text x="856" y="589" font-size="16" font-weight="400" fill="#6b7280">modules/interaction</text>
+<text x="856" y="613" font-size="16" font-weight="400" fill="#6b7280">表达、打包、Outbox、回执</text>
+<path d="M360 409 H450" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<rect x="378" y="365" width="52" height="25" rx="3" fill="white" opacity=".97"/>
+<text x="382" y="383" font-size="15" font-weight="400" fill="#6b7280">命令</text>
+<path d="M750 409 H840" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<rect x="777" y="365" width="45" height="25" rx="3" fill="white" opacity=".97"/>
+<text x="781" y="383" font-size="15" font-weight="400" fill="#6b7280">Run</text>
+<path d="M210 468 V532" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#green)"/>
+<rect x="222" y="484" width="70" height="25" rx="3" fill="white" opacity=".97"/>
+<text x="226" y="502" font-size="15" font-weight="400" fill="#6b7280">读视图</text>
+<path d="M450 590 H360" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#green)"/>
+<rect x="377" y="545" width="60" height="25" rx="3" fill="white" opacity=".97"/>
+<text x="381" y="563" font-size="15" font-weight="400" fill="#6b7280">投影</text>
+<path d="M300 468 V500 H600 V532" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#purple)"/>
+<rect x="388" y="475" width="104" height="25" rx="3" fill="white" opacity=".97"/>
+<text x="392" y="493" font-size="15" font-weight="400" fill="#6b7280">入站证据</text>
+<path d="M750 440 H794 V590 H840" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<rect x="758" y="500" width="76" height="25" rx="3" fill="white" opacity=".97"/>
+<text x="762" y="518" font-size="15" font-weight="400" fill="#6b7280">任务事件</text>
+<text x="64" y="678" font-size="16" font-weight="400" fill="#6b7280">M2/state 是唯一业务状态；执行退出、目标完成、消息送达分别核验。</text>
+<path d="M600 698 V768" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#purple)"/>
+<rect x="612" y="718" width="170" height="25" rx="3" fill="white" opacity=".97"/>
+<text x="616" y="736" font-size="15" font-weight="400" fill="#6b7280">使用通用运行能力</text>
+<rect x="40" y="768" width="1120" height="106" rx="10" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.5"/>
+<text x="56" y="797" font-size="20" font-weight="600" fill="#111827">kernel · 通用 Eino 底座</text>
+<text x="56" y="825" font-size="16" font-weight="400" fill="#6b7280">eino / decision / journal / workflow / generation / event</text>
+<text x="56" y="849" font-size="16" font-weight="400" fill="#6b7280">Runner、checkpoint/resume、原生工具绑定和账本；不导入业务模块。</text>
+<rect x="40" y="950" width="520" height="106" rx="10" fill="#f0fdfa" stroke="#99f6e4" stroke-width="1.5"/>
+<text x="56" y="979" font-size="20" font-weight="600" fill="#111827">ports · 外部合同</text>
+<text x="56" y="1007" font-size="16" font-weight="400" fill="#6b7280">services：配置、消息、资源、工具、文件</text>
+<text x="56" y="1031" font-size="16" font-weight="400" fill="#6b7280">storage：事务、租约、checkpoint、文件</text>
+<rect x="640" y="950" width="520" height="106" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+<text x="656" y="979" font-size="20" font-weight="600" fill="#111827">adapters · 具体实现</text>
+<text x="656" y="1007" font-size="16" font-weight="400" fill="#6b7280">storage / services / channel / sessionfile</text>
+<text x="656" y="1031" font-size="16" font-weight="400" fill="#6b7280">默认实现由 app/local 选择并注入</text>
+<path d="M300 874 V950" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#green)"/>
+<rect x="313" y="902" width="77" height="25" rx="3" fill="white" opacity=".97"/>
+<text x="317" y="920" font-size="15" font-weight="400" fill="#6b7280">接口依赖</text>
+<path d="M640 1003 H560" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#purple)" stroke-dasharray="5 3"/>
+<rect x="578" y="960" width="51" height="25" rx="3" fill="white" opacity=".97"/>
+<text x="582" y="978" font-size="15" font-weight="400" fill="#6b7280">实现</text>
+<text x="40" y="1100" font-size="17" font-weight="400" fill="#6b7280">模块禁止反向依赖 Entry/app/adapters；M7 不依赖具体 adapter。以上边界由架构测试检查。</text>
+<path d="M40 1140 H72" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#blue)"/>
+<text x="84" y="1145" font-size="14" font-weight="400" fill="#6b7280">命令 / 事实</text>
+<path d="M300 1140 H332" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#green)"/>
+<text x="344" y="1145" font-size="14" font-weight="400" fill="#6b7280">视图 / 接口</text>
+<path d="M570 1140 H602" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#purple)"/>
+<text x="614" y="1145" font-size="14" font-weight="400" fill="#6b7280">触发 / 通用能力</text>
 </svg>

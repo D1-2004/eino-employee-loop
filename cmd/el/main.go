@@ -17,11 +17,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/D1-2004/eino-employee-loop/channel"
-	"github.com/D1-2004/eino-employee-loop/entry"
+	"github.com/D1-2004/eino-employee-loop/adapters/channel"
+	localapp "github.com/D1-2004/eino-employee-loop/app/local"
 	"github.com/D1-2004/eino-employee-loop/internal/jsoncheck"
-	"github.com/D1-2004/eino-employee-loop/localapp"
-	"github.com/D1-2004/eino-employee-loop/work"
+	"github.com/D1-2004/eino-employee-loop/modules/entry"
+	work "github.com/D1-2004/eino-employee-loop/modules/task/state"
 	openaimodel "github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
 )

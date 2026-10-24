@@ -6,16 +6,17 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	localapp "github.com/D1-2004/eino-employee-loop/app/local"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/D1-2004/eino-employee-loop/entry"
-	"github.com/D1-2004/eino-employee-loop/interaction"
-	"github.com/D1-2004/eino-employee-loop/ownerloop"
-	"github.com/D1-2004/eino-employee-loop/work"
+	"github.com/D1-2004/eino-employee-loop/modules/entry"
+	"github.com/D1-2004/eino-employee-loop/modules/interaction"
+	ownerloop "github.com/D1-2004/eino-employee-loop/modules/owner"
+	work "github.com/D1-2004/eino-employee-loop/modules/task/state"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -210,7 +211,7 @@ func TestServeReturnsOwnedWorkerFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e, err := entry.Open(context.Background(), entry.Options{Directory: dir, Profile: profile, Models: models})
+	e, err := localapp.Open(context.Background(), localapp.Options{Directory: dir, Profile: profile, Models: models})
 	if err != nil {
 		t.Fatal(err)
 	}

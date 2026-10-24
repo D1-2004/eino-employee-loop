@@ -6,8 +6,8 @@ import (
 	"io"
 	"sync"
 
-	native "github.com/D1-2004/eino-employee-loop/agent"
-	"github.com/D1-2004/eino-employee-loop/entry"
+	native "github.com/D1-2004/eino-employee-loop/kernel/eino"
+	"github.com/D1-2004/eino-employee-loop/modules/entry"
 	"github.com/cloudwego/eino/callbacks"
 )
 

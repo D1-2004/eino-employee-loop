@@ -1,5 +1,8 @@
 # Host-registered plugins
 
+Registration lives in `modules/entry`; native extension composition lives in
+`kernel/eino`; Owner implementation lives in `modules/owner` (Go name `owner`).
+
 Plugins compose Eino middleware, callbacks and read-only AgentAsTool children.
 They are trusted, compiled Go factories, selected by exact immutable
 `Name` + `Version` references in `Profile.Plugins`. Unknown, duplicate or missing
@@ -13,14 +16,14 @@ keep old factories available until their admitted work has drained. Removing a
 reference affects new admissions; hot unloading and automatic migration are not
 provided, and recovering work whose factory was removed fails explicitly.
 
-`ownerloop.Options.ConfigureRuntime` lets trusted Hosts compose the native runtime
+`owner.Options.ConfigureRuntime` lets trusted Hosts compose the native runtime
 using the observation's frozen `Request`. Entry resolves the selected registry
 factories on the actual native config; passing only global callbacks does not
 satisfy the plugin contract.
 
 Owner workers depend on a narrow source/audience Context interface and typed
 state/artifact ports. Hosts may add policies with trusted
-`ownerloop.Options.RolePolicies`; each observation freezes the chosen policy
+`owner.Options.RolePolicies`; each observation freezes the chosen policy
 text and profile revision before execution. Recreating a worker with a newer
 policy does not rewrite old work. Historical observations lacking policy text
 retain compatibility only with the six preexisting builtin roles.

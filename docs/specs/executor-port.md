@@ -1,6 +1,6 @@
 # Executor port
 
-Entry owns Task, Goal and Review semantics. An executor owns one physical Run
+M2 `modules/task` owns Task, Goal and Review semantics; M7 Entry assembles it. An executor owns one physical Run
 identified by the complete Scope, Task ID, Run ID and stable submit key. A
 provider must not create another Task or decide that a Goal is complete.
 

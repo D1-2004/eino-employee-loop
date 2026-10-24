@@ -65,12 +65,15 @@ adding factories is not permission to weaken those contracts.
 
 ## Default local assembly and service capabilities
 
-`localapp.Open` is the default composition root: SQLite, Markdown, native Eino,
+`localapp.Open` from `app/local` (explicit import alias `localapp`) is the default composition root: SQLite, Markdown, native Eino,
 one Work aggregate, local execution and the existing outbox. Ordinary callers
 supply identity/profile, directory and model; no module registration is required.
+The application supplies `DefaultStorage`, `BuildServices` and `PrepareTools`;
+M7 imports no concrete adapters. Advanced `entry.Open` hosts supply their own
+assembly functions and storage factory.
 `localapp.DefaultProfile` enables the six Owner workers and local delivery loops.
 
-`host.Services` groups Config, Messages, Resources, Tools and Files. Existing
+`services.Services` in `ports/services` groups Config, Messages, Resources, Tools and Files. Existing
 execution.Port and interaction.Port remain the execution/delivery seams. Local
 services return real admitted sources and verified artifacts; they do not claim
 platform history completeness or mint remote access URLs. Individual services

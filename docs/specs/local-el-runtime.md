@@ -1,109 +1,95 @@
 # Local EL Runtime 合同
 
-状态：本地 standalone 已实现。工程、回放和真实模型验收分别见当前 Plan 与模型报告；
-真实 DWS IM、可选外部完整业务后端和云端部署不属于本地文件回执的通过范围。
+本合同描述当前七模块协作，不是完整线上协议还原声明。默认实现为本地 SQLite、
+Markdown 和原生 Eino；真实 DWS 身份、消息送达和云端部署需要独立适配与验收。
+历史验收与评审记录见 [archive](../archive/README.md)，不自动覆盖新版本。
 
-## Entry 与模块
+## 模块与装配
 
-`entry.Open` 校验身份和 immutable profile，迁移 SQLite 并打开 Markdown workspace；
-`Start` 只有依赖 ready 后才启动全部相关 worker；`Submit` 原子受理事件；`RunOnce`
-推进可执行工作；`Resume` 只接受已受理 Question/Wait 的当前回答；`Close` 停止接单、
-等待/中断进行中调用、结算已预留 journal 并释放资源。Console 与 DWS 只做 Channel
-适配，不拥有 Task/Goal 状态。流程编排由 Eino Graph/Runner 承担，业务动作由 Host。
+| 模块 | 目录 | 合同 |
+| --- | --- | --- |
+| M1 Chat | `modules/chat` | 当前来源 → 授权 Context → native 工具；回答或提交业务命令 |
+| M2 Task | `modules/task` | Worker、Review、Timing；`state` 是 Task/Goal/Run/Budget/Wait/Occurrence 的唯一业务聚合 |
+| M3 Context | `modules/context` | 当前可授权来源、消息、任务和 Owner 视图；冻结版本并列出缺口 |
+| M4 Owner | `modules/owner` | 独立 attention、memory、dreaming、tone、reflection、summary 加工 |
+| M5 Execution | `modules/execution` | 幂等 Submit/Lookup/Poll/Cancel 与原子 Run 事实，不决定业务完成 |
+| M6 Interaction | `modules/interaction` | 表达、Package、消息、Outbox、送达回执与业务事实回流 |
+| M7 Entry | `modules/entry` | Profile 校验、依赖装配、模块注册和应用生命周期 |
 
-| 模块 | 合同 |
-| --- | --- |
-| ChatLoop | 当前来源 → Context → native 工具；完成普通回答或提交业务命令 |
-| TaskManager | Task/Goal/Run/Budget/Review/Watch/Wait/Occurrence 的唯一业务聚合 |
-| Context Builder | 当前可授权来源、消息窗口、任务与 owner 视图，冻结版本并列缺口 |
-| Owner Context Loop | 独立的记忆、关注、Tone、Dreaming、反馈与摘要加工 |
-| Execution Bridge | 幂等 submit/lookup/events/exit，不将执行完成当作业务完成 |
-| Interaction & Delivery | 冻结表达/问题/文件/outbox，确认回执，回流业务事实 |
+`app/local` 提供默认本地装配；`cmd/el` 调用同一入口。`contract` 只有共享值，
+`ports` 定义能力接口，`adapters` 实现外部依赖，`kernel` 提供通用推理与恢复。
+业务实现留在对应 M1–M6，M7 不成为新的业务中心。详见[架构](../../ARCHITECTURE.md)。
+
+## 生命周期
+
+`entry.Open` 校验身份和 immutable profile，选择精确版本模块并打开依赖。
+`Start` 只有依赖 ready 后才启动 workers。`Submit` 原子受理输入，`RunOnce`
+推进可执行工作，`Resume` 验证原 Question/Wait 与当前回答的绑定。
+`Close` 停止接单，等待/中断进行中调用，结算已预留 journal 并释放资源。
+
+Channel 只适配入站事实，不拥有 Task/Goal。Entry 持有一个业务后端和进程领导锁，
+同 scope 不因换 profile ID 得到第二个领导权。Task、inbox、Owner jobs 和执行配置
+在受理时冻结。原生模型返回先 journal，原生工具再提交。模型特有的 opaque options
+由不可变工厂配置负责版本化。
 
 ## 状态与副作用
 
-同一 trusted workspace/tenant/employee/scene/requester 是最小作用域，所有读取、
-命令和 worker 提交须带 scope；文本不是身份来源。Task ID、Run ID、Goal revision、
-input receipt、tool native call ID 分开。重复 receipt + 不同请求为 conflict。
+trusted workspace/tenant/employee/scene/requester 是最小作用域；所有读取、命令和
+worker 提交须带 scope。文本不是身份来源。Task ID、Run ID、Goal revision、
+input receipt 和 native tool call ID 分开。相同 receipt 配不同请求必须 conflict。
 
-Task 支持 ready/running/waiting/completed/failed/paused/stopped；Goal revision 独立，
-Run 状态只代表执行。Review 必须依据当前 Run 的退出与效果证据提议 complete、
-continue、wait 或 fail；事务提交时再核验 Task/Goal/Run revision、取消与预算。
-未知 submit 或 delivery 不重试原 effect；先 lookup 原稳定幂等键，缺证明保持 unknown。
+Task 支持 ready/running/waiting/completed/failed/paused/stopped。Goal revision
+独立；Run 只表示执行状态。Review 依据当前 Run 的退出和效果证据提议 complete、
+continue、wait 或 fail；提交时再核验 Task/Goal/Run revision、取消、授权与预算。
 
-SQLite 事务提交业务状态、effect receipt 和 outbox 意图；外部 I/O 不持有事务。
-存储 Provider 的 CAS/租约须防陈旧写。原生 checkpoint 是 Eino continuation，
-不替代 effect journal。已取消输入只允许有期限的 journal 收尾，不执行新的业务动作。
+State 事务原子提交业务状态、effect receipt 和 outbox 意图；模型/外部 I/O 不持有
+事务。CAS 和租约须防陈旧写。Markdown 是配置、资料和产物能力，路径不能越界或
+跟随符号链接；内容以 hash CAS 原子写入，不保存凭据。投影根据 State 真相重建，
+不能反向猜测已经完成的业务。
 
-Markdown 用作版本配置、owner 资料和结果文件；不接受越界/符号链接路径，不保存
-凭据；写入原子替换。模型提出的修改须通过当前来源、owner、引用与版本校验后提交。
-若 md 是 SQLite 投影，重建由 SQLite 真相驱动，不能反向猜测已完成。
+unknown submit/delivery 必须向原 provider 用稳定键 lookup；timeout 或瞬时
+NotFound 不能作为 exit/absence 证明，也不能换 provider 重做。Task stopped 后仍有
+preparing/unknown/active Run，M5 仍须 lookup、取消并回流退出事实。
 
-## 原生 Eino 与扩展
+## 推理、上下文和恢复
 
-既有 loop.Run 的兼容行为保留。新 Entry 原生路径使用 Runner、CheckPointStore、
-明确 checkpoint ID、标准 middleware/callback 与事件。Context/Providers/Model/lease
-属于运行绑定，不进入可序列化 continuation。Profile 只选择已注册精确版本的代码
-工厂，不执行任意 JSON 中的命令/URL；各小 Loop 独立 admission 与预算。
+`kernel/eino` 复用原生 Runner、CheckPointStore、checkpoint ID、middleware 和
+callbacks；`kernel/journal` 记录物理模型调用与预算。`kernel/decision` 保留独立的
+单次 wake API。Eino continuation 不替代 inbox 幂等账本或 effect journal。
 
-参考当前固定 Eino v0.9.21 的 adk/runner.go、adk/handler.go、adk/turn_loop.go、
-compose/checkpoint.go 和 components/tool/interrupt.go。沿用原 Host 的幂等/账本模式，
-不因为框架有 checkpoint 就弱化来源、取消、权限、重放和 unknown 语义。
+Context、Providers、Model 和 lease 属于运行绑定，不写入 continuation。恢复时重验
+来源、撤回、受众与权限；已取消输入只能执行有界 journal 收尾，不能发起新业务动作。
+Owner 投影必须能回溯授权原文，不能因为同一 owner 就向其他场景分享内容。
 
-## 当前包边界（第一组实现）
+Profile 只选择可信 Go 工厂的精确版本，不下载或执行 JSON 中的代码。各 Loop 有独立
+admission 和预算。旧任务保留冻结配置和版本，旧工厂须留到任务排空。没有 latest
+回退、任意热卸载或自动迁移；核心模块目录绑定的变更需要显式迁移。
 
-- `agent`：新版本原生 Runner facade；Gate/Factory/Scoped Store/标准 observer，原生
-  interruption、定向 resume、取消与 checkpoint。与历史兼容 `loop` 明确分开。
-- `storage/sqlite`：事务性 scope KV/事件账本、CAS、workflow session adapter、原生
-  Eino checkpoint adapter。OS session lease 进程死亡自动释放，不能按时间偷锁。
-- `storage/markdown`：私有工作区、content hash CAS、原子替换、os.Root 路径边界。
-- `work`：Task/Goal/Run/Wait 聚合基础。提交先原子记 preparing 意图；停止时保留
-  unknown/资源 lookup 义务；终态 execution fact 与业务 Review 分开。当前不等同于
-  完整 M2 Worker、Watch、计时调度、模型预算或 M5/M6 已接通。
-- `internal/runcontext`：Graph 节点值向 Provider 传播，原取消/deadline/cause 保留；
-  已预留 Journal 使用独立有期限的收尾 context，不执行新的模型或业务动作。
+## 执行与完整业务后端
 
-后续 Entry 的前台会话需要把 durable inbox 的受理事实与 Eino TurnLoop 的输入消费/
-恢复分开：前者是业务真相，后者是编排 continuation。避免另造一个内存 foreground
-队列，也不能把 checkpoint 当成重复消息的唯一幂等账本。
+原子 Executor 只报告某个 Run 的物理执行事实，不再创建一套 Goal/Review。完整业务
+Backend 则接管整套 Task 命令；二者是不同接口。选择一个 Backend，就只有一个业务
+聚合，不同时运行本地和远端两套 TaskManager。
 
-Task 停止后仍有 preparing/unknown/active Run 时，Execution Bridge 仍须处理其
-lookup/取消/退出回流；不能因为 Task.State=stopped 就跳过资源收尾。待纠正后继受
-预算阻挡时仍保存已证明的退出，并保留原纠正意图，不能回滚为“旧执行还活着”。
+Work 不读取执行器私有命名空间。默认本地取消用稳定键 tombstone 阻止迟到 Submit；
+独立 provider 若返回 NeverSubmitted，必须提供等价的持久 fencing 证明。Review
+只提案，由 M2 在当前来源、证据与版本核验后提交。实际业务完成不能由 provider exit
+或模型总结代替。
 
-## 可选业务 Runtime 接入边界
+## 交付、维护和 CLI
 
-Entry 在通用认知内核与业务状态所有者之间保留 BusinessRuntime port。standalone
-由本地 SQLite 管理业务状态；已有完整业务后端模式则将 Task/Goal/Review 命令全部
-交给选定后端。它们是可选实现，不是并列执行的两个 TaskManager。旧任务的后端
-绑定持久冻结；unknown 先向原后端 lookup，不创建替代 Task。
+M6 持有唯一 Outbox。PrepareIntent 冻结目的地；当前 AuthorizeDelivery 在 Send 前
+再次检查。provider_accepted 是待查询状态，Lookup 证明 delivered 才是远端送达。
+默认 local_applied/local-file 只代表本地文件回读。不支持的富资源和卡片明确拒绝。
 
-完整业务任务 API 与原子 Executor API 必须分开：Execution Bridge 不得通过再建
-一个有独立 Goal/Review 的完整业务任务来模拟原子 Run。具体内部 DTO/SDK 适配放在
-内部消费端，公共模块只暴露通用端口。能力层的 Provider 替换也不代表业务数据库/
-队列已替换；任何新增 backend 都要独立通过完整本地存储与恢复验收。
+Greeting/Routine 由明确来源受理，不在空闲时自动生成问候。周期任务在原 Task 上
+记录 occurrence，经 Task Attention/Review 推进。Owner 文档是引用原文的派生视图，
+不能替代 Task 状态或原始用户授权。
 
-## 已接通的本地装配
+`cmd/el` 支持 replay/submit/answer/signal/schedule/drain/status/owner-status/retry/serve。
+DWS native envelope 导入需要显式 owner/scene 映射，这不等于真实平台认证。Retry
+保留原授权和已消耗物理预算；未确认投递不阻塞其他 scene 已就绪项。
 
-`entry` 持有一个业务后端和进程领导锁，分别启动 Chat、Task/Review、Delivery、
-Scheduler/Attention、Owner workers；同 scope 不因换 profile ID 获得第二个领导权。
-Task、inbox、Owner jobs 与 execution 配置在受理时冻结。原生模型返回先 journal，
-原生工具才可提交。底层模型特有的 opaque options 由不可变工厂配置负责版本化。
-
-`cmd/el` 支持 replay/submit/answer/signal/schedule/drain/status/owner-status/retry/serve；
-DWS native envelope 的导入需要操作者显式 owner/scene 映射，不能当成真实身份认证。
-Greeting/Routine 只由明确来源受理，周期任务经原 Task 的 occurrence 与 Review，
-不在空闲时无依据生成问候。表达和 Package 使用真实读回的 artifacts；实际本地文件
-receipt 回流原 Task，并可唤醒其准确 delivery Wait。
-
-恢复 hold 和失败项提供明确 handle；Retry 不重置物理预算。unknown 原动作只能向
-原 port lookup，不能换 provider 再做一遍。未确认投递不阻塞其他 scene 的已就绪项。
-
-## 模块替换（2026-10-24）
-
-当前 typed module registry、目录绑定、能力协商与恢复合同见
-[模块组合](../module-composition.md)和[模块装配规范](module-composition.md)。
-State/Artifacts已独立为中立端口；SQLite/md为默认持久实现，memory为独立进程内参考实现。
-Executor通过Submit/Lookup/Poll/Cancel接入，Work不读取其私有存储；Review只提案，
-Owner/Context/Scheduler按精确工厂装配。跨场景Owner证据默认不进入模型，显式Host
-授权与冻结Frame恢复均需重验。本地模块可替换不等于真实DWS或线上业务协议已经还原。
+操作见[本地指南](../local-entry.md)，替换见[模块装配](../module-composition.md)。
+源实现与上游参考仍遵循固定 Eino v0.9.21 的 Runner、handler、turn loop 与 checkpoint
+合同，不另造 JSON 工作流解释器。

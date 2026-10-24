@@ -1,16 +1,22 @@
 # Composing the local Host
 
+The application follows [seven business modules](../ARCHITECTURE.md). Their
+physical directories are `modules/{chat,task,context,owner,execution,interaction,entry}`;
+M7 Entry wires them and manages lifetime. Business prompts, tools and algorithms
+belong to their respective modules.
+
 The native Eino runtime and the business Host are separate. Eino runs cognition
-and continuations; one `work.Manager` owns Task/Goal/Run transitions. A module is
+and continuations; one `state.Manager` in `modules/task/state` owns Task/Goal/Run transitions. A module is
 trusted compiled Go code, not a downloadable script selected by JSON.
 
 ![Default local assembly](architecture/local-services.png)
 
 ## Default local assembly
 
-Use `localapp.Open` for the normal local application. It needs no registry:
+Use `localapp.Open` from `app/local` for the normal local application. It needs no registry:
 
 ```go
+import localapp "github.com/D1-2004/eino-employee-loop/app/local"
 profile := localapp.DefaultProfile(localapp.Identity{
     Workspace: "local-workspace", Tenant: "local-tenant",
     Employee: "local-employee", Owner: "local-owner", Scenes: []string{"local-scene"},
@@ -97,10 +103,27 @@ if err != nil { return err }
 profile.Modules.Storage = ref
 runtime, err := entry.Open(ctx, entry.Options{
     Directory: privateDir, Profile: profile, Models: models, Modules: registry,
+    BuildServices: localservices.NewLocal,
+    PrepareTools: einotools.Build,
 })
 ```
 
-Imports are `github.com/D1-2004/eino-employee-loop/{entry,storage,storage/memory}`.
+Imports (explicit aliases distinguish the two service adapters):
+
+```go
+import (
+    entry "github.com/D1-2004/eino-employee-loop/modules/entry"
+    storage "github.com/D1-2004/eino-employee-loop/ports/storage"
+    memory "github.com/D1-2004/eino-employee-loop/adapters/storage/memory"
+    localservices "github.com/D1-2004/eino-employee-loop/adapters/services/local"
+    einotools "github.com/D1-2004/eino-employee-loop/adapters/services/eino"
+)
+```
+M7 imports no adapters. `app/local` supplies `DefaultStorage`, `BuildServices`
+and `PrepareTools` for ordinary use. Advanced `entry.Open` callers provide these
+assembly functions; the example selects storage through its registry instead of
+`DefaultStorage`.
+
 Memory is process-local reference storage. It does not provide crash durability
 or coordination across independent processes. The default SQLite/Markdown adapter
 continues to provide the persistent local runtime.
@@ -130,8 +153,8 @@ Goal revision and Run ID, revalidates the input, then applies the proposal. An
 execution summary or provider exit alone is not evidence of business completion.
 Trusted factories must supply their actual business review policy.
 
-The builtin Owner uses independent native agents. Custom roles can be assembled
-with `ownerloop.Options.RolePolicies` inside an exact-version Owner factory;
+The builtin Owner in `modules/owner` uses independent native agents. Custom roles can be assembled
+with `owner.Options.RolePolicies` inside an exact-version Owner factory;
 selected policy text is frozen in the observation. A profile role must be
 registered by that selected Host implementation. No arbitrary role is silently
 mapped to an existing role.

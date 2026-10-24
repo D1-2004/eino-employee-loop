@@ -1,6 +1,6 @@
 # State and artifact ports
 
-Business modules depend on `storage.State` and `storage.Artifacts`, not a database
+Business modules import `ports/storage` and depend on `storage.State` and `storage.Artifacts`, not a database
 driver. The default host still uses SQLite as authority and Markdown as a
 human-readable projection; this change introduces no migration or dual writes.
 
@@ -21,8 +21,8 @@ create-only. Missing reads use `fs.ErrNotExist`; changed content uses
 `ErrArtifactConflict`. They do not participate in State transactions, so callers
 must journal projection intent in State and reconcile artifacts idempotently.
 
-`storage/sqlite` and `storage/markdown` preserve their old exported names as
-aliases. SQLite keeps `Transaction(func(*Tx) error)` and `Checkpoints` for source
+`adapters/storage/sqlite` and `adapters/storage/markdown` retain their exported adapter types. This does not preserve old import
+paths. SQLite keeps `Transaction(func(*Tx) error)` and `Checkpoints` for source
 compatibility; business modules use the neutral `Transact`/`CheckpointStore` API.
-`storage/memory` is an independent process-local reference adapter, intended for
+`adapters/storage/memory` is an independent process-local reference adapter, intended for
 conformance and ephemeral embedding, not crash recovery or cross-process use.

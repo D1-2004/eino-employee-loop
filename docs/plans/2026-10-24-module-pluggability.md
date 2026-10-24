@@ -113,3 +113,67 @@ Follow-up results:
   adapter, actual DWS delivery, private dependency, server upgrade or deployment
   is claimed. Read-only convenience services do not emulate unsupported upload,
   expiring network access, rich cards or effect tools.
+
+## Architecture-aligned source layout
+
+Status: implemented and locally accepted after user rejected the accumulated root packages. Baseline
+94c6675. This change must match the seven business modules in source ownership,
+not merely move the same monolithic Host behind new directory names.
+
+Target:
+- modules/chat (M1): admissions, chat tools and foreground continuation.
+- modules/task (M2): Task/Goal/Run state, Review and authorized scheduling.
+- modules/context (M3): source views and audience/revocation gates.
+- modules/owner (M4): independent Owner roles and evidence projections.
+- modules/execution (M5): atomic provider protocol and native local execution.
+- modules/interaction (M6): message composition, delivery, packaging and outbox.
+- modules/entry (M7): public lifecycle, module selection and orchestration only.
+- kernel: generic Eino runtime, decision/schema helpers, model journal and sessions.
+- ports: external capability/storage contracts; adapters: concrete implementations.
+- app/local: the default SQLite/Markdown application composition; cmd/el: one CLI.
+- examples/dingtalk: the separate lightweight DingTalk example, no competing cmd.
+- contract: small shared identity/profile/input values, with no business services.
+
+Existing Go package imports change; pinned consumers retain their old versions.
+No old-path forwarding packages are added and no internal server dependency is
+upgraded. Persisted JSON, receipt identity, native checkpoint versions and journal
+keys must remain unchanged. Historical docs/reviews become an explicit archive,
+while README/ARCHITECTURE and current guides show one supported reading path.
+
+Acceptance: all seven module implementations own their prompts/tools/algorithms;
+Entry contains no business tool schemas or policies. Kernel cannot import business
+modules; business modules cannot import Entry/app/concrete adapters. Verify package
+imports, builds and current contract tests, native interruption/restart, unknown
+submit/delivery, default CLI six-Owner file delivery and replay. Also reopen a
+pre-refactor state directory with the new binary. No IM/network business writes,
+new service behavior, production deployment or performance-only optimization.
+
+Physical layout results:
+- Seven business packages now own their implementations. M1 owns input/chat
+  tools; M2 owns Review/timing/progression; M5 owns request and native execution
+  protocol; M6 owns expression/package/Outbox. M7 contains only assembly/lifetime
+  and delegates diagnostics/recovery to module APIs.
+- Concrete storage/services/native-catalog choices moved into app/local with
+  adapters; M7 has no adapter imports. Go package names also match directories.
+- Architecture guards prevent kernel->business imports, business->entry/app/adapter
+  imports, M7 adapter imports and reintroduction of business schemas/private job
+  namespaces into Entry. They caught and removed a journal hash dependency on M3.
+- README and ARCHITECTURE show the same source tree; generic SDK guides and
+  historical reports are distinct. Previous reviews/evals live under docs/archive.
+
+Architecture-layout acceptance:
+- Full `go test ./...`, `go vet ./...`, and race suites across all business modules,
+  app/local, kernel, ports, concrete adapters and CLI passed at the new paths.
+- A pre-refactor 94c6675 binary created a genuine native interruption in SQLite;
+  the new binary resumed that exact target and delivered the answer, preserving
+  the original question delivery. Replaying did not add another message.
+- A completed pre-refactor six-Owner directory reopened and replayed unchanged.
+- Fresh seven-module CLI: one completed Task, one Run, six Owner documents, one
+  local-file result; repeated replay was unchanged. Scripted models were used,
+  with actual SQLite/Markdown, tools, checkpoints and file receipts.
+- Evidence: `/private/tmp/el-seven-modules-20261024-56dv01ie/summary.json` (old and
+  new binary SHA256 included). No business network writes or deployment.
+- Integration review found and fixed partial Reviewer-factory cleanup during
+  extraction; its regression now passes. No required verification is outstanding.
+- GitHub publication targets main through Git Data API; final handoff records
+  the verified commit. The server remains pinned to its earlier library version.

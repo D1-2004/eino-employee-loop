@@ -5,7 +5,8 @@ default Context policy admits only evidence with an identical source and target
 scope, for Front, Execution and Maintenance alike. Scene names do not encode
 whether a conversation is private or a group.
 
-A host may inject `contextbuilder.AudiencePolicy` through
+The implementation lives in `modules/context` (Go name `context`).
+A host may inject `context.AudiencePolicy` through
 `WithAudiencePolicy`. It receives the exact source scope, target scope and view.
 The host must explicitly authorize each cross-scene transfer. Workspace, tenant,
 employee and requester boundaries remain mandatory even with a custom policy.
