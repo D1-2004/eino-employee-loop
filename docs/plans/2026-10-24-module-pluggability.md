@@ -551,3 +551,49 @@ Owner/Task reopen, result expression/package and actual read_task now proves no
 fragment enters non-system messages; old frame bytes and human data are preserved.
 Affected package race, full tests and full vet pass after this fix. These are
 mechanism results, still not a true-model quality acceptance or online parity.
+
+
+## 2026-10-26: whole TaskManager Provider and isolated local delivery
+
+User requires the existing platform TaskManager to provide the complete M2 module,
+with a single-owner Eino option and all other users preserved on embedded. They
+explicitly allow deferring shared rollout when risk is high and require local
+deployment/verification plus a one-command launcher. The public prompt mechanism
+is already on main390ef03; its actual Host-aligned quality acceptance remains
+pending. This next slice must be another concrete reviewed GitHub commit.
+
+Design: ../specs/task-manager-provider.md. Reuse existing module factories; fully
+externalize command/query/advancement/recovery and intent ownership, not only
+storage or CRUD. External host-driven mode bypasses every local M2/result/Outbox
+writer. Default local remains the reference standalone. Preserve legacy Profile
+bytes and original Provider/family recovery. No general registry/Job platform.
+
+Risk boundary: the existing platform uses an older pinned native API and only
+freezes an engine string at part of its path. A rushed dependency/selector change
+can move admitted or other-user work. Therefore no shared preproduction switch,
+rollout or platform dependency upgrade in this extraction; first prove the entire
+Provider behavior and owner-only local environment. Private adapter remains a
+reviewable follow-up, not an unverified claim of compatibility.
+
+Implemented the complete HostDriven binding through the existing ModuleRegistry.
+Independent Host acceptance covers native dispatch, original opaque Task/Run and
+receipt, wait/answer/control, timing/recovery, actual Host-file Outbox and native
+question resume. SDK business namespaces/events and local business factory calls
+remain zero. Lost-response recovery across Entry reopen reuses the same original
+operation; unknown, bad hashes and cross-scope proofs never submit another effect.
+Original Provider bindings reject reinterpretation. Default Profile encoding is
+unchanged when no TaskManager is selected.
+
+Independent review found and fixed a permission window between Host lookup and
+Outbox enqueue, a diagnostic-query post-authorization gap, and local CLI preflight
+accepting modules this application could not register. Scope/source/delivery
+revocation probes now show zero enqueue; denied diagnostic results return no
+data. Full tests/vet and affected-package race pass after these fixes.
+
+The one-command launcher builds the complete local application once, checks its
+configuration without opening state or models, then execs that same binary.
+Development reports dirty build provenance; acceptance requires actual clean VCS
+identity. A controlled-model local replay completed its Task and actual file
+delivery, and all six Owner documents were read back. These results do not claim
+real-model quality, DingTalk delivery, a deployed platform adapter or the separate
+>50-case/95% gate. The updated architecture diagram records this boundary.

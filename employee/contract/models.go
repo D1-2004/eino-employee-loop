@@ -41,6 +41,10 @@ func modelRole(role string) bool {
 // Snapshot owns all mutable profile collections; a caller can safely reuse its
 // source buffers for the next revision after admission.
 func (p Profile) Snapshot() Profile {
+	if p.Modules.TaskManager != nil {
+		ref := *p.Modules.TaskManager
+		p.Modules.TaskManager = &ref
+	}
 	if p.PromptBundle != nil {
 		bundle := *p.PromptBundle
 		bundle.Roles = make(map[string]string, len(p.PromptBundle.Roles))

@@ -27,7 +27,7 @@ func (s *standalone) authorizeHost(ctx context.Context, c host.Call) error {
 		return work.ErrScope
 	}
 	if c.TaskID != "" {
-		task, err := s.work.Get(ctx, c.Scope, c.TaskID)
+		task, err := s.authority.Get(ctx, c.Scope, c.TaskID)
 		if err != nil {
 			return err
 		}
@@ -64,8 +64,11 @@ func (s *standalone) localServices() (host.Services, error) {
 	}
 	return s.opts.BuildServices(host.Bindings{Authorize: s.authorizeHost, Config: func(ctx context.Context, c host.Call) (host.ConfigSnapshot, error) {
 		p := s.opts.Profile
-		if c.TaskID != "" {
-			t, err := s.work.Get(ctx, c.Scope, c.TaskID)
+		if c.TaskID != "" && s.hostTasks != nil {
+			return host.ConfigSnapshot{}, host.ErrUnsupported
+		}
+		if c.TaskID != "" && s.hostTasks == nil {
+			t, err := s.authority.Get(ctx, c.Scope, c.TaskID)
 			if err != nil {
 				return host.ConfigSnapshot{}, err
 			}
@@ -74,7 +77,7 @@ func (s *standalone) localServices() (host.Services, error) {
 			}
 		}
 		return host.ConfigSnapshot{ID: p.ID, Version: p.Revision, Value: encode(p)}, nil
-	}, Sources: sourceReader{s.context}, Tasks: taskReader{s.work}, Artifacts: s.files, Overrides: s.opts.Services})
+	}, Sources: sourceReader{s.context}, Tasks: taskReader{s.authority}, Artifacts: s.files, Overrides: s.opts.Services})
 }
 func (s *standalone) HostServices() host.Services { return s.services }
 

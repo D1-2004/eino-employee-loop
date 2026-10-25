@@ -4,6 +4,29 @@
 
 这些命令操作本地回放输入和本地文件 outbox。没有创建 DWS 订阅，没有向钉钉发消息；`local-file/...` 回执只证明本地文件已写入并回读。真实 IM 通道需要独立实现 `interaction.Port` 的提交、查询和回执核验。
 
+## 一键启动完整本地服务
+
+先准备自己的 profile 和[已编译角色提示词](specs/prompt-composition.md)，保持私有文件在仓库外：
+
+```sh
+bash app/local/start-local.sh --profile /absolute/private/profile.json --prompt-bundle /absolute/private/compiled-prompts.json --state /absolute/private/local-state
+```
+
+脚本只构建一次完整 `app/local`，用同一二进制先做纯配置预检，再前台运行
+`serve`。预检不打开数据库、不创建状态目录，也不调用模型或 DWS；它验证 profile、
+角色包、原生扩展和模型绑定的声明。配置正文、Owner 和 Scene 不输出，只有来源和
+摘要。`serve` 会使用已配置模型处理持久队列；输入接入仍由应用显式装配。
+
+默认开发态允许未提交代码，来源如实记录实际 VCS revision、dirty 和二进制 SHA，
+不能当作验收版本。验收态使用 `--mode acceptance --revision <完整40位SHA>`，
+要求二进制确实来自该 clean 版本。启动成功后保留本次私有临时构建与来源 manifest，
+便于核对；预检失败清理自己创建的构建目录。脚本不管理其他进程或修改身份配置。
+默认时限为 `24h`，可用 `--timeout` 显式调整。
+
+此入口复用完整 SQLite、Markdown、Eino 和本地执行/交付装配；真实模型质量需要
+通过相同 eval 另行验收。单独的纯预检也可通过 `app/local -check-profile` 调用，
+它不会把可加载配置或可编译代码记作运行验收通过。
+
 ## 从同一 Entry 跑完整文件交付
 
 在仓库根目录执行；每次实验使用自己的状态目录，避免混入既有任务：

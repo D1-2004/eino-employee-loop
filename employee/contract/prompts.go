@@ -110,6 +110,9 @@ func (p Profile) ValidatePrompts() error {
 		}
 	}
 	roles := []string{"chat", "executor", "review", "task_attention", "greeting", "routine"}
+	if p.Modules.TaskManagerRef() != (ModuleRef{Name: "builtin", Version: "1"}) {
+		roles = []string{"chat"}
+	}
 	roles = append(roles, p.DeliveryLoops...)
 	for _, role := range p.OwnerLoops {
 		roles = append(roles, "owner_"+role)

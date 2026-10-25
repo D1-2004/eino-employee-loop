@@ -40,6 +40,8 @@ type standalone struct {
 	db              storage.State
 	files           storage.Artifacts
 	work            *work.Manager
+	authority       chat.Tasks
+	hostTasks       *TaskManagerBinding
 	context         ContextRuntime
 	delivery        *interaction.Manager
 	lease           workflow.Lease
@@ -54,6 +56,9 @@ type standalone struct {
 func openStandalone(ctx context.Context, opts Options) (result *standalone, err error) {
 	if opts.Models == nil {
 		return nil, errors.New("entry: model factory required")
+	}
+	if err = validateTaskManagerOptions(opts); err != nil {
+		return nil, err
 	}
 	if err = bindModules(opts); err != nil {
 		return nil, err
@@ -96,12 +101,12 @@ func openStandalone(ctx context.Context, opts Options) (result *standalone, err 
 		return nil, err
 	}
 	s.owner = hex.EncodeToString(nonce)
-	s.work, err = work.New(db)
+	err = s.openTaskManager(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if opts.Profile.Modules.Context.Effective() == builtinModule {
-		s.context, err = contextbuilder.New(db, files, s.work, func(c context.Context, scope work.Scope, _ contextbuilder.View) error { return s.authorize(c, scope) }, contextbuilder.WithAudiencePolicy(opts.AudiencePolicy))
+		s.context, err = contextbuilder.New(db, files, s.authority, func(c context.Context, scope work.Scope, _ contextbuilder.View) error { return s.authorize(c, scope) }, contextbuilder.WithAudiencePolicy(opts.AudiencePolicy))
 	} else {
 		opts.Modules.mu.RLock()
 		factory := opts.Modules.contexts[opts.Profile.Modules.Context]
@@ -133,80 +138,86 @@ func openStandalone(ctx context.Context, opts Options) (result *standalone, err 
 		}
 		return s.hostFunctions(c, in.Scope, in.Receipt, frame, check)
 	}}
-	if opts.Profile.Modules.Executor.Effective() == builtinModule {
-		if opts.DefaultExecutor == nil {
-			return nil, errors.New("entry: execution Provider must be assembled by the application")
+	if s.hostTasks != nil {
+		if err = s.bindHostDriven(ctx); err != nil {
+			return nil, err
 		}
-		s.executor, err = opts.DefaultExecutor(ctx, s.executorDependencies())
 	} else {
-		opts.Modules.mu.RLock()
-		factory := opts.Modules.executors[opts.Profile.Modules.Executor]
-		opts.Modules.mu.RUnlock()
-		s.executor, err = factory(ctx, s.executorDependencies())
-	}
-	if !nilModule(s.executor) {
-		s.own(s.executor)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if nilModule(s.executor) {
-		return nil, errors.New("entry: executor factory returned nil")
-	}
-	if opts.Profile.Modules.Scheduler.Effective() == builtinModule {
-		s.scheduler, err = s.defaultScheduler()
-	} else {
-		opts.Modules.mu.RLock()
-		factory := opts.Modules.schedulers[opts.Profile.Modules.Scheduler]
-		opts.Modules.mu.RUnlock()
-		s.scheduler, err = factory(ctx, s.schedulerDependencies())
-	}
-	if !nilModule(s.scheduler) {
-		s.own(s.scheduler)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if nilModule(s.scheduler) {
-		return nil, errors.New("entry: scheduler factory returned nil")
-	}
-	s.bridge = &execution.Bridge{State: db, Port: s.executor, Context: s.context, Authorize: s.authorize, Tasks: s.work}
-	port := opts.Delivery
-	if nilModule(port) {
-		if opts.DefaultDelivery == nil {
-			return nil, errors.New("entry: delivery Provider must be assembled by the application")
+		if opts.Profile.Modules.Executor.Effective() == builtinModule {
+			if opts.DefaultExecutor == nil {
+				return nil, errors.New("entry: execution Provider must be assembled by the application")
+			}
+			s.executor, err = opts.DefaultExecutor(ctx, s.executorDependencies())
+		} else {
+			opts.Modules.mu.RLock()
+			factory := opts.Modules.executors[opts.Profile.Modules.Executor]
+			opts.Modules.mu.RUnlock()
+			s.executor, err = factory(ctx, s.executorDependencies())
 		}
-		port, err = opts.DefaultDelivery(ctx, DeliveryDependencies{Artifacts: files})
-		if !nilModule(port) {
-			s.own(port)
+		if !nilModule(s.executor) {
+			s.own(s.executor)
 		}
 		if err != nil {
 			return nil, err
 		}
+		if nilModule(s.executor) {
+			return nil, errors.New("entry: executor factory returned nil")
+		}
+		if opts.Profile.Modules.Scheduler.Effective() == builtinModule {
+			s.scheduler, err = s.defaultScheduler()
+		} else {
+			opts.Modules.mu.RLock()
+			factory := opts.Modules.schedulers[opts.Profile.Modules.Scheduler]
+			opts.Modules.mu.RUnlock()
+			s.scheduler, err = factory(ctx, s.schedulerDependencies())
+		}
+		if !nilModule(s.scheduler) {
+			s.own(s.scheduler)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if nilModule(s.scheduler) {
+			return nil, errors.New("entry: scheduler factory returned nil")
+		}
+		s.bridge = &execution.Bridge{State: db, Port: s.executor, Context: s.context, Authorize: s.authorize, Tasks: s.work}
+		port := opts.Delivery
 		if nilModule(port) {
-			return nil, errors.New("entry: delivery factory returned nil")
+			if opts.DefaultDelivery == nil {
+				return nil, errors.New("entry: delivery Provider must be assembled by the application")
+			}
+			port, err = opts.DefaultDelivery(ctx, DeliveryDependencies{Artifacts: files})
+			if !nilModule(port) {
+				s.own(port)
+			}
+			if err != nil {
+				return nil, err
+			}
+			if nilModule(port) {
+				return nil, errors.New("entry: delivery factory returned nil")
+			}
 		}
-	}
-	s.delivery = &interaction.Manager{DB: db, Port: port, Owner: s.owner, Authorize: s.authorize, PrepareIntent: opts.ResolveDelivery}
-	s.interaction, err = interaction.NewService(interaction.Options{State: db, Profile: opts.Profile, Tasks: s.work, Context: s.context, Artifacts: files, Outbox: s.delivery, Runner: s.runner, Authorize: s.authorize, AuthorizeDelivery: opts.AuthorizeDelivery, QuestionCheck: func(c context.Context, in interaction.Intent) error { return s.chat.ValidateQuestion(c, in) }})
-	if err != nil {
-		return nil, err
-	}
-	s.chat, err = chat.New(chat.Options{State: db, Profile: opts.Profile, Context: s.context, Tasks: s.work, Scheduler: s.scheduler, Outbox: s.delivery, Runner: s.runner, Authorize: s.authorize, EnqueueMessage: s.interaction.EnqueueMessage, CancelExecution: func(id string) {
-		if running, ok := s.executor.(execution.Interrupter); ok {
-			running.Interrupt(id)
+		s.delivery = &interaction.Manager{DB: db, Port: port, Owner: s.owner, Authorize: s.authorize, PrepareIntent: opts.ResolveDelivery}
+		s.interaction, err = interaction.NewService(interaction.Options{State: db, Profile: opts.Profile, Tasks: s.work, Context: s.context, Artifacts: files, Outbox: s.delivery, Runner: s.runner, Authorize: s.authorize, AuthorizeDelivery: opts.AuthorizeDelivery, QuestionCheck: func(c context.Context, in interaction.Intent) error { return s.chat.ValidateQuestion(c, in) }})
+		if err != nil {
+			return nil, err
 		}
-	}})
-	if err != nil {
-		return nil, err
-	}
-	s.tasksWorker, err = taskmodule.New(taskmodule.Options{State: db, Artifacts: files, Profile: opts.Profile, Tasks: s.work, Context: s.context, Executor: s.executor, Bridge: s.bridge, Runner: s.runner, Authorize: s.authorize, Scheduler: s.scheduler, Now: s.now, ReviewFactory: s.reviewerFor})
-	if err != nil {
-		return nil, err
-	}
-	s.ownerWorker, err = s.ownerFor(ctx, opts.Profile)
-	if err != nil {
-		return nil, err
+		s.chat, err = chat.New(chat.Options{State: db, Profile: opts.Profile, Context: s.context, Tasks: s.work, Scheduler: s.scheduler, Outbox: s.delivery, Runner: s.runner, Authorize: s.authorize, EnqueueMessage: s.interaction.EnqueueMessage, CancelExecution: func(id string) {
+			if running, ok := s.executor.(execution.Interrupter); ok {
+				running.Interrupt(id)
+			}
+		}})
+		if err != nil {
+			return nil, err
+		}
+		s.tasksWorker, err = taskmodule.New(taskmodule.Options{State: db, Artifacts: files, Profile: opts.Profile, Tasks: s.work, Context: s.context, Executor: s.executor, Bridge: s.bridge, Runner: s.runner, Authorize: s.authorize, Scheduler: s.scheduler, Now: s.now, ReviewFactory: s.reviewerFor})
+		if err != nil {
+			return nil, err
+		}
+		s.ownerWorker, err = s.ownerFor(ctx, opts.Profile)
+		if err != nil {
+			return nil, err
+		}
 	}
 	binding := struct {
 		Backend, ProfileID string
@@ -295,9 +306,12 @@ func (s *standalone) Tasks(ctx context.Context, scope work.Scope) ([]work.Task, 
 	if err := s.authorize(ctx, scope); err != nil {
 		return nil, err
 	}
-	return s.work.List(ctx, scope)
+	return s.authority.List(ctx, scope)
 }
 func (s *standalone) Deliveries(ctx context.Context, scope work.Scope) ([]interaction.Record, error) {
+	if s.hostTasks != nil {
+		return s.hostDeliveries(ctx, scope)
+	}
 	return s.delivery.List(ctx, scope)
 }
 func (s *standalone) steps() []func(context.Context) (bool, error) {
@@ -309,6 +323,9 @@ func (s *standalone) steps() []func(context.Context) (bool, error) {
 		}
 		seen[scene] = true
 		steps = append(steps, func(ctx context.Context) (bool, error) { return s.chat.StepScene(ctx, scene) })
+	}
+	if s.hostTasks != nil {
+		return steps
 	}
 	return append(steps, s.tasksWorker.Step, s.interaction.Step, s.tasksWorker.Timing, s.ownerOnce)
 }

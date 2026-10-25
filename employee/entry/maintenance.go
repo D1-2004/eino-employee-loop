@@ -80,11 +80,40 @@ func (s *standalone) ownerWorkerKeys() []string {
 	return keys
 }
 func (s *standalone) Schedule(ctx context.Context, scope work.Scope, in work.Schedule) (work.Schedule, error) {
+	if s.hostTasks != nil {
+		if err := s.authorize(ctx, scope); err != nil {
+			return work.Schedule{}, err
+		}
+		if err := s.hostTasksGuardSource(ctx, scope, in.Source); err != nil {
+			return work.Schedule{}, err
+		}
+		return (hostTiming{s}).Schedule(ctx, scope, in)
+	}
 	return s.tasksWorker.Schedule(ctx, scope, in)
 }
 func (s *standalone) Signal(ctx context.Context, in Input, condition string) error {
 	if in.Origin == "" {
 		return work.ErrScope
+	}
+	if s.hostTasks != nil {
+		scope := s.opts.Profile.Scope(in.Scene)
+		if err := s.authorize(ctx, scope); err != nil {
+			return err
+		}
+		if in.Actor != scope.Requester || in.ID == "" || in.Text == "" {
+			return work.ErrScope
+		}
+		if _, err := s.context.Admit(ctx, scope, contextbuilder.Source{ID: in.ID, Actor: in.Actor, Text: in.Text}); err != nil {
+			return err
+		}
+		source := work.Source{Receipt: in.ID, Actor: in.Actor, Text: in.Text}
+		if err := s.hostTasksGuardSource(ctx, scope, source); err != nil {
+			return err
+		}
+		if err := s.hostTasks.Timing.Signal(ctx, scope, work.Signal{ID: in.ID, Condition: condition, Source: source}); err != nil {
+			return err
+		}
+		return s.hostTasksGuardSource(ctx, scope, source)
 	}
 	return s.tasksWorker.Signal(ctx, in, condition)
 }

@@ -122,13 +122,14 @@ type SchedulerFactory func(context.Context, SchedulerDependencies) (SchedulerRun
 type OwnerFactory func(context.Context, OwnerDependencies) (OwnerRuntime, error)
 
 type ModuleRegistry struct {
-	mu         sync.RWMutex
-	storage    map[ModuleRef]StorageFactory
-	contexts   map[ModuleRef]ContextFactory
-	executors  map[ModuleRef]ExecutorFactory
-	reviews    map[ModuleRef]ReviewFactory
-	schedulers map[ModuleRef]SchedulerFactory
-	owners     map[ModuleRef]OwnerFactory
+	mu           sync.RWMutex
+	storage      map[ModuleRef]StorageFactory
+	contexts     map[ModuleRef]ContextFactory
+	executors    map[ModuleRef]ExecutorFactory
+	reviews      map[ModuleRef]ReviewFactory
+	schedulers   map[ModuleRef]SchedulerFactory
+	owners       map[ModuleRef]OwnerFactory
+	taskManagers map[ModuleRef]TaskManagerFactory
 }
 
 func NewModuleRegistry() *ModuleRegistry { return &ModuleRegistry{} }
@@ -183,6 +184,12 @@ func (r *ModuleRegistry) RegisterOwner(ref ModuleRef, f OwnerFactory) error {
 	}
 	return registerModule(&r.mu, &r.owners, ref, f)
 }
+func (r *ModuleRegistry) RegisterTaskManager(ref ModuleRef, f TaskManagerFactory) error {
+	if r == nil || f == nil {
+		return errors.New("entry: registry/factory required")
+	}
+	return registerModule(&r.mu, &r.taskManagers, ref, f)
+}
 func (r *ModuleRegistry) validate(m ModuleSelection) error {
 	if r != nil {
 		r.mu.RLock()
@@ -196,6 +203,7 @@ func (r *ModuleRegistry) validate(m ModuleSelection) error {
 		{"storage", m.Storage, r != nil && r.storage[m.Storage] != nil}, {"context", m.Context, r != nil && r.contexts[m.Context] != nil},
 		{"executor", m.Executor, r != nil && r.executors[m.Executor] != nil}, {"review", m.Review, r != nil && r.reviews[m.Review] != nil},
 		{"scheduler", m.Scheduler, r != nil && r.schedulers[m.Scheduler] != nil}, {"owner", m.Owner, r != nil && r.owners[m.Owner] != nil},
+		{"TaskManager", m.TaskManagerRef(), r != nil && r.taskManagers[m.TaskManagerRef()] != nil},
 	} {
 		ref := v.ref.Effective()
 		if !ref.Valid() || ref != builtinModule && !v.exists {
@@ -204,9 +212,12 @@ func (r *ModuleRegistry) validate(m ModuleSelection) error {
 	}
 	return nil
 }
-func profileSnapshot(p Profile) Profile { return p.Snapshot() }
 
-type taskReader struct{ manager *work.Manager }
+// Validate checks exact compiled selections without opening factories or state.
+func (r *ModuleRegistry) Validate(m ModuleSelection) error { return r.validate(m) }
+func profileSnapshot(p Profile) Profile                    { return p.Snapshot() }
+
+type taskReader struct{ manager contextbuilder.Tasks }
 
 func (r taskReader) Get(ctx context.Context, scope work.Scope, id string) (work.Task, error) {
 	return r.manager.Get(ctx, scope, id)
@@ -215,7 +226,7 @@ func (r taskReader) List(ctx context.Context, scope work.Scope) ([]work.Task, er
 	return r.manager.List(ctx, scope)
 }
 func (s *standalone) contextDependencies() ContextDependencies {
-	return ContextDependencies{State: s.db, Artifacts: s.files, Tasks: taskReader{s.work}, Authorize: s.authorize, Audience: s.opts.AudiencePolicy}
+	return ContextDependencies{State: s.db, Artifacts: s.files, Tasks: taskReader{s.authority}, Authorize: s.authorize, Audience: s.opts.AudiencePolicy}
 }
 func (s *standalone) executorDependencies() ExecutorDependencies {
 	return ExecutorDependencies{State: s.db, Owner: s.owner, Authorize: s.authorize, Artifacts: s.files, Tasks: taskReader{s.work}, Context: s.context, Runner: s.runner}

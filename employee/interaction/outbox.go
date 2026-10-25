@@ -31,6 +31,15 @@ type Record struct {
 	State, Owner, LastError string
 	Receipt                 *Receipt
 }
+
+// IntentSink admits an immutable command to the owning Outbox, not a transport.
+type IntentSink interface {
+	Enqueue(context.Context, Intent) (Record, error)
+}
+
+// SameIntentCommand permits only the same resolver-filled fields as Manager.
+func SameIntentCommand(prior, command Intent) bool { return replayMatches(prior, command) }
+
 type Manager struct {
 	DB            storage.State
 	Port          Port

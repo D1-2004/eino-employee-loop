@@ -32,13 +32,21 @@ type Scheduler interface {
 	Attention(context.Context, contract.Scope) ([]work.Attention, error)
 	ResolveAttention(context.Context, contract.Scope, string, string, work.Source) error
 }
+
+type Tasks interface {
+	Get(context.Context, work.Scope, string) (work.Task, error)
+	List(context.Context, work.Scope) ([]work.Task, error)
+	DispatchWithSources(context.Context, work.Scope, work.Source, string, work.Definition, []work.Source) (work.Receipt, error)
+	Control(context.Context, work.Scope, work.Source, string, string, string, string) (work.Receipt, error)
+	Answer(context.Context, work.Scope, work.Source, string, string, string, uint64) (work.Receipt, error)
+}
 type Options struct {
 	State           storage.State
 	Profile         contract.Profile
 	Context         Context
-	Tasks           *work.Manager
+	Tasks           Tasks
 	Scheduler       Scheduler
-	Outbox          *interaction.Manager
+	Outbox          interaction.IntentSink
 	Runner          kernel.Agent
 	Authorize       func(context.Context, contract.Scope) error
 	EnqueueMessage  func(context.Context, contract.Profile, contract.Input, string, string, string, string) (any, error)
@@ -48,9 +56,9 @@ type Service struct {
 	db              storage.State
 	profile         contract.Profile
 	context         Context
-	work            *work.Manager
+	work            Tasks
 	scheduler       Scheduler
-	delivery        *interaction.Manager
+	delivery        interaction.IntentSink
 	runner          kernel.Agent
 	authorize       func(context.Context, contract.Scope) error
 	enqueueMessage  func(context.Context, contract.Profile, contract.Input, string, string, string, string) (any, error)
@@ -91,6 +99,14 @@ func New(opts Options) (*Service, error) {
 	return &Service{sceneLocks: locks, db: opts.State, profile: profile, context: opts.Context, work: opts.Tasks, scheduler: opts.Scheduler, delivery: opts.Outbox, runner: opts.Runner, authorize: opts.Authorize, enqueueMessage: opts.EnqueueMessage, cancelExecution: opts.CancelExecution}, nil
 }
 func encode(v any) json.RawMessage { raw, _ := json.Marshal(v); return raw }
+
+func (s *Service) checkAuthority(p contract.Profile) error {
+	old, current := p.Modules.TaskManagerRef(), s.profile.Modules.TaskManagerRef()
+	if old != current {
+		return errors.New("chat: original TaskManager " + old.Name + "@" + old.Version + " is not the selected authority")
+	}
+	return nil
+}
 func settlement(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 }
@@ -151,7 +167,7 @@ func (s *Service) Admissions(ctx context.Context) ([]Admitted, error) {
 		if err = json.Unmarshal(d.Body, &j); err != nil {
 			return nil, err
 		}
-		if err = s.authorize(ctx, j.Profile.Scope(j.Input.Scene)); err != nil {
+		if err = s.authorizeProfile(ctx, j.Profile, j.Input.Scene); err != nil {
 			return nil, err
 		}
 		out = append(out, Admitted{Input: j.Input, Profile: j.Profile})
@@ -172,7 +188,7 @@ func (s *Service) Retry(ctx context.Context, id string) (bool, error) {
 	if err = json.Unmarshal(d.Body, &j); err != nil {
 		return true, err
 	}
-	if err = s.authorize(ctx, j.Profile.Scope(j.Input.Scene)); err != nil {
+	if err = s.authorizeProfile(ctx, j.Profile, j.Input.Scene); err != nil {
 		return true, err
 	}
 	scene := j.Input.Scene
@@ -194,7 +210,7 @@ func (s *Service) Retry(ctx context.Context, id string) (bool, error) {
 	if j.Input.Scene != scene {
 		return true, work.ErrScope
 	}
-	if err = s.authorize(ctx, j.Profile.Scope(j.Input.Scene)); err != nil {
+	if err = s.authorizeProfile(ctx, j.Profile, j.Input.Scene); err != nil {
 		return true, err
 	}
 	if j.State != "failed" {
@@ -309,4 +325,11 @@ func (s *Service) sceneLock(scene string) (*sync.Mutex, error) {
 		return nil, work.ErrScope
 	}
 	return lock, nil
+}
+
+func (s *Service) authorizeProfile(ctx context.Context, p contract.Profile, scene string) error {
+	if err := s.checkAuthority(p); err != nil {
+		return err
+	}
+	return s.authorize(ctx, p.Scope(scene))
 }

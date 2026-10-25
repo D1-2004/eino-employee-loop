@@ -40,6 +40,10 @@ func bindModules(opts Options) error {
 			return err
 		}
 		if string(encode(old)) != string(encode(desired)) {
+			if old.Modules.TaskManagerRef() != desired.Modules.TaskManagerRef() {
+				ref := old.Modules.TaskManagerRef()
+				return fmt.Errorf("entry: directory retains original TaskManager %s@%s; explicit migration required", ref.Name, ref.Version)
+			}
 			return errors.New("entry: directory module binding changed; explicit migration required")
 		}
 		return nil

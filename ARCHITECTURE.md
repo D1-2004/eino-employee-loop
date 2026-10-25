@@ -62,6 +62,30 @@ Task `state` is the single business aggregate. A Review proposes a transition;
 only a validated state command commits it. Execution exit, Goal completion,
 provider acceptance and visible delivery are distinct facts.
 
+## Whole TaskManager replacement
+
+![Default local and Host-owned TaskManager assembly](docs/architecture/task-manager-assembly.png)
+
+The default reference keeps its complete local Task/Run/Review/timing and Outbox
+authority. A Host with an existing TaskManager can instead register one exact
+`TaskManagerFactory` in the existing ModuleRegistry and select it through
+`Profile.Modules.TaskManager`. Its `HostDriven` binding provides authorized
+queries, commands with original-operation lookup, timing, recovery, message
+composition and the original Outbox intent sink.
+
+This selection replaces the whole authority. Entry does not construct or run the
+local Task Manager, execution Bridge, Task Worker, Review/Timing workers or task
+result projector in external mode. Native Chat still uses its original Eino
+tools and source/permission checks. The Host returns its real task identities
+and effect receipts; the SDK does not mirror those tasks into another business
+database. Default local operation remains independently runnable.
+
+The selected revision is part of the Core binding. Reopening an existing state
+directory with a different Provider rejects; missing original factories do not
+fall back to the latest implementation. Adapting a live platform and selecting
+test users are separate changes with their own acceptance. See the
+[TaskManager Provider contract](docs/specs/task-manager-provider.md).
+
 ## Framework support
 
 - `employee/kernel`: shared Agent invocation and native tool binding.

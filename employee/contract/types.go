@@ -43,9 +43,22 @@ func (r ModuleRef) Effective() ModuleRef {
 }
 func (r ModuleRef) Valid() bool { return (PluginRef{r.Name, r.Version}).Valid() }
 
-type ModuleSelection struct{ Storage, Context, Executor, Review, Scheduler, Owner ModuleRef }
+type ModuleSelection struct {
+	Storage, Context, Executor, Review, Scheduler, Owner ModuleRef
+	TaskManager                                          *ModuleRef `json:",omitempty"`
+}
+
+func (m ModuleSelection) TaskManagerRef() ModuleRef {
+	if m.TaskManager == nil {
+		return ModuleRef{Name: "builtin", Version: "1"}
+	}
+	return *m.TaskManager
+}
 
 func (m ModuleSelection) Core() ModuleSelection {
+	if m.TaskManagerRef() == (ModuleRef{Name: "builtin", Version: "1"}) {
+		m.TaskManager = nil
+	}
 	m.Review = ModuleRef{}
 	m.Owner = ModuleRef{}
 	m.Storage = m.Storage.Effective()
@@ -77,6 +90,12 @@ func (p Profile) Key() string {
 	return Digest(raw)
 }
 func (p Profile) Validate() error {
+	if !p.Modules.TaskManagerRef().Valid() {
+		return errors.New("contract: exact TaskManager module required")
+	}
+	if p.Modules.TaskManagerRef() != (ModuleRef{Name: "builtin", Version: "1"}) && p.Backend != "standalone" {
+		return errors.New("contract: TaskManager module requires the standalone entry; complete backends own their authority")
+	}
 	if err := p.ValidatePrompts(); err != nil {
 		return err
 	}

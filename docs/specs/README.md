@@ -17,6 +17,7 @@ and the [assembly guide](../module-composition.md) for Go usage.
 | [Host alignment and state ownership](host-alignment.md) | Business responsibilities, integration choices and explicit parity gaps |
 | [Local runtime](local-el-runtime.md) | M7 lifecycle and the M1–M6 collaboration |
 | [Module composition](module-composition.md) | M7 exact-version assembly and resource lifetime |
+| [Whole TaskManager Provider](task-manager-provider.md) | Host-owned Task/Run/Outbox authority and original-operation recovery |
 | [Audience isolation](audience-isolation.md) | M3 Context and M4 Owner evidence |
 | [Executor](executor-port.md) | M5 atomic physical Run boundary |
 | [Delivery envelopes](delivery-envelope.md) | M6 Outbox and provider receipt stages |

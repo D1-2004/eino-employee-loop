@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="980" viewBox="0 0 1200 980">
+<style>text{font-family:Helvetica,Arial,"PingFang SC","Microsoft YaHei",sans-serif;fill:#111827}.title{font-size:28px;font-weight:600}.head{font-size:19px;font-weight:600}.body{font-size:16px}.sub{font-size:14px;fill:#6b7280}</style>
+<defs><marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#2563eb"/></marker></defs>
+<rect width="1200" height="980" fill="#ffffff"/>
+<text x="48" y="55" class="title" text-anchor="start">Employee SDK · 一份任务权威</text>
+<text x="48" y="85" class="sub" text-anchor="start">app 装配具体 Provider；employee 保留业务合同与 Eino 原生循环；evals 走相同入口</text>
+<rect x="48" y="115" width="1104" height="105" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+<text x="72" y="148" class="head" text-anchor="start">app / local · app / eval · server</text>
+<text x="72" y="178" class="body" text-anchor="start">身份与场景 / 配置与提示词 / 模型与 effort / 存储 / 执行与渠道 Provider</text>
+<text x="72" y="203" class="sub" text-anchor="start">本地状态独立；真实身份、私有模板和凭据由宿主显式提供</text>
+<path d="M600 220 V262" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="48" y="264" width="1104" height="220" rx="10" fill="#faf5ff" stroke="#e9d5ff" stroke-width="1.5" stroke-dasharray="7 5"/>
+<text x="72" y="295" class="head" text-anchor="start">employee / entry · 校验与生命周期</text>
+<rect x="72" y="320" width="310" height="94" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="92" y="354" class="head" text-anchor="start">Chat / Interaction</text>
+<text x="92" y="386" class="sub" text-anchor="start">原始输入 → 原生工具与命令</text>
+<rect x="414" y="320" width="350" height="94" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="434" y="354" class="head" text-anchor="start">Context / Owner</text>
+<text x="434" y="386" class="sub" text-anchor="start">受权事实、冻结上下文与引用</text>
+<rect x="796" y="320" width="332" height="94" rx="10" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="816" y="354" class="head" text-anchor="start">Eino kernel</text>
+<text x="816" y="386" class="sub" text-anchor="start">Runner / 工具 / checkpoint</text>
+<text x="72" y="454" class="sub" text-anchor="start">模型决定必须经过权限、来源、预算与副作用校验；checkpoint 不等于外部效果成功</text>
+<path d="M600 484 V524" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="236" y="526" width="728" height="110" rx="10" fill="#fff7ed" stroke="#fed7aa" stroke-width="1.5"/>
+<text x="600" y="562" class="head" text-anchor="middle">TaskManagerBinding · exact Provider revision</text>
+<text x="600" y="592" class="body" text-anchor="middle">查询 / 命令 / timing / recovery / 原操作 lookup / Outbox intent</text>
+<text x="600" y="618" class="sub" text-anchor="middle">默认本地与 HostDriven 二选一；同一状态目录绑定原 Provider</text>
+<path d="M460 636 V666 H316 V700" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+<path d="M740 636 V666 H884 V700" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="48" y="702" width="536" height="172" rx="10" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5"/>
+<text x="72" y="738" class="head" text-anchor="start">默认 local · SDK 持有任务</text>
+<text x="72" y="772" class="body" text-anchor="start">Task / Goal / Run / Wait + Worker / Review / Timing</text>
+<text x="72" y="802" class="body" text-anchor="start">SQLite + Markdown + 本地执行 + 本地文件 Outbox</text>
+<text x="72" y="836" class="sub" text-anchor="start">不需要远端服务；local 与 eval 复用完整 Entry</text>
+<rect x="616" y="702" width="536" height="172" rx="10" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+<text x="640" y="738" class="head" text-anchor="start">HostDriven · 宿主持有任务</text>
+<text x="640" y="772" class="body" text-anchor="start">适配宿主现有 TaskManager / Run / Outbox</text>
+<text x="640" y="802" class="body" text-anchor="start">SDK 只委托命令和查询，不启动本地业务 Worker</text>
+<text x="640" y="836" class="sub" text-anchor="start">Multica 适配与线上切换待独立验收，未部署</text>
+<text x="48" y="912" class="body" text-anchor="start">版本约束：新输入冻结配置；旧任务、恢复和回报保留原 family / Provider。</text>
+<text x="48" y="943" class="sub" text-anchor="start">接入与上线单独验收；试用仅限显式授权用户，其他用户保持 embedded。</text>
+</svg>

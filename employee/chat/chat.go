@@ -90,6 +90,9 @@ func (s *Service) stepSceneLocked(ctx context.Context, scene string) (bool, erro
 			continue
 		}
 		scope := j.Profile.Scope(j.Input.Scene)
+		if err = s.checkAuthority(j.Profile); err != nil {
+			return false, err
+		}
 		if err = s.authorize(ctx, scope); err != nil {
 			return false, err
 		}
@@ -350,7 +353,7 @@ func (s *Service) Resume(ctx context.Context, id string, answer contract.Input, 
 	if err = json.Unmarshal(d.Body, &j); err != nil {
 		return err
 	}
-	if err = s.authorize(ctx, j.Profile.Scope(j.Input.Scene)); err != nil {
+	if err = s.authorizeProfile(ctx, j.Profile, j.Input.Scene); err != nil {
 		return err
 	}
 	scene := j.Input.Scene
@@ -372,7 +375,7 @@ func (s *Service) Resume(ctx context.Context, id string, answer contract.Input, 
 	if j.Input.Scene != scene {
 		return work.ErrScope
 	}
-	if err = s.authorize(ctx, j.Profile.Scope(j.Input.Scene)); err != nil {
+	if err = s.authorizeProfile(ctx, j.Profile, j.Input.Scene); err != nil {
 		return err
 	}
 	if j.State != "interrupted" || answer.Scene != j.Input.Scene || answer.Actor != j.Input.Actor || answer.ID == "" || answer.Text == "" {

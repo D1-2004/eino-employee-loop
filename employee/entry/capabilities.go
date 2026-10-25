@@ -40,6 +40,9 @@ type diagnosticsBackend interface {
 }
 
 func (s *standalone) Capabilities() []Capability {
+	if s.hostTasks != nil {
+		return []Capability{CapabilitySchedule, CapabilitySignal, CapabilityRetry, CapabilityDiagnostics}
+	}
 	return []Capability{CapabilitySchedule, CapabilitySignal, CapabilityOwner, CapabilityRetry, CapabilityDiagnostics}
 }
 func backendCapabilities(b Backend, opts Options) (map[Capability]bool, error) {

@@ -17,6 +17,22 @@ func (s *standalone) Retry(ctx context.Context, id string) error {
 	if found, err := s.chat.Retry(ctx, id); found || err != nil {
 		return err
 	}
+	if s.hostTasks != nil {
+		for _, scene := range s.opts.Profile.Scenes {
+			scope := s.opts.Profile.Scope(scene)
+			if err := s.authorize(ctx, scope); err != nil {
+				return err
+			}
+			found, err := s.hostTasks.Recovery.Retry(ctx, scope, id)
+			if denied := s.authorize(ctx, scope); denied != nil {
+				return denied
+			}
+			if found || err != nil {
+				return err
+			}
+		}
+		return storage.ErrNotFound
+	}
 	s.ownerMu.Lock()
 	defer s.ownerMu.Unlock()
 	if _, err := s.restoreOwnerWorkers(ctx); err != nil {
@@ -44,6 +60,19 @@ func (s *standalone) Failures(ctx context.Context, scope work.Scope) ([]Failure,
 	out, err := s.chat.Failures(ctx, scope)
 	if err != nil {
 		return nil, err
+	}
+	if s.hostTasks != nil {
+		if err = s.authorize(ctx, scope); err != nil {
+			return nil, err
+		}
+		items, e := s.hostTasks.Recovery.Failures(ctx, scope)
+		if denied := s.authorize(ctx, scope); denied != nil {
+			return nil, denied
+		}
+		if e != nil {
+			return nil, e
+		}
+		return append(out, items...), nil
 	}
 	for _, read := range []func(context.Context, work.Scope) ([]contract.Failure, error){s.tasksWorker.Failures, s.interaction.Failures} {
 		items, e := read(ctx, scope)
