@@ -40,11 +40,22 @@ ancestor=$(CDPATH= cd -- "$ancestor" && pwd -P)
 state="$ancestor$suffix"
 case "$state" in "$repository"|"$repository"/*|/) fail "state must be outside the repository and filesystem root" ;; esac
 command -v go >/dev/null 2>&1 || fail "Go is required"
+codesign_identity=${EL_LOCAL_CODESIGN_IDENTITY:-}
+if [ -n "$codesign_identity" ]; then
+  [ "${#codesign_identity}" -eq 40 ] || fail "codesign identity must be an exact 40-hex fingerprint"
+  case "$codesign_identity" in *[!0123456789abcdefABCDEF]*) fail "codesign identity must be an exact 40-hex fingerprint" ;; esac
+  [ "$(uname -s)" = Darwin ] || fail "explicit local codesigning is supported only on Darwin"
+  command -v codesign >/dev/null 2>&1 || fail "codesign is required for the explicit identity"
+fi
 # Build exactly once. Preflight and serve run this same VCS-stamped executable.
 build=$(mktemp -d "${TMPDIR:-/tmp}/employee-local.XXXXXXXX")
 trap 'rm -rf -- "$build"' EXIT HUP INT TERM
 cd "$repository"
 go build -buildvcs=true -o "$build/employee" ./app/local
+if [ -n "$codesign_identity" ]; then
+  codesign --force --sign "$codesign_identity" "$build/employee"
+  codesign --verify --strict "$build/employee"
+fi
 set -- -profile "$profile" -prompt-bundle "$bundle" -dir "$state" -source-mode "$mode" -source-revision "$revision" -timeout "$timeout"
 "$build/employee" "$@" -check-profile > "$build/source-manifest.json"
 cat "$build/source-manifest.json"

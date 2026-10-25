@@ -597,3 +597,14 @@ identity. A controlled-model local replay completed its Task and actual file
 delivery, and all six Owner documents were read back. These results do not claim
 real-model quality, DingTalk delivery, a deployed platform adapter or the separate
 >50-case/95% gate. The updated architecture diagram records this boundary.
+
+Published public main `abdd6420701e987e4e87b3a98f4cdd74e1e104ee` through Git Data
+API and verified exact ref/tree. A subsequent clean-build pure-preflight attempt
+was killed by this Mac before application output; the earlier controlled replay
+remains evidence for its actual binary, not a clean-source preflight result.
+The launcher now optionally signs with an explicitly chosen developer certificate
+and strictly verifies before any execution. Default behavior is unchanged;
+controlled shell order/failure tests pass. Even a locally signed candidate was
+subsequently killed on this machine, so fresh actual execution is blocked pending
+normal endpoint-security/development authorization. No security setting is changed
+and no new acceptance result is inferred from signing success.

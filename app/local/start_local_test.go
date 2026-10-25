@@ -10,15 +10,15 @@ import (
 )
 
 type launcherFixture struct {
-	script, profile, bundle, state, tools, tmp, args, served, goLog string
-	env                                                             []string
+	script, profile, bundle, state, tools, tmp, args, served, goLog, order, signLog string
+	env                                                                             []string
 }
 
 func newLauncherFixture(t *testing.T) launcherFixture {
 	t.Helper()
 	_, file, _, _ := runtime.Caller(0)
 	root := t.TempDir()
-	f := launcherFixture{script: filepath.Join(filepath.Dir(file), "start-local.sh"), profile: filepath.Join(root, "private profile.json"), bundle: filepath.Join(root, "compiled prompt.json"), state: filepath.Join(root, "state with spaces"), tools: filepath.Join(root, "tools"), tmp: filepath.Join(root, "build with spaces"), args: filepath.Join(root, "arguments"), served: filepath.Join(root, "served"), goLog: filepath.Join(root, "compiler-called")}
+	f := launcherFixture{script: filepath.Join(filepath.Dir(file), "start-local.sh"), profile: filepath.Join(root, "private profile.json"), bundle: filepath.Join(root, "compiled prompt.json"), state: filepath.Join(root, "state with spaces"), tools: filepath.Join(root, "tools"), tmp: filepath.Join(root, "build with spaces"), args: filepath.Join(root, "arguments"), served: filepath.Join(root, "served"), goLog: filepath.Join(root, "compiler-called"), order: filepath.Join(root, "order"), signLog: filepath.Join(root, "sign-arguments")}
 	for _, path := range []string{f.tools, f.tmp} {
 		if err := os.Mkdir(path, 0700); err != nil {
 			t.Fatal(err)
@@ -35,12 +35,14 @@ for value do printf '%s\000' "$value" >> "$START_TEST_ARGS"; done
 printf 'END\000' >> "$START_TEST_ARGS"
 for value do
  if [ "$value" = '-check-profile' ]; then
+  printf 'preflight\n' >> "$START_TEST_ORDER"
   [ "${START_TEST_FAILCHECK:-0}" = 0 ] || exit 7
   echo '{"type":"profile_preflight","runtime_checked":false}'
   exit 0
  fi
 done
 [ "$value" = serve ] || exit 8
+printf 'serve\n' >> "$START_TEST_ORDER"
 printf '%s' "$0" > "$START_TEST_SERVED"
 exit 23
 `
@@ -49,6 +51,7 @@ exit 23
 	}
 	compiler := `#!/bin/sh
 : > "$START_TEST_GOLOG"
+printf 'build\n' >> "$START_TEST_ORDER"
 [ "$1" = build ] || exit 10
 shift
 output=
@@ -62,7 +65,31 @@ chmod 700 "$output"
 	if err := os.WriteFile(filepath.Join(f.tools, "go"), []byte(compiler), 0700); err != nil {
 		t.Fatal(err)
 	}
-	f.env = append(os.Environ(), "PATH="+f.tools+string(os.PathListSeparator)+os.Getenv("PATH"), "TMPDIR="+f.tmp, "START_TEST_BINARY="+binary, "START_TEST_ARGS="+f.args, "START_TEST_SERVED="+f.served, "START_TEST_GOLOG="+f.goLog)
+	for name, body := range map[string]string{
+		"uname": "#!/bin/sh\nprintf '%s\\n' \"${START_TEST_OS:-Darwin}\"\n",
+		"codesign": `#!/bin/sh
+for argument do printf '%s\000' "$argument" >> "$START_TEST_SIGNLOG"; done
+printf 'END\000' >> "$START_TEST_SIGNLOG"
+case "$1" in
+ --force)
+  printf 'sign\n' >> "$START_TEST_ORDER"
+  [ "${START_TEST_SIGN_FAIL:-}" != sign ] || exit 31
+  for argument do target=$argument; done
+  printf '\n# signed fixture\n' >> "$target"
+  ;;
+ --verify)
+  printf 'verify\n' >> "$START_TEST_ORDER"
+  [ "${START_TEST_SIGN_FAIL:-}" != verify ] || exit 32
+  ;;
+ *) exit 33 ;;
+esac
+`,
+	} {
+		if err := os.WriteFile(filepath.Join(f.tools, name), []byte(body), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.env = append(os.Environ(), "PATH="+f.tools+string(os.PathListSeparator)+os.Getenv("PATH"), "TMPDIR="+f.tmp, "START_TEST_BINARY="+binary, "START_TEST_ARGS="+f.args, "START_TEST_SERVED="+f.served, "START_TEST_GOLOG="+f.goLog, "START_TEST_ORDER="+f.order, "START_TEST_SIGNLOG="+f.signLog, "EL_LOCAL_CODESIGN_IDENTITY=")
 	return f
 }
 func (f launcherFixture) invoke(extra ...string) (string, error) {
@@ -173,6 +200,90 @@ func TestLauncherCannotOverrideFrozenIdentityOrInventAcceptanceRevision(t *testi
 		for _, path := range []string{f.goLog, f.served, f.state} {
 			if _, err := os.Stat(path); !os.IsNotExist(err) {
 				t.Fatal("invalid selection reached build/serve/state")
+			}
+		}
+	}
+}
+
+func TestLauncherCodesignIsExplicitAndBeforePreflightOnSameBinary(t *testing.T) {
+	f := newLauncherFixture(t)
+	identity := strings.Repeat("AB", 20)
+	f.env = append(f.env, "EL_LOCAL_CODESIGN_IDENTITY="+identity)
+	out, err := f.invoke()
+	exit, ok := err.(*exec.ExitError)
+	if !ok || exit.ExitCode() != 23 {
+		t.Fatalf("signed launch did not exec serve: %s %v", out, err)
+	}
+	raw, err := os.ReadFile(f.order)
+	if err != nil || string(raw) != "build\nsign\nverify\npreflight\nserve\n" {
+		t.Fatalf("wrong actual process order: %q %v", raw, err)
+	}
+	target, err := os.ReadFile(f.served)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := os.ReadFile(string(target))
+	if err != nil || !strings.Contains(string(signed), "# signed fixture") {
+		t.Fatal("serve did not execute the signed artifact", err)
+	}
+	log, err := os.ReadFile(f.signLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := "--force\x00--sign\x00" + identity + "\x00" + string(target) + "\x00END\x00--verify\x00--strict\x00" + string(target) + "\x00END\x00"
+	if string(log) != expected {
+		t.Fatalf("sign/verify did not use exact identity and checked binary: %q", log)
+	}
+}
+func TestLauncherDefaultDoesNotCallCodesign(t *testing.T) {
+	f := newLauncherFixture(t)
+	_, _ = f.invoke()
+	if _, err := os.Stat(f.signLog); !os.IsNotExist(err) {
+		t.Fatal("default launcher called codesign")
+	}
+	order, err := os.ReadFile(f.order)
+	if err != nil || string(order) != "build\npreflight\nserve\n" {
+		t.Fatalf("default path changed: %q %v", order, err)
+	}
+}
+func TestLauncherCodesignFailureStopsBeforePreflightAndCleansOwnedBuild(t *testing.T) {
+	for _, stage := range []string{"sign", "verify"} {
+		t.Run(stage, func(t *testing.T) {
+			f := newLauncherFixture(t)
+			f.env = append(f.env, "EL_LOCAL_CODESIGN_IDENTITY="+strings.Repeat("a", 40), "START_TEST_SIGN_FAIL="+stage)
+			if _, err := f.invoke(); err == nil {
+				t.Fatal("failed signature reached serve")
+			}
+			for _, sideEffect := range []string{f.args, f.served, f.state} {
+				if _, err := os.Stat(sideEffect); !os.IsNotExist(err) {
+					t.Fatal("failed signing reached app or business state", sideEffect)
+				}
+			}
+			entries, err := os.ReadDir(f.tmp)
+			if err != nil || len(entries) != 0 {
+				t.Fatal("signature failure leaked owned build", err)
+			}
+			order, err := os.ReadFile(f.order)
+			want := "build\nsign\n"
+			if stage == "verify" {
+				want += "verify\n"
+			}
+			if err != nil || string(order) != want {
+				t.Fatalf("continued after signing failure: %q %v", order, err)
+			}
+		})
+	}
+}
+func TestLauncherCodesignRejectsInvalidFingerprintOrNonDarwinBeforeBuild(t *testing.T) {
+	for _, test := range []struct{ identity, system string }{{strings.Repeat("a", 39), "Darwin"}, {strings.Repeat("g", 40), "Darwin"}, {"certificate display name", "Darwin"}, {strings.Repeat("a", 40), "Linux"}} {
+		f := newLauncherFixture(t)
+		f.env = append(f.env, "EL_LOCAL_CODESIGN_IDENTITY="+test.identity, "START_TEST_OS="+test.system)
+		if _, err := f.invoke(); err == nil {
+			t.Fatal("invalid signing selection accepted")
+		}
+		for _, sideEffect := range []string{f.goLog, f.args, f.signLog, f.served, f.state} {
+			if _, err := os.Stat(sideEffect); !os.IsNotExist(err) {
+				t.Fatal("invalid signing selection caused effects", sideEffect)
 			}
 		}
 	}

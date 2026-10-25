@@ -23,6 +23,11 @@ bash app/local/start-local.sh --profile /absolute/private/profile.json --prompt-
 便于核对；预检失败清理自己创建的构建目录。脚本不管理其他进程或修改身份配置。
 默认时限为 `24h`，可用 `--timeout` 显式调整。
 
+macOS 开发者如需正常代码签名，可显式设置 `EL_LOCAL_CODESIGN_IDENTITY` 为自己的
+开发证书 40 位指纹。脚本在构建后先签名并严格校验，再运行同一二进制；失败则退出，
+不会运行预检或服务。默认不调用签名工具。签名不替代本机终端安全的正常许可，
+脚本不更改 AMFI、Gatekeeper 或隔离属性；来源 manifest 的二进制 SHA 取签名后的字节。
+
 此入口复用完整 SQLite、Markdown、Eino 和本地执行/交付装配；真实模型质量需要
 通过相同 eval 另行验收。单独的纯预检也可通过 `app/local -check-profile` 调用，
 它不会把可加载配置或可编译代码记作运行验收通过。
