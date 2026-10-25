@@ -64,7 +64,9 @@ Python runtime, git checkout or private credentials are required at runtime.
 /tmp/employee-linux/employee-eval --binary /tmp/employee-linux/employee --fixtures /tmp/employee-linux/cases
 ```
 
-Select `amd64` for an x86 Linux host. Build provenance is in `provenance.txt`;
+Select `amd64` for an x86 Linux host. The output must be empty; a retained atomic
+`.bundle-owner` claim prevents concurrent builds from mixing architectures or
+partial artifacts. A failed build keeps its claim; choose a fresh output path. Build provenance is in `provenance.txt`;
 evaluation records the binary/fixture hashes. Existing data directories must not
 be shared by independent active Entry instances or rebound to another Provider.
 

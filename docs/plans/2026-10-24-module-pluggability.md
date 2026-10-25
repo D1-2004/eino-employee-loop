@@ -359,3 +359,39 @@ Review correction results:
   found a human and a similarly named digital employee; existing maintainer
   identity evidence plus exact full-name resolution selects the human. Only a
   dry-run has occurred until the corrected immutable SDK is pinned by the CR.
+
+## Issue sweep and build artifact ownership (2026-10-25)
+
+Status: fixed and locally verified; publication and CR pin update follow. GitHub open
+Issues are empty; the internal CR has no human comments/CI results. Automatic
+review suggestions are treated as evidence candidates, not instructions. Native
+shell empty-argv behavior is tested rather than assumed; explicit expected-version
+duplication remains an intentional provenance gate.
+
+Scope: make concurrent build-bundle invocations claim one output atomically;
+remove the internal wrapper's temporary compiled executables after success or
+failure while preserving evaluator output, with correct shell EXIT cleanup
+instead of exec. Improve actual/expected-version diagnostics. Preserve all SDK
+business/model/authority behavior. Verify concrete shell counterexamples and
+consumer checks; update the same CR without resolving reviewer comments or
+sending additional messages. Existing supported runtime evidence remains valid.
+
+
+Issue sweep results:
+- Confirmed bundle race with 12 concurrent invocations entering the same output.
+  A retained atomic .bundle-owner mkdir now permits one builder; focused race
+  tests cover new/existing empty paths and mixed requested architectures. A real
+  Linux/arm64 bundle with both executables/fixtures built successfully.
+- The internal wrapper now keeps the shell alive so EXIT cleanup removes only
+  its generated compiler workspace on success/eval-failure/build-failure.
+  Dedicated shell-lifetime tests verify exit statuses and preserve separate
+  evidence. No trap+exec claim is made; no existing artifacts are deleted.
+- Added actual/expected SDK diagnostics. Hardcoded expected SDK selection remains
+  deliberate (changing only go.mod must fail). Local /bin/sh empty argv passed,
+  so no speculative compatibility workaround was added.
+- Current GitHub open Issue list is empty. CR has no human comments/CI records;
+  automatic suggestions were individually triaged without resolving comments.
+  Separate core review found no new reproducible model/journal/authority/eval bug.
+- Affected public app/local race/vet and real bundle build passed. Internal
+  consumer race/vet and lifecycle/override tests passed. Business runtime and
+  previous full replay evidence are unchanged; no online test or message sent.

@@ -10,6 +10,12 @@ if [ -n "$(ls -A "$bundle_dir")" ]; then
   echo 'output directory must be empty' >&2
   exit 2
 fi
+# The empty-directory check is not a claim: another builder may pass it too.
+# Retain the atomic claim with complete or partial build output.
+if ! mkdir "$bundle_dir/.bundle-owner" 2>/dev/null; then
+  echo 'output directory is already claimed by another build' >&2
+  exit 2
+fi
 bundle_dir=$(CDPATH= cd -- "$bundle_dir" && pwd)
 cd "$repository"
 CGO_ENABLED=0 GOOS=linux GOARCH="$architecture" go build -trimpath -o "$bundle_dir/employee" ./app/local
