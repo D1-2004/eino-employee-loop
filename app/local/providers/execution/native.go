@@ -135,6 +135,9 @@ func (n *Native) Execute(ctx context.Context, record core.Record) (core.Result, 
 			}
 			doc, err = n.Artifacts.Write(c, p, kernel.Str(a, "expected_sha256"), body)
 			if err != nil {
+				if errors.Is(err, storage.ErrArtifactConflict) {
+					return nil, kernel.Recoverable(err)
+				}
 				return nil, err
 			}
 		}

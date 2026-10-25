@@ -100,14 +100,12 @@ func TestParseDWSEvent(t *testing.T) {
 	if _, ok, _ := parseDWSEvent([]byte(`{"type":"im_reaction","data":{"content":"x"}}`)); ok {
 		t.Fatal("non-message events are skipped")
 	}
-	if sentID([]byte(`{"data":{"openMsgId":"sent-1"}}`)) != "sent-1" {
-		t.Fatal("sent id")
-	}
+
 }
 
 func TestDWSIgnoresItsOwnEcho(t *testing.T) {
-	d := &DWS{sent: map[string]bool{"c1|17": true}}
-	if !d.own(Message{ConversationID: "c1", SenderID: "self", Text: "17"}) || d.self != "self" {
+	d := &DWS{sent: map[string]bool{"outbound-17": true}}
+	if !d.own(Message{ConversationID: "c1", MessageID: "outbound-17", SenderID: "self", Text: "17"}) || d.self != "self" {
 		t.Fatal("the echo of a sent text is ours and reveals self")
 	}
 	if !d.own(Message{ConversationID: "c2", SenderID: "self", Text: "other"}) || d.own(Message{ConversationID: "c1", SenderID: "u1", Text: "17"}) {

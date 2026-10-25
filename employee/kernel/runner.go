@@ -46,7 +46,14 @@ func (f *Function) InvokableRun(ctx context.Context, raw string, _ ...tool.Optio
 	}
 	out, err := f.Invoke(ctx, id, args)
 	if err != nil {
-		return "", err
+		if !isRefusal(err) {
+			return "", err
+		}
+		if e := clearRefusedTerminal(ctx); e != nil {
+			return "", errors.Join(err, e)
+		}
+		data, e := json.Marshal(map[string]any{"error": map[string]any{"code": "tool_rejected", "message": err.Error(), "correctable": true}})
+		return string(data), e
 	}
 	data, err := json.Marshal(out)
 	return string(data), err
@@ -110,9 +117,11 @@ func (s *Runner) Run(ctx context.Context, call Invocation) (native.Result, error
 	profile, scope, role, receipt, frame, system, functions, terminal, allowText := call.Profile, call.Scope, call.Role, call.Receipt, call.Context, call.System, call.Tools, call.Terminal, call.AllowText
 	targets := call.Targets
 
+	batch := &toolBatch{}
 	specs := map[string]loop.Tool{}
 	nativeTools := []tool.BaseTool{}
 	for _, f := range functions {
+		f = batch.wrap(f)
 		if err := f.Bind(); err != nil {
 			return native.Result{}, err
 		}
@@ -134,6 +143,7 @@ func (s *Runner) Run(ctx context.Context, call Invocation) (native.Result, error
 			return native.Result{}, e
 		}
 		for _, f := range extras {
+			f = batch.wrap(f)
 			if _, exists := specs[f.Spec.Name]; exists {
 				return native.Result{}, errors.New("kernel: tool collision")
 			}
@@ -194,6 +204,7 @@ func (s *Runner) Run(ctx context.Context, call Invocation) (native.Result, error
 		if terminals > 1 {
 			return errors.New("one terminal operation per batch")
 		}
+		batch.reset()
 		return nil
 	}
 	factory := func(context.Context, native.Request) (*adk.ChatModelAgentConfig, error) {

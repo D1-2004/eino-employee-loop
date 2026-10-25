@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/D1-2004/eino-employee-loop/employee/contract"
 	"github.com/D1-2004/eino-employee-loop/employee/entry"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -90,10 +91,31 @@ func (m *ruleModel) Generate(ctx context.Context, messages []*schema.Message, _ 
 			lastTool = msg.ToolName
 		}
 		if msg != nil && msg.Role == schema.User {
-			var frame struct{ Current *struct{ ID, Text string } }
-			if json.Unmarshal([]byte(msg.Content), &frame) == nil && frame.Current != nil {
+			var frame struct {
+				Current         *struct{ ID, Text string }
+				CurrentSourceID string `json:"current_source_id"`
+				Sources         []struct {
+					Scope      contract.Scope
+					CitationID string
+					Source     struct{ ID, Text string }
+				}
+			}
+			if json.Unmarshal([]byte(msg.Content), &frame) != nil {
+				continue
+			}
+			if frame.Current != nil && frame.Current.ID != "" {
 				bindings["${current.id}"] = frame.Current.ID
 				bindings["${current.text}"] = frame.Current.Text
+			} else if frame.CurrentSourceID != "" {
+				// Owner's bounded payload keeps the original once in Sources and
+				// selects it by ID. Bind its exact citation within the job's scope.
+				for _, source := range frame.Sources {
+					if source.Source.ID == frame.CurrentSourceID && source.Scope == m.request.Scope {
+						bindings["${current.id}"] = source.CitationID
+						bindings["${current.text}"] = source.Source.Text
+						break
+					}
+				}
 			}
 		}
 	}

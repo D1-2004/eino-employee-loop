@@ -131,6 +131,10 @@ func (m *Manager) applyChecked(ctx context.Context, scope Scope, operation strin
 		if task.State == Completed && (priorState != Completed || priorGoal.Revision != task.Goal.Revision) {
 			kind = "goal.completed"
 		}
+		if (task.State == Failed || task.State == Paused || task.State == Stopped) &&
+			(priorState != task.State || priorGoal.Revision != task.Goal.Revision || priorGoal.Summary != task.Goal.Summary) {
+			kind = "goal." + string(task.State)
+		}
 		_, e = tx.Append(ctx, storage.Event{Namespace: "work-events", Scope: key, ID: operation, Kind: kind, Body: event})
 		return e
 	})
@@ -153,7 +157,7 @@ func (m *Manager) DispatchWithSources(ctx context.Context, scope Scope, source S
 		return Receipt{}, errors.New("work: complete goal and instruction required")
 	}
 	if d.MaxRuns == 0 {
-		d.MaxRuns = 12
+		d.MaxRuns = DefaultMaxRuns
 	}
 	if d.MaxRuns < 1 || d.MaxRuns > 512 {
 		return Receipt{}, ErrBudget
@@ -179,6 +183,10 @@ func (m *Manager) Control(ctx context.Context, scope Scope, source Source, call,
 	}
 	op := stableID("control-", []any{scope, source.Receipt, call})
 	return m.apply(ctx, scope, op, []any{source, id, kind, instruction}, id, false, func(t *Task) error {
+		// Never cancel an accepted writer when no successor can be scheduled.
+		if kind == "steer" && len(t.Runs) >= t.Definition.MaxRuns {
+			return ErrBudget
+		}
 		t.Sources = append(t.Sources, source)
 		run := t.CurrentRun()
 		if run == nil {
@@ -194,6 +202,7 @@ func (m *Manager) Control(ctx context.Context, scope Scope, source Source, call,
 			}
 			t.State = state
 			t.Goal.State = state
+			t.Goal.Summary = "requested by current human: " + source.Text
 			t.NeedsReview = false
 			t.Pending = nil
 			if run.State == RunQueued {
@@ -400,89 +409,7 @@ func (m *Manager) ApplyReview(ctx context.Context, scope Scope, taskID, reviewID
 	}
 	op := stableID("review-", []any{scope, taskID, reviewID})
 	return m.apply(ctx, scope, op, proposal, taskID, false, func(t *Task) error {
-		run := t.CurrentRun()
-		if t.Revision != proposal.TaskRevision || t.Goal.Revision != proposal.GoalRevision || run == nil || run.ID != proposal.RunID || !t.NeedsReview || !run.ExitProven {
-			return ErrStale
-		}
-		if t.State == Stopped || t.State == Paused {
-			return ErrState
-		}
-		if t.Pending != nil {
-			return ErrStale
-		}
-		switch proposal.Kind {
-		case "resume":
-			if run.State != RunSuspended {
-				return ErrState
-			}
-			for _, w := range t.Waits {
-				if !w.Resolved {
-					return ErrState
-				}
-			}
-			run.State = RunActive
-			run.ExitProven = false
-			t.Runs[len(t.Runs)-1] = *run
-			t.State = Running
-			t.Goal.State = Running
-			t.NeedsReview = false
-		case "complete":
-			if run.State != RunSucceeded || strings.TrimSpace(proposal.Summary) == "" {
-				return ErrState
-			}
-			t.State = Completed
-			t.Goal.State = Completed
-			t.Goal.Summary = proposal.Summary
-			t.NeedsReview = false
-		case "continue":
-			if strings.TrimSpace(proposal.NextInstruction) == "" {
-				return ErrState
-			}
-			return nextRun(t, proposal.NextInstruction)
-		case "wait":
-			if len(proposal.Waits) == 0 {
-				return ErrState
-			}
-			t.Waits = nil
-			for i, w := range proposal.Waits {
-				if w.Resolved || w.Answer != "" || w.SourceReceipt != "" {
-					return ErrState
-				}
-				switch w.Kind {
-				case "human", "recovery":
-					if strings.TrimSpace(w.Prompt) == "" {
-						return ErrState
-					}
-				case "event":
-					if strings.TrimSpace(w.Condition) == "" {
-						return ErrState
-					}
-				case "timer":
-					if w.Due.IsZero() {
-						return ErrState
-					}
-				default:
-					return ErrState
-				}
-				w.ID = fmt.Sprintf("%s-wait-%d-%d-%d", t.ID, t.Goal.Revision, t.Revision, i+1)
-				w.Since = time.Now().UTC()
-				t.Waits = append(t.Waits, w)
-			}
-			t.State = Waiting
-			t.Goal.State = Waiting
-			t.NeedsReview = false
-		case "fail":
-			if strings.TrimSpace(proposal.Summary) == "" {
-				return ErrState
-			}
-			t.State = Failed
-			t.Goal.State = Failed
-			t.Goal.Summary = proposal.Summary
-			t.NeedsReview = false
-		default:
-			return ErrState
-		}
-		return nil
+		return applyReview(t, proposal)
 	})
 }
 func (m *Manager) Answer(ctx context.Context, scope Scope, source Source, call, taskID, waitID string, goalRevision uint64) (Receipt, error) {
@@ -550,4 +477,104 @@ func (m *Manager) Suspend(ctx context.Context, scope Scope, taskID, runID, execu
 		t.NeedsReview = false
 		return nil
 	})
+}
+
+// ValidateReview previews the exact transactional transition without mutating the
+// accepted snapshot. Native tool proposals use it before becoming terminal.
+func ValidateReview(task Task, proposal Review) error {
+	task.Runs = append([]Run(nil), task.Runs...)
+	task.Waits = append([]Wait(nil), task.Waits...)
+	return applyReview(&task, proposal)
+}
+func applyReview(t *Task, proposal Review) error {
+	run := t.CurrentRun()
+	if t.Revision != proposal.TaskRevision || t.Goal.Revision != proposal.GoalRevision || run == nil || run.ID != proposal.RunID || !t.NeedsReview || !run.ExitProven {
+		return ErrStale
+	}
+	if t.State == Stopped || t.State == Paused {
+		return ErrState
+	}
+	if t.Pending != nil {
+		return ErrStale
+	}
+	switch proposal.Kind {
+	case "resume":
+		if run.State != RunSuspended {
+			return ErrState
+		}
+		for _, w := range t.Waits {
+			if !w.Resolved {
+				return ErrState
+			}
+		}
+		run.State = RunActive
+		run.ExitProven = false
+		t.Runs[len(t.Runs)-1] = *run
+		t.State = Running
+		t.Goal.State = Running
+		t.NeedsReview = false
+	case "complete":
+		if run.State != RunSucceeded || strings.TrimSpace(proposal.Summary) == "" {
+			return ErrState
+		}
+		t.State = Completed
+		t.Goal.State = Completed
+		t.Goal.Summary = proposal.Summary
+		t.NeedsReview = false
+	case "continue":
+		if strings.TrimSpace(proposal.NextInstruction) == "" {
+			return ErrState
+		}
+		if len(t.Runs) >= t.Definition.MaxRuns {
+			t.State, t.Goal.State = Paused, Paused
+			t.Goal.Summary = "run budget exhausted; inspect existing evidence or request an authorized budget revision before continuing"
+			t.Pending = &Pending{Kind: "continue", Instruction: proposal.NextInstruction}
+			t.NeedsReview = false
+			return nil
+		}
+		return nextRun(t, proposal.NextInstruction)
+	case "wait":
+		if len(proposal.Waits) == 0 {
+			return ErrState
+		}
+		t.Waits = nil
+		for i, w := range proposal.Waits {
+			if w.Resolved || w.Answer != "" || w.SourceReceipt != "" {
+				return ErrState
+			}
+			switch w.Kind {
+			case "human", "recovery":
+				if strings.TrimSpace(w.Prompt) == "" {
+					return ErrState
+				}
+			case "event":
+				if strings.TrimSpace(w.Condition) == "" {
+					return ErrState
+				}
+			case "timer":
+				if w.Due.IsZero() {
+					return ErrState
+				}
+			default:
+				return ErrState
+			}
+			w.ID = fmt.Sprintf("%s-wait-%d-%d-%d", t.ID, t.Goal.Revision, t.Revision, i+1)
+			w.Since = time.Now().UTC()
+			t.Waits = append(t.Waits, w)
+		}
+		t.State = Waiting
+		t.Goal.State = Waiting
+		t.NeedsReview = false
+	case "fail":
+		if strings.TrimSpace(proposal.Summary) == "" {
+			return ErrState
+		}
+		t.State = Failed
+		t.Goal.State = Failed
+		t.Goal.Summary = proposal.Summary
+		t.NeedsReview = false
+	default:
+		return ErrState
+	}
+	return nil
 }

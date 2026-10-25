@@ -19,9 +19,13 @@ func (s *standalone) Retry(ctx context.Context, id string) error {
 	}
 	s.ownerMu.Lock()
 	defer s.ownerMu.Unlock()
+	if _, err := s.restoreOwnerWorkers(ctx); err != nil {
+		return err
+	}
 	for _, scene := range s.opts.Profile.Scenes {
 		scope := s.opts.Profile.Scope(scene)
-		for _, worker := range s.ownerWorkers {
+		for _, key := range s.ownerWorkerKeys() {
+			worker := s.ownerWorkers[key]
 			if recovery, ok := worker.(interface {
 				Retry(context.Context, work.Scope, string) (bool, error)
 			}); ok {
@@ -48,14 +52,30 @@ func (s *standalone) Failures(ctx context.Context, scope work.Scope) ([]Failure,
 		}
 		out = append(out, items...)
 	}
-	if diagnostic, ok := s.ownerWorker.(interface {
-		Failures(context.Context, work.Scope) ([]contract.Failure, error)
-	}); ok {
-		items, e := diagnostic.Failures(ctx, scope)
-		if e != nil {
-			return nil, e
+	s.ownerMu.Lock()
+	defer s.ownerMu.Unlock()
+	if _, err := s.restoreOwnerWorkers(ctx); err != nil {
+		return nil, err
+	}
+	seen := make(map[Failure]bool, len(out))
+	for _, failure := range out {
+		seen[failure] = true
+	}
+	for _, key := range s.ownerWorkerKeys() {
+		if diagnostic, ok := s.ownerWorkers[key].(interface {
+			Failures(context.Context, work.Scope) ([]contract.Failure, error)
+		}); ok {
+			items, e := diagnostic.Failures(ctx, scope)
+			if e != nil {
+				return nil, e
+			}
+			for _, failure := range items {
+				if !seen[failure] {
+					out = append(out, failure)
+					seen[failure] = true
+				}
+			}
 		}
-		out = append(out, items...)
 	}
 	return out, nil
 }

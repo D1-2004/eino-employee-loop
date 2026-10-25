@@ -12,6 +12,15 @@ selection is a directory binding; changing it requires an explicit migration,
 not merely a new profile revision. Review and Owner use the work's frozen profile.
 Old registered factories must remain available until old work is drained.
 
+Owner recovery, retry and failure diagnostics resolve the exact Owner factories
+from all admitted frozen profiles, including immediately after reopening. Resolving
+these instances does not call Observe, Tick or a model; only the worker loop admits
+or executes work. Missing historical factories remain explicit errors. The Host
+serializes Owner instance construction, ticking, recovery and diagnostics. Failure
+aggregation removes only identical records (Kind, ID, State and Error), because
+different versions may share storage while opaque IDs alone need not be unique
+across replacement implementations.
+
 Factories have separate minimal dependency types, never the Host `Options` or a
 universal service container. Storage receives its directory and a Profile snapshot.
 Context receives stores, authorization/audience policy and a read-only task reader;

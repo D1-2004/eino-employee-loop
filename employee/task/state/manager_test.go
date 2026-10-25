@@ -215,7 +215,7 @@ func TestStopDuringPreparingDoesNotInventExitOrAllowReview(t *testing.T) {
 	}
 }
 
-func TestSteerBudgetHoldStillPersistsActualWriterExit(t *testing.T) {
+func TestSteerWithoutSuccessorBudgetDoesNotCancelWriter(t *testing.T) {
 	m, s := fixture(t)
 	ctx := context.Background()
 	receipt, err := m.Dispatch(ctx, s, source("one", "write report"), "dispatch", work.Definition{Goal: "Report", Instruction: "Write report", MaxRuns: 1})
@@ -233,14 +233,18 @@ func TestSteerBudgetHoldStillPersistsActualWriterExit(t *testing.T) {
 	if _, err = m.Submission(ctx, s, task.ID, run.ID, "exec", false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = m.Control(ctx, s, source("steer", "new requirement"), "steer", task.ID, "steer", "new requirement"); err != nil {
-		t.Fatal(err)
+	if _, err = m.Control(ctx, s, source("steer", "new requirement"), "steer", task.ID, "steer", "new requirement"); !errors.Is(err, work.ErrBudget) {
+		t.Fatalf("expected explicit budget rejection: %v", err)
+	}
+	current, err := m.Get(ctx, s, task.ID)
+	if err != nil || current.CurrentRun().State != work.RunActive || current.Pending != nil || current.Definition.Instruction != "Write report" || len(current.Sources) != 1 {
+		t.Fatal("rejected steer changed writer, accepted source or original instruction", current, err)
 	}
 	if _, err = m.RecordExecution(ctx, s, task.ID, "exit", work.ExecutionFact{RunID: run.ID, ExecutionID: "exec", State: work.RunStopped, ExitProven: true}); err != nil {
 		t.Fatal(err)
 	}
 	task, err = m.Get(ctx, s, task.ID)
-	if err != nil || !task.CurrentRun().ExitProven || len(task.Runs) != 1 || task.State != work.Paused || task.Pending == nil {
+	if err != nil || !task.CurrentRun().ExitProven || len(task.Runs) != 1 || task.State != work.Running || task.Pending != nil || !task.NeedsReview {
 		t.Fatal("budget hold discarded exit proof or source intent", task, err)
 	}
 }

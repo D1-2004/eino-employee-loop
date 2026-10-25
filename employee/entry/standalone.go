@@ -298,7 +298,16 @@ func (s *standalone) Deliveries(ctx context.Context, scope work.Scope) ([]intera
 	return s.delivery.List(ctx, scope)
 }
 func (s *standalone) steps() []func(context.Context) (bool, error) {
-	return []func(context.Context) (bool, error){s.chat.Step, s.tasksWorker.Step, s.interaction.Step, s.tasksWorker.Timing, s.ownerOnce}
+	steps := make([]func(context.Context) (bool, error), 0, len(s.opts.Profile.Scenes)+4)
+	seen := map[string]bool{}
+	for _, scene := range s.opts.Profile.Scenes {
+		if seen[scene] {
+			continue
+		}
+		seen[scene] = true
+		steps = append(steps, func(ctx context.Context) (bool, error) { return s.chat.StepScene(ctx, scene) })
+	}
+	return append(steps, s.tasksWorker.Step, s.interaction.Step, s.tasksWorker.Timing, s.ownerOnce)
 }
 func (s *standalone) Start(ctx context.Context) error {
 	s.mu.Lock()

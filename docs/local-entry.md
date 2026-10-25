@@ -35,7 +35,7 @@ go build -o /tmp/el ./app/local
 
 `answer` 只恢复 `pending` 暴露的 ChatLoop 中断。TaskManager 的业务 Wait 则通过新的 `submit` 消息进入 ChatLoop，由 `answer_question` 工具携带原 Task、Wait 和 Goal revision 返回原 Review；不要把 Task Wait ID 当成 ChatLoop job ID。
 
-`serve` 调用 `Entry.Start`，处理已有持久化队列并等待信号或 `-timeout`。它订阅 `Entry.Errors()`，后台 worker 失败时立即报告错误、关闭 Entry 并退出。它没有监听 stdin 或网络；常用单次流程优先使用 `replay`、`submit` 和 `drain`。同一状态目录由一个 Entry 持有文件锁，不能同时运行另一条 CLI 命令。
+`serve` 调用 `Entry.Start`，处理已有持久化队列并等待信号或 `-timeout`。它订阅 `Entry.Errors()`；单条消息、模型或工具调用失败会输出 `worker_error` NDJSON，保留持久化失败记录并继续处理其余工作，不把一条坏消息变成整个服务退出。每秒最多输出一条 worker 诊断；窗口内重复或并发错误合并为 `occurrences` 计数，并报告最后一条错误，退出前刷新剩余诊断。错误不会被当作成功或自动伪造一条 IM 回复。启动失败、输出写入失败、SQLite 损坏/只读/磁盘满等资源错误仍返回失败；context 取消或超时仍显式返回取消原因。它没有监听 stdin 或网络；常用单次流程优先使用 `replay`、`submit` 和 `drain`。同一状态目录由一个 Entry 持有文件锁，不能同时运行另一条 CLI 命令。
 
 ## 显式开启维护、表达和包装 Loop
 

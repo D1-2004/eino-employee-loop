@@ -260,7 +260,7 @@ func TestViewsFenceTaskSourcesAndKeepCurrentOutsideWindow(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if len(front.Sources) != 21 || front.Current.ID != "input-00" || len(front.OwnerFiles) != 1 || len(front.Gaps) == 0 {
+	if len(front.Sources) != 20 || front.Current.ID != "input-00" || len(front.OwnerFiles) != 1 || len(front.Gaps) == 0 {
 		t.Fatal(front)
 	}
 	receipt, e := tasks.Dispatch(ctx, s, work.Source{Receipt: "input-00", Actor: s.Requester, Text: "source 0"}, "native-call", work.Definition{Goal: "report", Instruction: "write", MaxRuns: 2})

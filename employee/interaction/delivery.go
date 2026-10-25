@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	contextbuilder "github.com/D1-2004/eino-employee-loop/employee/context"
 	"github.com/D1-2004/eino-employee-loop/employee/ports/storage"
 	work "github.com/D1-2004/eino-employee-loop/employee/task/state"
@@ -61,6 +62,18 @@ func (s *Service) Step(ctx context.Context) (bool, error) {
 				}
 				id := "result-" + contextbuilder.Digest(encode([]any{task.ID, changed.Goal.Revision}))
 				if _, e = s.opts.Outbox.Enqueue(ctx, Intent{ID: id, Scope: scope, SourceReceipt: sourceForTask(task), TaskID: task.ID, GoalRevision: changed.Goal.Revision, Kind: "result", Body: body}); e != nil {
+					return false, e
+				}
+			}
+
+			if (event.Kind == "goal.failed" || event.Kind == "goal.paused" || event.Kind == "goal.stopped") && changed.Task != nil {
+				task := *changed.Task
+				body := fmt.Sprintf("Task %s is %s. %s", task.ID, task.State, task.Goal.Summary)
+				if run := task.CurrentRun(); run != nil && !run.ExitProven {
+					body += " The current execution has not yet confirmed exit."
+				}
+				id := "status-" + contextbuilder.Digest(encode([]any{task.ID, event.ID}))
+				if _, e := s.opts.Outbox.Enqueue(ctx, Intent{ID: id, Scope: scope, SourceReceipt: sourceForTask(task), TaskID: task.ID, GoalRevision: task.Goal.Revision, Kind: "status", Body: body}); e != nil {
 					return false, e
 				}
 			}

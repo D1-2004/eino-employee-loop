@@ -13,6 +13,9 @@ import (
 	"time"
 )
 
+// DefaultMaxRuns matches the reference local assembly. Explicit Task budgets are frozen.
+const DefaultMaxRuns = 4
+
 var (
 	ErrScope   = contract.ErrScope
 	ErrState   = errors.New("work: incompatible task state")

@@ -6,6 +6,11 @@ and the [assembly guide](../module-composition.md) for Go usage.
 
 | Contract | Owner |
 | --- | --- |
+| [Correctable tool refusals](tool-feedback.md) | Explicit no-effect rejection and native Eino correction |
+| [Task feedback](task-feedback.md) | Review validation, control acknowledgements and visible status |
+| [Context bounds](context-bounds.md) | Serialized Frame limits, source gaps and bounded summaries |
+| [Chat concurrency](chat-concurrency.md) | Persistent FIFO and per-scene execution |
+| [Cancellation](cancellation.md) | Actual cooperative I/O cancellation and model HTTP timeout |
 | [Model composition](model-composition.md) | Frozen per-role Provider/model/effort and native model journals |
 | [Host alignment and state ownership](host-alignment.md) | Business responsibilities, integration choices and explicit parity gaps |
 | [Local runtime](local-el-runtime.md) | M7 lifecycle and the M1–M6 collaboration |

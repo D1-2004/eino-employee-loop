@@ -8,6 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
+
+	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/components/tool"
 
 	"github.com/D1-2004/eino-employee-loop/employee/kernel/workflow"
 	"github.com/cloudwego/eino/adk"
@@ -72,7 +77,7 @@ func New(cfg Config) (*Runtime, error) {
 	}
 	return &Runtime{config: cfg}, nil
 }
-func (r *Runtime) prepare(ctx context.Context, req Request) (*adk.Runner, adk.CheckPointStore, []callbacks.Handler, error) {
+func (r *Runtime) prepare(ctx context.Context, req Request, ioCtx context.Context) (*adk.Runner, adk.CheckPointStore, []callbacks.Handler, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, nil, err
 	}
@@ -102,6 +107,10 @@ func (r *Runtime) prepare(ctx context.Context, req Request) (*adk.Runner, adk.Ch
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	// Native immediate cancellation checkpoints the graph, but Eino Generate
+	// delegates without cancelling the underlying I/O. Keep that I/O attached
+	// to the request through its standard middleware boundary.
+	cfg.Handlers = append([]adk.ChatModelAgentMiddleware{&requestCancellation{request: ioCtx}}, cfg.Handlers...)
 	a, err := adk.NewChatModelAgent(ctx, cfg)
 	if err != nil {
 		return nil, nil, nil, err
@@ -109,6 +118,8 @@ func (r *Runtime) prepare(ctx context.Context, req Request) (*adk.Runner, adk.Ch
 	return adk.NewRunner(ctx, adk.RunnerConfig{Agent: a, CheckPointStore: store, EnableStreaming: r.config.Streaming}), store, handlers, nil
 }
 func (r *Runtime) Run(ctx context.Context, req Request) (Result, error) {
+	ioCtx, cancelIO := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelIO()
 	if len(req.Messages) == 0 {
 		return Result{}, errors.New("agent: input messages required")
 	}
@@ -117,7 +128,7 @@ func (r *Runtime) Run(ctx context.Context, req Request) (Result, error) {
 			return Result{}, errors.New("agent: nil input message")
 		}
 	}
-	runner, store, handlers, err := r.prepare(ctx, req)
+	runner, store, handlers, err := r.prepare(ctx, req, ioCtx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -126,12 +137,14 @@ func (r *Runtime) Run(ctx context.Context, req Request) (Result, error) {
 	} else if exists {
 		return Result{}, ErrResumeRequired
 	}
-	return r.execute(ctx, req, runner, handlers, nil, false)
+	return r.execute(ctx, req, runner, handlers, nil, false, cancelIO)
 }
 
 // Resume targets exact interrupt IDs. The Host must authorize the current
 // answer and bind it to the original scoped receipt before this call.
 func (r *Runtime) Resume(ctx context.Context, req Request, targets map[string]any) (Result, error) {
+	ioCtx, cancelIO := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelIO()
 	if len(targets) == 0 {
 		return Result{}, errors.New("agent: explicit resume targets required")
 	}
@@ -140,29 +153,50 @@ func (r *Runtime) Resume(ctx context.Context, req Request, targets map[string]an
 			return Result{}, errors.New("agent: empty resume target")
 		}
 	}
-	runner, _, handlers, err := r.prepare(ctx, req)
+	runner, _, handlers, err := r.prepare(ctx, req, ioCtx)
 	if err != nil {
 		return Result{}, err
 	}
-	return r.execute(ctx, req, runner, handlers, targets, true)
+	return r.execute(ctx, req, runner, handlers, targets, true, cancelIO)
 }
 
 // Recover resumes an engine cancellation checkpoint without fabricating an
 // answer. Business interrupts re-interrupt until explicit targets are supplied.
 func (r *Runtime) Recover(ctx context.Context, req Request) (Result, error) {
-	runner, _, handlers, err := r.prepare(ctx, req)
+	ioCtx, cancelIO := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelIO()
+	runner, _, handlers, err := r.prepare(ctx, req, ioCtx)
 	if err != nil {
 		return Result{}, err
 	}
-	return r.execute(ctx, req, runner, handlers, nil, true)
+	return r.execute(ctx, req, runner, handlers, nil, true, cancelIO)
 }
-func (r *Runtime) execute(ctx context.Context, req Request, runner *adk.Runner, handlers []callbacks.Handler, targets map[string]any, resume bool) (Result, error) {
+func (r *Runtime) execute(ctx context.Context, req Request, runner *adk.Runner, handlers []callbacks.Handler, targets map[string]any, resume bool, cancelIO context.CancelFunc) (Result, error) {
 	cancelOption, cancelAgent := adk.WithCancel()
-	// Let Eino own cancellation/checkpointing, instead of aborting its persistence
-	// context when the entry shuts down. Tools still receive Eino's cancel context.
-	stop := context.AfterFunc(ctx, func() { cancelAgent(adk.WithAgentCancelMode(adk.CancelImmediate), adk.WithRecursive()) })
+	// Effects stop on the original request. Eino gets a separate context so its
+	// checkpoint can settle after cancellation, bounded to five seconds.
+	runCtx, cancelSettlement := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelSettlement()
+	settled := make(chan struct{})
+	defer close(settled)
+	var stopOnce sync.Once
+	stopExecution := func() {
+		stopOnce.Do(func() {
+			cancelAgent(adk.WithAgentCancelMode(adk.CancelImmediate), adk.WithRecursive())
+			cancelIO()
+			go func() {
+				timer := time.NewTimer(5 * time.Second)
+				defer timer.Stop()
+				select {
+				case <-timer.C:
+					cancelSettlement()
+				case <-settled:
+				}
+			}()
+		})
+	}
+	stop := context.AfterFunc(ctx, stopExecution)
 	defer stop()
-	runCtx := context.WithoutCancel(ctx)
 	options := []adk.AgentRunOption{cancelOption, adk.WithCheckPointID(req.Receipt), adk.WithSessionValues(map[string]any{"eel_workspace": req.Key.Workspace, "eel_tenant": req.Key.Tenant, "eel_employee": req.Key.Employee, "eel_scene": req.Key.Scene, "eel_lane": req.Key.Lane, "eel_subject": req.Key.Subject, "eel_receipt": req.Receipt, "eel_version": r.config.Version})}
 	if len(handlers) > 0 {
 		options = append(options, adk.WithCallbacks(handlers...))
@@ -211,7 +245,7 @@ func (r *Runtime) execute(ctx context.Context, req Request, runner *adk.Runner, 
 		if r.config.Observe != nil {
 			if err := r.config.Observe(ctx, req, item); err != nil {
 				runErr = errors.Join(runErr, fmt.Errorf("agent: event journal: %w", err))
-				cancelAgent(adk.WithAgentCancelMode(adk.CancelImmediate), adk.WithRecursive())
+				stopExecution()
 			}
 		}
 	}
@@ -223,4 +257,98 @@ func (r *Runtime) execute(ctx context.Context, req Request, runner *adk.Runner, 
 		return result, errors.New("agent: execution ended without output or interrupt")
 	}
 	return result, runErr
+}
+
+// requestCancellation uses Eino's endpoint middleware so ADK values (state,
+// resume targets, tool call IDs) survive while cooperative I/O sees shutdown.
+// Streaming endpoint contexts live until the owning request finishes.
+type requestCancellation struct {
+	*adk.BaseChatModelAgentMiddleware
+	request context.Context
+}
+
+func (h *requestCancellation) callContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	child, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(h.request, cancel)
+	if h.request.Err() != nil {
+		cancel()
+	}
+	return child, func() { stop(); cancel() }
+}
+func (h *requestCancellation) WrapModel(_ context.Context, inner model.BaseChatModel, _ *adk.ModelContext) (model.BaseChatModel, error) {
+	return &requestModel{inner: inner, cancellation: h}, nil
+}
+func (h *requestCancellation) WrapInvokableToolCall(_ context.Context, next adk.InvokableToolCallEndpoint, _ *adk.ToolContext) (adk.InvokableToolCallEndpoint, error) {
+	return func(ctx context.Context, args string, opts ...tool.Option) (string, error) {
+		ctx, done := h.callContext(ctx)
+		defer done()
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		return next(ctx, args, opts...)
+	}, nil
+}
+func (h *requestCancellation) WrapEnhancedInvokableToolCall(_ context.Context, next adk.EnhancedInvokableToolCallEndpoint, _ *adk.ToolContext) (adk.EnhancedInvokableToolCallEndpoint, error) {
+	return func(ctx context.Context, args *schema.ToolArgument, opts ...tool.Option) (*schema.ToolResult, error) {
+		ctx, done := h.callContext(ctx)
+		defer done()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return next(ctx, args, opts...)
+	}, nil
+}
+func (h *requestCancellation) WrapStreamableToolCall(_ context.Context, next adk.StreamableToolCallEndpoint, _ *adk.ToolContext) (adk.StreamableToolCallEndpoint, error) {
+	return func(ctx context.Context, args string, opts ...tool.Option) (*schema.StreamReader[string], error) {
+		ctx, done := h.callContext(ctx)
+		if err := ctx.Err(); err != nil {
+			done()
+			return nil, err
+		}
+		stream, err := next(ctx, args, opts...)
+		if err != nil {
+			done()
+		}
+		return stream, err
+	}, nil
+}
+func (h *requestCancellation) WrapEnhancedStreamableToolCall(_ context.Context, next adk.EnhancedStreamableToolCallEndpoint, _ *adk.ToolContext) (adk.EnhancedStreamableToolCallEndpoint, error) {
+	return func(ctx context.Context, args *schema.ToolArgument, opts ...tool.Option) (*schema.StreamReader[*schema.ToolResult], error) {
+		ctx, done := h.callContext(ctx)
+		if err := ctx.Err(); err != nil {
+			done()
+			return nil, err
+		}
+		stream, err := next(ctx, args, opts...)
+		if err != nil {
+			done()
+		}
+		return stream, err
+	}, nil
+}
+
+type requestModel struct {
+	inner        model.BaseChatModel
+	cancellation *requestCancellation
+}
+
+func (m *requestModel) Generate(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	ctx, done := m.cancellation.callContext(ctx)
+	defer done()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return m.inner.Generate(ctx, messages, opts...)
+}
+func (m *requestModel) Stream(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	ctx, done := m.cancellation.callContext(ctx)
+	if err := ctx.Err(); err != nil {
+		done()
+		return nil, err
+	}
+	stream, err := m.inner.Stream(ctx, messages, opts...)
+	if err != nil {
+		done()
+	}
+	return stream, err
 }

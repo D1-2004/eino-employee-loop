@@ -84,13 +84,14 @@ type Builder struct {
 	tasks     Tasks
 	authorize func(context.Context, work.Scope, View) error
 	audience  AudiencePolicy
+	budget    Budget
 }
 
 func New(db storage.State, md storage.Artifacts, tasks Tasks, authorize func(context.Context, work.Scope, View) error, options ...Option) (*Builder, error) {
 	if db == nil || md == nil || tasks == nil || authorize == nil {
 		return nil, errors.New("context: stores, task reader and authorization required")
 	}
-	b := &Builder{db: db, md: md, tasks: tasks, authorize: authorize}
+	b := &Builder{db: db, md: md, tasks: tasks, authorize: authorize, budget: DefaultBudget()}
 	for _, option := range options {
 		if option != nil {
 			option(b)
@@ -234,11 +235,12 @@ func (b *Builder) Build(ctx context.Context, scope work.Scope, view View, curren
 		return frame, err
 	}
 	if currentID != "" {
-		s, _, e := b.Source(ctx, scope, currentID)
+		s, ref, e := b.Source(ctx, scope, currentID)
 		if e != nil {
 			return frame, e
 		}
 		frame.Current = &s
+		frame.Refs = append(frame.Refs, ref)
 	}
 	if view == Execution {
 		task, e := b.tasks.Get(ctx, scope, taskID)
@@ -258,6 +260,10 @@ func (b *Builder) Build(ctx context.Context, scope work.Scope, view View, curren
 			if s.Actor != source.Actor || s.Text != source.Text {
 				return frame, ErrRevoked
 			}
+			if source.Receipt == currentID {
+				seen[source.Receipt] = true
+				continue
+			}
 			frame.Sources = append(frame.Sources, s)
 			frame.Refs = append(frame.Refs, ref)
 			seen[source.Receipt] = true
@@ -272,7 +278,7 @@ func (b *Builder) Build(ctx context.Context, scope work.Scope, view View, curren
 			if e = json.Unmarshal(d.Body, &s); e != nil {
 				return frame, e
 			}
-			if s.Withdrawn || s.Actor != scope.Requester {
+			if s.Withdrawn || s.Actor != scope.Requester || s.ID == currentID {
 				continue
 			}
 			frame.Sources = append(frame.Sources, s)
@@ -283,21 +289,6 @@ func (b *Builder) Build(ctx context.Context, scope work.Scope, view View, curren
 			}
 			return frame.Sources[i].At.Before(frame.Sources[j].At)
 		})
-		if len(frame.Sources) > 20 {
-			frame.Sources = frame.Sources[len(frame.Sources)-20:]
-			frame.Gaps = append(frame.Gaps, "older sources omitted as whole records")
-		}
-		if frame.Current != nil {
-			found := false
-			for _, s := range frame.Sources {
-				if s.ID == currentID {
-					found = true
-				}
-			}
-			if !found {
-				frame.Sources = append(frame.Sources, *frame.Current)
-			}
-		}
 		for _, s := range frame.Sources {
 			_, ref, e := b.Source(ctx, scope, s.ID)
 			if e != nil {
@@ -373,9 +364,16 @@ func (b *Builder) Build(ctx context.Context, scope work.Scope, view View, curren
 			frame.OwnerFiles = append(frame.OwnerFiles, d)
 		}
 	}
+	frame, err = b.bound(frame)
+	if err != nil {
+		return frame, err
+	}
 	return frame, b.Revalidate(ctx, frame)
 }
 func (b *Builder) Revalidate(ctx context.Context, f Frame) error {
+	if !b.fits(f) {
+		return ErrBudget
+	}
 	if err := b.authorize(ctx, f.Scope, f.View); err != nil {
 		return err
 	}

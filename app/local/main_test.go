@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"os"
@@ -198,7 +199,7 @@ func TestRuleModelIsStatelessAndBindsSource(t *testing.T) {
 	}
 }
 
-func TestServeReturnsOwnedWorkerFailure(t *testing.T) {
+func TestServeReportsOwnedWorkerFailureAndWaitsForCancellation(t *testing.T) {
 	for _, key := range []string{"LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL"} {
 		t.Setenv(key, "")
 	}
@@ -221,12 +222,12 @@ func TestServeReturnsOwnedWorkerFailure(t *testing.T) {
 	if err = e.Close(); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	var out, errOut bytes.Buffer
 	err = run(ctx, []string{"-profile", example("profile.json"), "-dir", dir, "serve"}, strings.NewReader(""), &out, &errOut)
-	if err == nil || !strings.Contains(err.Error(), "owned worker failed") || !strings.Contains(err.Error(), "LLM_BASE_URL") {
-		t.Fatalf("serve swallowed background failure: %v; output=%s", err, out.String())
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(out.String(), `"type":"worker_error"`) || !strings.Contains(out.String(), "LLM_BASE_URL") {
+		t.Fatalf("serve must report job failure and remain alive until cancellation: %v; output=%s", err, out.String())
 	}
 }
 

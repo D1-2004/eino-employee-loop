@@ -21,6 +21,8 @@ func (m *Manager) RecordNeverSubmitted(ctx context.Context, scope Scope, taskID,
 		if t.Pending != nil && t.State != Stopped && (t.State != Paused || t.Pending.Kind == "continue") {
 			if len(t.Runs) >= t.Definition.MaxRuns {
 				t.State, t.Goal.State = Paused, Paused
+				t.Goal.Summary = "run budget exhausted"
+				t.NeedsReview = false
 				return nil
 			}
 			instruction := t.Pending.Instruction

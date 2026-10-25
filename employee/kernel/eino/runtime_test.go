@@ -217,13 +217,16 @@ func TestNativeStandardHandlersCallbacksAndAgentToolEvents(t *testing.T) {
 	}
 }
 
-type blockingModel struct{ started chan struct{} }
+type blockingModel struct{ started, exited chan struct{} }
 
 func (m *blockingModel) WithTools([]*schema.ToolInfo) (model.ToolCallingChatModel, error) {
 	return m, nil
 }
 func (m *blockingModel) Generate(c context.Context, _ []*schema.Message, _ ...model.Option) (*schema.Message, error) {
 	close(m.started)
+	if m.exited != nil {
+		defer close(m.exited)
+	}
 	<-c.Done()
 	return nil, c.Err()
 }
@@ -233,7 +236,7 @@ func (m *blockingModel) Stream(context.Context, []*schema.Message, ...model.Opti
 func TestNativeCancellationCheckpointsInsteadOfAbortingPersistence(t *testing.T) {
 	s := store(t, t.TempDir())
 	defer s.Close()
-	m := &blockingModel{started: make(chan struct{})}
+	m := &blockingModel{started: make(chan struct{}), exited: make(chan struct{})}
 	cfg := config(s, func(context.Context, native.Request) (*adk.ChatModelAgentConfig, error) {
 		return &adk.ChatModelAgentConfig{Name: "employee", Model: m, MaxIterations: 2}, nil
 	})
@@ -251,7 +254,17 @@ func TestNativeCancellationCheckpointsInsteadOfAbortingPersistence(t *testing.T)
 	go func() { out, err := r.Run(ctx, request()); done <- answer{out, err} }()
 	<-m.started
 	cancel()
-	a := <-done
+	var a answer
+	select {
+	case a = <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("native cancellation did not finish")
+	}
+	select {
+	case <-m.exited:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Generate kept running after its checkpoint was saved")
+	}
 	if !a.out.Cancelled || a.out.Completed || !errors.Is(a.err, context.Canceled) {
 		t.Fatal(a)
 	}
@@ -305,5 +318,66 @@ func TestNativeCrossProcessCheckpointResume(t *testing.T) {
 	d, err := s.Get(ctx, "effects", "scope", "writes")
 	if err != nil || string(d.Body) != "1" {
 		t.Fatal("completed child tool repeated", string(d.Body), err)
+	}
+}
+
+func TestNativeCancellationStopsToolAndRecoveryDoesNotRepeatCompletedEffect(t *testing.T) {
+	db := store(t, t.TempDir())
+	defer db.Close()
+	var writes atomic.Int32
+	var recovering atomic.Bool
+	started, exited := make(chan struct{}), make(chan struct{})
+	factory := func(m model.ToolCallingChatModel) native.Factory {
+		return func(context.Context, native.Request) (*adk.ChatModelAgentConfig, error) {
+			write := localTool{name: "write_once", fn: func(context.Context, string) (string, error) { writes.Add(1); return "receipt-one", nil }}
+			wait := localTool{name: "wait", fn: func(ctx context.Context, _ string) (string, error) {
+				if recovering.Load() {
+					return "resumed", nil
+				}
+				close(started)
+				defer close(exited)
+				<-ctx.Done()
+				return "", ctx.Err()
+			}}
+			return &adk.ChatModelAgentConfig{Name: "employee", Model: m, MaxIterations: 5, ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: []tool.BaseTool{write, wait}, ExecuteSequentially: true}}}, nil
+		}
+	}
+	first := looptest.New(looptest.Tools(looptest.Call{ID: "write-1", Name: "write_once", Args: map[string]any{}}), looptest.Tools(looptest.Call{ID: "wait-1", Name: "wait", Args: map[string]any{}}))
+	rt, err := native.New(config(db, factory(first)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	var runErr error
+	go func() { defer close(done); _, runErr = rt.Run(ctx, request()) }()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("tool did not start")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("native cancellation did not finish")
+	}
+	select {
+	case <-exited:
+	case <-time.After(2 * time.Second):
+		t.Fatal("tool retained its uncancelled context")
+	}
+	if !errors.Is(runErr, context.Canceled) {
+		t.Fatal(runErr)
+	}
+	recovering.Store(true)
+	rt, err = native.New(config(db, factory(looptest.New(looptest.Text("done")))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := rt.Recover(context.Background(), request())
+	if err != nil || !out.Completed || writes.Load() != 1 {
+		t.Fatalf("out=%+v err=%v writes=%d", out, err, writes.Load())
 	}
 }

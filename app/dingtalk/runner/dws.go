@@ -25,12 +25,14 @@ type DWS struct {
 	Profile string
 	Log     *slog.Logger
 
-	mu   sync.Mutex
-	seen map[string]bool
-	// sent remembers "conversation|text" of our own messages until their echo
-	// arrives; the echo reveals self, the account's id as seen by itself.
-	sent map[string]bool
-	self string
+	mu        sync.Mutex
+	seen      map[string]bool
+	seenOrder []string
+	// sent remembers confirmed outbound message IDs until their echo arrives;
+	// text alone cannot identify self because a peer may repeat the same text.
+	sent      map[string]bool
+	sentOrder []string
+	self      string
 }
 
 func (d *DWS) bin() string {
@@ -132,6 +134,11 @@ func (d *DWS) first(id string) bool {
 		return id == ""
 	}
 	d.seen[id] = true
+	d.seenOrder = append(d.seenOrder, id)
+	if len(d.seenOrder) > 4096 {
+		delete(d.seen, d.seenOrder[0])
+		d.seenOrder = d.seenOrder[1:]
+	}
 	return true
 }
 
@@ -142,7 +149,7 @@ func (d *DWS) own(m Message) bool {
 	if d.self != "" && m.SenderID == d.self {
 		return true
 	}
-	key := m.ConversationID + "|" + strings.TrimSpace(m.Text)
+	key := m.MessageID
 	if d.sent[key] {
 		delete(d.sent, key)
 		d.self = m.SenderID
@@ -155,27 +162,172 @@ func (d *DWS) own(m Message) bool {
 // conversation with its sender, or in its group), like a colleague replying
 // to a specific message. The uuid makes a retried send idempotent.
 func (d *DWS) Send(ctx context.Context, m Message, text string) (string, error) {
-	args := []string{"chat", "+messages-reply", "--as", "user", "--message-id", m.MessageID, "--content", text, "--ai-tag=false", "--uuid", "eel-" + m.MessageID, "-y", "-f", "json"}
-	if m.Direct {
-		args = append(args, "--open-dingtalk-id", m.SenderID)
-	} else {
-		args = append(args, "--group", m.ConversationID)
+	if strings.TrimSpace(m.MessageID) == "" || strings.TrimSpace(text) == "" {
+		return "", errors.New("dws send: a source message and reply text are required")
 	}
-	out, err := exec.CommandContext(ctx, d.bin(), d.args(args...)...).Output()
-	if err != nil {
-		var exit *exec.ExitError
-		if errors.As(err, &exit) {
-			return "", fmt.Errorf("dws send: %w: %s", err, strings.TrimSpace(string(exit.Stderr)))
+	conversation := m.ConversationID
+	if conversation == "" && m.Direct && m.SenderID != "" {
+		var err error
+		conversation, err = d.directConversation(ctx, m.SenderID)
+		if err != nil {
+			return "", err
 		}
-		return "", fmt.Errorf("dws send: %w", err)
+	}
+	if conversation == "" {
+		return "", errors.New("dws send: no conversation to reply in")
+	}
+	out, err := d.run(ctx, "dws send", replyArgs(conversation, m, text)...)
+	if err != nil {
+		return "", err
+	}
+	receipt, err := parseDWSReceipt(out)
+	if err != nil {
+		return "", err
+	}
+	if receipt.source != "" && receipt.source != m.MessageID || receipt.identity != "" && receipt.identity != "user" {
+		return "", errors.New("dws send: reply source or identity mismatch")
+	}
+	if receipt.task != "" && receipt.status != "SUCCESS" {
+		out, err = d.run(ctx, "dws status", "chat", "+messages-query-send-status", "--open-task-id", receipt.task, "-f", "json")
+		if err != nil {
+			return "", err
+		}
+		status, err := parseDWSReceipt(out)
+		if err != nil {
+			return "", err
+		}
+		if status.task != "" && status.task != receipt.task {
+			return "", errors.New("dws send: status task mismatch")
+		}
+		receipt = status
+	}
+	if receipt.status != "SUCCESS" || receipt.id == "" || receipt.conversation != conversation || receipt.id == m.MessageID ||
+		receipt.source != "" && receipt.source != m.MessageID || receipt.identity != "" && receipt.identity != "user" {
+		return "", errors.New("dws send: delivery is unconfirmed or message reference does not match")
 	}
 	d.mu.Lock()
 	if d.sent == nil {
 		d.sent = map[string]bool{}
 	}
-	d.sent[m.ConversationID+"|"+strings.TrimSpace(text)] = true
+	key := receipt.id
+	if !d.sent[key] {
+		d.sent[key] = true
+		d.sentOrder = append(d.sentOrder, key)
+		if len(d.sentOrder) > 512 {
+			delete(d.sent, d.sentOrder[0])
+			d.sentOrder = d.sentOrder[1:]
+		}
+	}
 	d.mu.Unlock()
-	return sentID(out), nil
+	return receipt.id, nil
+}
+
+// replyArgs uses the common personal-reply flags of dws v1.0.59 and v1.0.63.
+// Profile supplies the identity; both direct and group replies use their cid.
+func replyArgs(conversation string, m Message, text string) []string {
+	args := []string{"chat", "+messages-reply", "--group", conversation, "--message-id", m.MessageID, "--content", text, "--ai-tag=false", "--uuid", "eel-" + m.MessageID, "-y", "-f", "json"}
+	if m.SenderID != "" {
+		args = append(args, "--ref-sender", m.SenderID)
+	}
+	return args
+}
+
+func (d *DWS) directConversation(ctx context.Context, peer string) (string, error) {
+	out, err := d.run(ctx, "dws conversation", "chat", "+conversation-info", "--open-dingtalk-id", peer, "-f", "json")
+	if err != nil {
+		return "", err
+	}
+	var resp struct {
+		Success *bool `json:"success"`
+		Result  struct {
+			ConversationInfo struct {
+				ID string `json:"openConversationId"`
+			} `json:"conversationInfo"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(out, &resp) != nil || resp.Success != nil && !*resp.Success || resp.Result.ConversationInfo.ID == "" {
+		return "", errors.New("dws conversation: direct conversation was not resolved")
+	}
+	return resp.Result.ConversationInfo.ID, nil
+}
+
+func (d *DWS) run(ctx context.Context, what string, args ...string) ([]byte, error) {
+	out, err := exec.CommandContext(ctx, d.bin(), d.args(args...)...).Output()
+	if err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			return nil, fmt.Errorf("%s: %w: %s", what, err, strings.TrimSpace(string(exit.Stderr)))
+		}
+		return nil, fmt.Errorf("%s: %w", what, err)
+	}
+	return out, nil
+}
+
+type dwsReceipt struct{ id, conversation, status, task, source, identity string }
+
+// Only outbound envelope fields are traversed: referencedMessage is the source,
+// never evidence that the reply was sent. openTaskId is never a message ID.
+func parseDWSReceipt(raw []byte) (dwsReceipt, error) {
+	var root map[string]any
+	if err := json.Unmarshal(raw, &root); err != nil {
+		return dwsReceipt{}, fmt.Errorf("dws receipt: %w", err)
+	}
+	var r dwsReceipt
+	r.source, r.identity = str(root, "sourceMessageId"), str(root, "identity")
+	var visit func(map[string]any) error
+	merge := func(dst *string, value string) error {
+		if value == "" {
+			return nil
+		}
+		if *dst != "" && *dst != value {
+			return errors.New("dws receipt: conflicting outbound fields")
+		}
+		*dst = value
+		return nil
+	}
+	visit = func(m map[string]any) error {
+		if failed, ok := m["success"].(bool); ok && !failed {
+			return errors.New("dws receipt: command reported failure")
+		}
+		if m["error"] != nil || m["dryRun"] == true || m["_mock"] == true {
+			return errors.New("dws receipt: error or dry-run is not delivery")
+		}
+		for _, field := range []struct {
+			dst   *string
+			value string
+		}{
+			{&r.id, str(m, "openMessageId", "openMsgId", "messageId", "msgId")},
+			{&r.conversation, str(m, "openConversationId", "conversationId", "openCid")},
+			{&r.task, str(m, "openTaskId", "taskId")},
+			{&r.status, strings.ToUpper(str(m, "deliveryStatus", "status", "sendStatus"))},
+		} {
+			if err := merge(field.dst, field.value); err != nil {
+				return err
+			}
+		}
+		for _, key := range []string{"result", "data", "sendReceipt", "messageRef"} {
+			switch child := m[key].(type) {
+			case map[string]any:
+				if err := visit(child); err != nil {
+					return err
+				}
+			case []any:
+				if len(child) != 1 {
+					return errors.New("dws receipt: expected one outbound result")
+				}
+				item, ok := child[0].(map[string]any)
+				if !ok {
+					return errors.New("dws receipt: invalid outbound result")
+				}
+				if err := visit(item); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+	err := visit(root)
+	return r, err
 }
 
 // parseDWSEvent decodes one NDJSON record of `dws event +listen-im`. ok is
@@ -237,18 +389,4 @@ func str(m map[string]any, keys ...string) string {
 		}
 	}
 	return ""
-}
-
-// sentID extracts the message id of a +messages-send answer.
-func sentID(raw []byte) string {
-	var resp map[string]any
-	if json.Unmarshal(raw, &resp) != nil {
-		return ""
-	}
-	if data, ok := resp["data"].(map[string]any); ok {
-		if id := str(data, "openMsgId", "messageId", "msgId", "id"); id != "" {
-			return id
-		}
-	}
-	return str(resp, "openMsgId", "messageId", "msgId", "id")
 }

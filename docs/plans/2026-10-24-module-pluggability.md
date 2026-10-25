@@ -395,3 +395,63 @@ Issue sweep results:
 - Affected public app/local race/vet and real bundle build passed. Internal
   consumer race/vet and lifecycle/override tests passed. Business runtime and
   previous full replay evidence are unchanged; no online test or message sent.
+
+## Historical Provider diagnostics and retry (2026-10-25)
+
+Status: fixed; focused diagnostics/retry, race and full checks passed. After Owner Provider version changes,
+Failures reads only the current instance; immediate Retry after Entry reopen
+cannot find historical failures until a background owner tick reconstructs old
+instances. Independent namespaces expose this defect; shared builtin storage
+masked it.
+
+Scope/acceptance: reconstruct historical Owner instances from admitted frozen
+profiles without Observe/Tick/model execution; use the same selection for normal
+processing, diagnostics and retry. Preserve exact old factories or fail explicitly;
+aggregate failures without duplicate shared-store diagnostics and without hiding
+same-ID different-state/error facts. Protect runtime map with ownerMu. Exercise
+immediate reopen diagnostics/retry and custom/builtin versions with race checks.
+No new handle protocol, migration, service upgrade or live IM. Once verified,
+publish the fix and update the existing internal CR consumer pin and regression.
+
+## Formal issue backlog #8–#16 (2026-10-25)
+
+The fresh issue query now returns nine reports (created 2026-10-25); earlier empty
+queries are historical, not the current backlog. Extend this slice to the
+reported availability, ordering, correction, context and feedback defects.
+
+Implementation/acceptance checklist:
+- #8 isolate recoverable worker/job errors in serve; preserve fatal resource,
+  cancellation and output failure; demonstrate bad message then good message.
+- #9 adapt to the DWS reply parameter intersection and verify SUCCESS/new native
+  identities; dry-run/fake CLI only. No actual IM canary target was authorized.
+- #10 explicit no-effect Recoverable tool feedback via native Eino state routing;
+  rejected terminal does not finish and remaining same-batch effects do not run;
+  Review prevalidation, waiting steer and artifact CAS correction exercised.
+- #11 existing Outbox handles failed/paused/stopped status and optional control
+  acknowledgements, with idempotency. Real-model strict M02 remains separate.
+- #12 durable per-scene FIFO with legacy fallback and restart/replay evidence.
+- #13 128KiB bounded serialized Context Frame, whole-source omission/gaps,
+  Current once, bounded task summaries and explicit oversized-current rejection;
+  no claim that this is a model-specific tokenizer or all later tool payloads.
+- #14 budget refusal before cancelling an active writer, visible persisted pause
+  and retained instructions. No automatic quota increase or grant API added.
+- #15 per-scene workers/locks, native actual I/O cancellation with bounded
+  checkpoint settlement, and model HTTP timeout. Event-driven polling changes
+  are deferred as enhancement rather than isolated latency optimization.
+- #16 fix the verified reachable websocket vulnerability and bound reference
+  dedupe memory; production durable Inbox and real-model prompt/judge quality
+  are not solved by these code changes.
+
+Root integrates the independent module slices, runs full checks and scripted
+Linux evaluation, then publishes/pins one immutable candidate. Do not claim live
+IM, remote service deployment or untested quality acceptance; do not mechanically
+close grouped issues whose remaining criteria were not exercised.
+
+Current integration review reproduced a further P1: a committed dispatch followed
+by ACK target resolution failure was classified as a no-effect refusal. Fix the
+classification at the actual command boundary; ACK/Outbox/storage errors stay
+hard errors. The four-sentinel ACK and control regressions passed; no new dispatch follows a committed effect.
+Full tests/vet/race and fresh Linux/arm64 offline non-root replay (111 assertions)
+passed after the correction. Evidence and remaining issue criteria are in
+`../../evals/reports/2026-10-25-formal-issues.md`. Publication and immutable
+consumer pin readback follow; no merge/deployment/live IM in this slice.

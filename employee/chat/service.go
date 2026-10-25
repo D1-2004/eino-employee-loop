@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"sync"
 	"time"
 
@@ -54,12 +55,13 @@ type Service struct {
 	authorize       func(context.Context, contract.Scope) error
 	enqueueMessage  func(context.Context, contract.Profile, contract.Input, string, string, string, string) (any, error)
 	cancelExecution func(string)
-	mu              sync.Mutex
+	sceneLocks      map[string]*sync.Mutex
 }
 
 // Job preserves the persisted inbox format, including frozen profile and frame.
 // The historical namespace remains entry-jobs for existing local directories.
 type Job struct {
+	Sequence     int64 `json:",omitempty"`
 	Input        contract.Input
 	Profile      contract.Profile
 	State, Error string
@@ -82,7 +84,11 @@ func New(opts Options) (*Service, error) {
 	if err := json.Unmarshal(encode(opts.Profile), &profile); err != nil {
 		return nil, err
 	}
-	return &Service{db: opts.State, profile: profile, context: opts.Context, work: opts.Tasks, scheduler: opts.Scheduler, delivery: opts.Outbox, runner: opts.Runner, authorize: opts.Authorize, enqueueMessage: opts.EnqueueMessage, cancelExecution: opts.CancelExecution}, nil
+	locks := make(map[string]*sync.Mutex, len(profile.Scenes))
+	for _, scene := range profile.Scenes {
+		locks[scene] = &sync.Mutex{}
+	}
+	return &Service{sceneLocks: locks, db: opts.State, profile: profile, context: opts.Context, work: opts.Tasks, scheduler: opts.Scheduler, delivery: opts.Outbox, runner: opts.Runner, authorize: opts.Authorize, enqueueMessage: opts.EnqueueMessage, cancelExecution: opts.CancelExecution}, nil
 }
 func encode(v any) json.RawMessage { raw, _ := json.Marshal(v); return raw }
 func settlement(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -123,7 +129,11 @@ func (s *Service) Submit(ctx context.Context, in contract.Input) (contract.Admis
 		if !errors.Is(e, storage.ErrNotFound) {
 			return e
 		}
-		_, e = tx.Put(ctx, storage.Document{Namespace: "entry-jobs", Scope: s.profile.Key(), ID: id, Body: encode(Job{Input: in, Profile: s.profile, State: "queued"})})
+		sequence, e := tx.Append(ctx, storage.Event{Namespace: "entry-admissions", Scope: s.profile.Key(), ID: id, Kind: "admitted", Body: encode(map[string]string{"scene": in.Scene})})
+		if e != nil {
+			return e
+		}
+		_, e = tx.Put(ctx, storage.Document{Namespace: "entry-jobs", Scope: s.profile.Key(), ID: id, Body: encode(Job{Input: in, Profile: s.profile, State: "queued", Sequence: sequence})})
 		return e
 	})
 	return admission, err
@@ -151,8 +161,6 @@ func (s *Service) Admissions(ctx context.Context) ([]Admitted, error) {
 
 // Retry never rebuilds the frozen frame or resets the physical model budget.
 func (s *Service) Retry(ctx context.Context, id string) (bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	d, err := s.db.Get(ctx, "entry-jobs", s.profile.Key(), id)
 	if errors.Is(err, storage.ErrNotFound) {
 		return false, nil
@@ -163,6 +171,28 @@ func (s *Service) Retry(ctx context.Context, id string) (bool, error) {
 	var j Job
 	if err = json.Unmarshal(d.Body, &j); err != nil {
 		return true, err
+	}
+	if err = s.authorize(ctx, j.Profile.Scope(j.Input.Scene)); err != nil {
+		return true, err
+	}
+	scene := j.Input.Scene
+	lock, err := s.sceneLock(j.Input.Scene)
+	if err != nil {
+		return true, err
+	}
+	if !lock.TryLock() {
+		return true, storage.ErrBusy
+	}
+	defer lock.Unlock()
+	d, err = s.db.Get(ctx, "entry-jobs", s.profile.Key(), id)
+	if err != nil {
+		return true, err
+	}
+	if err = json.Unmarshal(d.Body, &j); err != nil {
+		return true, err
+	}
+	if j.Input.Scene != scene {
+		return true, work.ErrScope
 	}
 	if err = s.authorize(ctx, j.Profile.Scope(j.Input.Scene)); err != nil {
 		return true, err
@@ -221,4 +251,62 @@ func (s *Service) ValidateQuestion(ctx context.Context, in interaction.Intent) e
 		return interaction.ErrObsolete
 	}
 	return interaction.ErrObsolete
+}
+
+// jobs orders the durable inbox by transactionally allocated admission sequence.
+// Legacy jobs predate that counter; their source admission times provide the
+// best preserved ordering and they precede admissions made after this upgrade.
+func (s *Service) jobs(ctx context.Context) ([]storage.Document, error) {
+	docs, err := s.db.List(ctx, "entry-jobs", s.profile.Key())
+	if err != nil {
+		return nil, err
+	}
+	type position struct {
+		sequence int64
+		at       time.Time
+	}
+	order := make(map[string]position, len(docs))
+	for _, d := range docs {
+		var j Job
+		if err := json.Unmarshal(d.Body, &j); err != nil {
+			return nil, err
+		}
+		pos := position{sequence: j.Sequence}
+		if j.Sequence == 0 {
+			key, err := j.Profile.Scope(j.Input.Scene).Key()
+			if err != nil {
+				return nil, err
+			}
+			source, err := s.db.Get(ctx, "sources", key, j.Input.ID)
+			if err == nil {
+				var admitted contextbuilder.Source
+				if err := json.Unmarshal(source.Body, &admitted); err != nil {
+					return nil, err
+				}
+				pos.at = admitted.At
+			} else if !errors.Is(err, storage.ErrNotFound) {
+				return nil, err
+			}
+		}
+		order[d.ID] = pos
+	}
+	sort.SliceStable(docs, func(i, j int) bool {
+		a, b := order[docs[i].ID], order[docs[j].ID]
+		if a.sequence != b.sequence {
+			return a.sequence < b.sequence
+		}
+		if !a.at.Equal(b.at) {
+			return a.at.Before(b.at)
+		}
+		return docs[i].ID < docs[j].ID
+	})
+	return docs, nil
+}
+
+func (s *Service) sceneLock(scene string) (*sync.Mutex, error) {
+	lock := s.sceneLocks[scene]
+	if lock == nil {
+		return nil, work.ErrScope
+	}
+	return lock, nil
 }

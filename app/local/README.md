@@ -38,3 +38,7 @@ own typed factories; see [local/eval/server assembly](../../docs/local-server-as
 Models can vary by loop role and effort through immutable
 [model bindings](../../docs/specs/model-composition.md). The module import path is
 unchanged while the project name remains under discussion.
+
+Real-model HTTP requests default to a two-minute timeout. Set
+`LLM_REQUEST_TIMEOUT=45s` (any positive Go duration) to override it; cancellation
+can stop a request sooner. See the [cancellation contract](../../docs/specs/cancellation.md).

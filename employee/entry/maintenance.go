@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/D1-2004/eino-employee-loop/employee/chat"
 	contextbuilder "github.com/D1-2004/eino-employee-loop/employee/context"
 	"github.com/D1-2004/eino-employee-loop/employee/contract"
 	native "github.com/D1-2004/eino-employee-loop/employee/kernel/eino"
@@ -26,7 +27,7 @@ func (s *standalone) now() time.Time {
 func (s *standalone) ownerOnce(ctx context.Context) (bool, error) {
 	s.ownerMu.Lock()
 	defer s.ownerMu.Unlock()
-	admitted, err := s.chat.Admissions(ctx)
+	admitted, err := s.restoreOwnerWorkers(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -35,20 +36,12 @@ func (s *standalone) ownerOnce(ctx context.Context) (bool, error) {
 		if len(p.OwnerLoops) == 0 {
 			continue
 		}
-		worker, e := s.ownerFor(ctx, p)
-		if e != nil {
-			return false, e
-		}
-		if e = worker.Observe(ctx, p.Scope(admission.Input.Scene), admission.Input.ID); e != nil && !errors.Is(e, contextbuilder.ErrRevoked) {
+		worker := s.ownerWorkers[string(encode(p))]
+		if e := worker.Observe(ctx, p.Scope(admission.Input.Scene), admission.Input.ID); e != nil && !errors.Is(e, contextbuilder.ErrRevoked) {
 			return false, e
 		}
 	}
-	keys := make([]string, 0, len(s.ownerWorkers))
-	for key := range s.ownerWorkers {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
+	for _, key := range s.ownerWorkerKeys() {
 		for _, scene := range s.opts.Profile.Scenes {
 			progress, err := s.ownerWorkers[key].Tick(ctx, s.opts.Profile.Scope(scene))
 			if progress || err != nil {
@@ -57,6 +50,34 @@ func (s *standalone) ownerOnce(ctx context.Context) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// restoreOwnerWorkers requires ownerMu. Resolving admitted frozen profiles is
+// separate from Observe/Tick so diagnosis and explicit retry never execute work.
+func (s *standalone) restoreOwnerWorkers(ctx context.Context) ([]chat.Admitted, error) {
+	admitted, err := s.chat.Admissions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, admission := range admitted {
+		if len(admission.Profile.OwnerLoops) == 0 {
+			continue
+		}
+		if _, err := s.ownerFor(ctx, admission.Profile); err != nil {
+			return nil, err
+		}
+	}
+	return admitted, nil
+}
+
+// ownerWorkerKeys requires ownerMu and keeps recovery traversal deterministic.
+func (s *standalone) ownerWorkerKeys() []string {
+	keys := make([]string, 0, len(s.ownerWorkers))
+	for key := range s.ownerWorkers {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 func (s *standalone) Schedule(ctx context.Context, scope work.Scope, in work.Schedule) (work.Schedule, error) {
 	return s.tasksWorker.Schedule(ctx, scope, in)

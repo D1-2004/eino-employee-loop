@@ -32,6 +32,17 @@ go run ./app/dingtalk -channel dws -profile <corpId:userId> -name <display name>
 
 Notes:
 
+- The DWS adapter uses the shared v1.0.59/v1.0.63 reply flags: `--group`
+  for both direct and group conversation IDs, `--message-id` and optional
+  `--ref-sender`. Every lookup, send and status query retains the same profile.
+- A successful process exit is not delivery proof. The adapter requires a real
+  outbound message ID, the expected conversation and a `SUCCESS` delivery
+  status; asynchronous `openTaskId` receipts are queried once. Unknown or
+  pending results fail the wake and are never fabricated as `reply-to:` IDs.
+- Stream duplicate IDs and pending outbound echo IDs have bounded in-memory windows
+  (4096 and 512 entries). These windows reset on process restart; this small
+  reference harness does not claim durable inbox processing. Production Hosts
+  must persist the source-message key and processing result in their inbox.
 - Stop with Ctrl-C (SIGTERM): dws then cancels the subscriptions it created.
 - Personal events cover messages from the account's own organization; a
   cross-organization direct message may not be delivered.

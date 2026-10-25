@@ -3,7 +3,10 @@ package models
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/D1-2004/eino-employee-loop/employee/contract"
 	openaimodel "github.com/cloudwego/eino-ext/components/model/openai"
@@ -36,5 +39,13 @@ func openAI(ctx context.Context, r contract.ModelRequest) (model.ToolCallingChat
 	if base == "" || key == "" {
 		return nil, errors.New("models: set LLM_BASE_URL and LLM_API_KEY")
 	}
-	return openaimodel.NewChatModel(ctx, &openaimodel.ChatModelConfig{BaseURL: base, APIKey: key, Model: r.ModelName, ReasoningEffort: openaimodel.ReasoningEffortLevel(r.Binding.Effort)})
+	timeout := 2 * time.Minute
+	if value := strings.TrimSpace(os.Getenv("LLM_REQUEST_TIMEOUT")); value != "" {
+		var err error
+		timeout, err = time.ParseDuration(value)
+		if err != nil || timeout <= 0 {
+			return nil, fmt.Errorf("models: LLM_REQUEST_TIMEOUT must be a positive duration, got %q", value)
+		}
+	}
+	return openaimodel.NewChatModel(ctx, &openaimodel.ChatModelConfig{BaseURL: base, APIKey: key, Model: r.ModelName, ReasoningEffort: openaimodel.ReasoningEffortLevel(r.Binding.Effort), Timeout: timeout})
 }

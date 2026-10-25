@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -326,21 +327,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		if err = enc.Encode(map[string]any{"type": "started", "real_im": false, "input": "existing durable queue only", "timeout": timeout.String()}); err != nil {
 			return err
 		}
-		workerErrors := e.Errors()
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case workerErr, open := <-workerErrors:
-				if !open {
-					workerErrors = nil
-					continue
-				}
-				if workerErr != nil {
-					return fmt.Errorf("owned worker failed: %w", workerErr)
-				}
-			}
-		}
+		return serveWorkerErrors(ctx, e.Errors(), enc)
 	default:
 		return fmt.Errorf("unknown command %q", command)
 	}
@@ -375,4 +362,92 @@ func modelFactory(script string) (entry.Models, error) {
 	}
 	// Credentials are read by the selected Provider only when a model is used.
 	return modelproviders.OpenAIEnvironment().Models, nil
+}
+
+// serveWorkerErrors keeps one failed job from terminating unrelated workers.
+// Diagnostics are bounded even when a durable fault is reported every poll.
+func serveWorkerErrors(ctx context.Context, workerErrors <-chan error, enc *json.Encoder) (resultErr error) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	var pending error
+	count := 0
+	var nextReport time.Time
+	flush := func() error {
+		if pending == nil {
+			return nil
+		}
+		err := enc.Encode(map[string]any{"type": "worker_error", "error": pending.Error(), "occurrences": count, "real_im": false})
+		pending, count = nil, 0
+		nextReport = time.Now().Add(time.Second)
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, flush()) }()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if time.Now().Before(nextReport) {
+				continue
+			}
+			if err := flush(); err != nil {
+				return err
+			}
+		case workerErr, open := <-workerErrors:
+			if !open {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return errors.New("serve: worker error stream closed unexpectedly")
+			}
+			if workerErr == nil {
+				continue
+			}
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			pending, count = workerErr, count+1
+			if fatalWorkerError(workerErr) {
+				return fmt.Errorf("serve: worker resource unavailable: %w", workerErr)
+			}
+			if !time.Now().Before(nextReport) {
+				if err := flush(); err != nil {
+					return err
+				}
+			}
+		}
+	}
+}
+
+func fatalWorkerError(err error) bool {
+	// Inspect each joined branch: a transient first error must not hide a fatal
+	// settlement failure from a different worker operation.
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		for _, child := range joined.Unwrap() {
+			if fatalWorkerError(child) {
+				return true
+			}
+		}
+		return false
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		if fatalWorkerError(wrapped.Unwrap()) {
+			return true
+		}
+	}
+	for _, fatal := range []error{sql.ErrConnDone, syscall.ENOSPC, syscall.EIO, syscall.EROFS, syscall.EBADF} {
+		if errors.Is(err, fatal) {
+			return true
+		}
+	}
+	// SQLite extended result codes retain the primary code in the low byte.
+	// Busy/locked/constraint and individual missing records remain recoverable.
+	var sqliteError interface{ Code() int }
+	if errors.As(err, &sqliteError) {
+		switch sqliteError.Code() & 0xff {
+		case 8, 10, 11, 13, 14, 21, 26: // READONLY, IOERR, CORRUPT, FULL, CANTOPEN, MISUSE, NOTADB
+			return true
+		}
+	}
+	return false
 }

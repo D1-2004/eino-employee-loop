@@ -5,18 +5,18 @@ Production code under `employee` must not depend on this directory.
 
 ```text
 evals/
-├── run.py            Build/run local cases and verify persisted evidence
+├── run.py            Compatibility launcher for app/eval
 ├── cases/local/      Profiles, admitted input, scripted models and schedules
 ├── reports/          Version-specific evaluation results
 ├── reviews/          Earlier source reviews and non-building probe attachments
 └── architecture/     Historical diagrams tied to earlier versions
 ```
 
-Run the complete local acceptance from the repository root (Python 3.9+ and Go):
+Run the complete local acceptance from the repository root (Go):
 
 ```sh
-python3 evals/run.py
-python3 evals/run.py --output /absolute/empty-evidence-directory
+go run ./app/eval
+go run ./app/eval --output /absolute/empty-evidence-directory
 ```
 
 The runner builds `app/local`, checks six Owner documents and verified file
@@ -43,3 +43,6 @@ revision or imply that its old paths are current usage instructions. Original
 locations included `docs/evals`, `docs/reviews` and `docs/architecture`, then
 `docs/archive`; historical framework plans remain under `docs/archive/plans`.
 Probe source attachments use `.go.txt` and do not enter current builds.
+
+Latest [formal issue review](reports/2026-10-25-formal-issues.md) distinguishes
+local fixes from outstanding real-model, persistent Inbox and live IM acceptance.
