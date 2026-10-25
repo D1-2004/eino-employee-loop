@@ -133,3 +133,29 @@ host_read_source，随后写文件、Review 和交付；原有持久 profile 不
 结果的 local_applied/local-file 表示本地文件回读。远端通道的 provider_accepted
 保留待查询状态，只有 Lookup 的 delivered 才记入任务交付；PrepareIntent 冻结目的地，
 当前 AuthorizeDelivery 再检查目标权限。默认 Local 不支持的附件/卡片明确拒绝。
+
+
+## 按角色加载宿主提示词
+
+使用 `-prompt-bundle /absolute/private/compiled-prompts.json` 显式加载
+[已编译角色包](specs/prompt-composition.md)。该文件在打开持久状态之前校验并冻结进
+Profile；Profile 已有包时拒绝再次覆盖。启用后按实际 role 选择指令，不再追加
+全局 `Instructions`。未选择包的旧 Profile 保持原行为。
+
+```sh
+go run ./app/local -profile /absolute/private/profile.json -prompt-bundle /absolute/private/compiled-prompts.json -dir /absolute/private/state submit -id original-message-1 -text '请整理当前工作进展'
+```
+
+外部编译器负责从宿主固定版本提取合适的业务片段、映射原生 role/tool/input，并
+解决受信动态绑定；SDK 不内置任何私有模板，也不将另一套 EL 工具手册全文加入
+每个循环。缺角色、哈希不符、未解决绑定或不支持的认知模块会拒绝运行。模型、
+effort 与凭据仍走原 `ModelBindings` 和应用 Provider 配置，不由提示词赋予能力。
+
+CLI 输出版本和摘要，Task 配置显示只含 redacted provenance；私有状态和 SDK
+查询仍保留原冻结正文以便恢复。请保持状态目录私有，不提交模板正文、真实账号、
+访问凭据或模型 I/O。改变包内容须使用新的 Profile 修订；旧 Task、Owner 和重开
+恢复继续采用原片段。
+
+该加载机制、脚本重放和编译成功都不代表宿主或线上行为已对齐。验收应另外记录
+实际来源/产物摘要、各角色真正采用的 system、真实模型/本地文件/回执与独立质量
+结果；不得把通用合成测试当作真实模型通过率。

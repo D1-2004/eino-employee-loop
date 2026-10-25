@@ -13,6 +13,7 @@ and the [assembly guide](../module-composition.md) for Go usage.
 | [Chat concurrency](chat-concurrency.md) | Persistent FIFO and per-scene execution |
 | [Cancellation](cancellation.md) | Actual cooperative I/O cancellation and model HTTP timeout |
 | [Model composition](model-composition.md) | Frozen per-role Provider/model/effort and native model journals |
+| [Prompt composition](prompt-composition.md) | Frozen role instructions, Host provenance and model-visible configuration projection |
 | [Host alignment and state ownership](host-alignment.md) | Business responsibilities, integration choices and explicit parity gaps |
 | [Local runtime](local-el-runtime.md) | M7 lifecycle and the M1–M6 collaboration |
 | [Module composition](module-composition.md) | M7 exact-version assembly and resource lifetime |

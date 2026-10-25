@@ -71,6 +71,19 @@ type Frame struct {
 	Gaps             []string
 }
 
+// MarshalJSON is the final model-frame boundary, including historical frames
+// and callers that replace Tasks after Build. It does not change those Tasks or
+// their stored configuration; role instructions belong only in the role system.
+func (f Frame) MarshalJSON() ([]byte, error) {
+	tasks, err := work.ModelTasks(f.Tasks)
+	if err != nil {
+		return nil, err
+	}
+	f.Tasks = tasks
+	type frameJSON Frame
+	return json.Marshal(frameJSON(f))
+}
+
 // Tasks is the read-only business projection needed to assemble model context.
 // The Context builder never changes a Task or Goal.
 type Tasks interface {

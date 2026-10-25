@@ -232,7 +232,11 @@ func (s *Service) chatTools(j Job, jobID string) ([]*kernel.Function, map[string
 		return map[string]any{"tasks": summaries, "offset": offset, "next_offset": end, "total": len(tasks), "has_more": end < len(tasks), "truncated": offset > 0 || end < len(tasks), "gap": "Summaries omit original instructions, sources, waits and execution outputs; read_task retrieves an authorized original Task."}, nil
 	})
 	read := makeFn("read_task", "Read the current state, Goal, Runs, pending questions and actual output of one authorized task.", map[string]any{"task_id": kernel.StringField()}, []string{"task_id"}, func(c context.Context, _ string, a map[string]any) (any, error) {
-		return target(c, kernel.Str(a, "task_id"))
+		task, err := target(c, kernel.Str(a, "task_id"))
+		if err != nil {
+			return nil, err
+		}
+		return work.ModelTask(task)
 	})
 	dispatch := makeFn("dispatch_task", "Accept independent substantial work with the complete goal, original method and constraints. A real receipt ends this turn; do not claim the work is complete.", map[string]any{"goal": kernel.StringField(), "instruction": kernel.StringField(), "constraints": map[string]any{"type": "array", "items": map[string]any{"type": "string"}}, "reply": map[string]any{"type": "string"}}, []string{"goal", "instruction"}, func(c context.Context, id string, a map[string]any) (any, error) {
 		constraints := []string{}

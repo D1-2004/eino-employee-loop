@@ -112,7 +112,18 @@ func (s *standalone) defaultOwnerFor(profile Profile) (*ownerloop.Worker, error)
 		roles = ownerloop.DefaultRoles()
 	} // Tick restores already admitted work; new admission is disabled above.
 	d := s.ownerDependencies(profile)
-	return ownerloop.New(ownerloop.Options{DB: d.State, Files: d.Artifacts, Context: d.Context, Owner: d.Owner, Version: d.Profile.Revision, Configuration: encode(d.Profile), Callbacks: d.Callbacks, Roles: roles, Authorize: d.Authorize, ConfigureRuntime: d.Plugins, Models: d.Models})
+	var policies map[string]string
+	if profile.PromptBundle != nil && len(profile.OwnerLoops) > 0 {
+		policies = make(map[string]string, len(roles))
+		for _, role := range roles {
+			text, err := contract.ResolveInstructions(profile, "owner_"+role.Name)
+			if err != nil {
+				return nil, err
+			}
+			policies[role.Name] = text
+		}
+	}
+	return ownerloop.New(ownerloop.Options{DB: d.State, Files: d.Artifacts, Context: d.Context, Owner: d.Owner, Version: d.Profile.Revision, Configuration: encode(d.Profile), Callbacks: d.Callbacks, Roles: roles, RolePolicies: policies, Authorize: d.Authorize, ConfigureRuntime: d.Plugins, Models: d.Models})
 }
 
 func (s *standalone) ownerDependencies(profile Profile) OwnerDependencies {

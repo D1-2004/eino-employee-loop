@@ -115,6 +115,10 @@ type Runner struct {
 func encode(v any) json.RawMessage { raw, _ := json.Marshal(v); return raw }
 func (s *Runner) Run(ctx context.Context, call Invocation) (native.Result, error) {
 	profile, scope, role, receipt, frame, system, functions, terminal, allowText := call.Profile, call.Scope, call.Role, call.Receipt, call.Context, call.System, call.Tools, call.Terminal, call.AllowText
+	instructions, err := contract.ResolveInstructions(profile, role)
+	if err != nil {
+		return native.Result{}, err
+	}
 	targets := call.Targets
 
 	batch := &toolBatch{}
@@ -253,7 +257,7 @@ func (s *Runner) Run(ctx context.Context, call Invocation) (native.Result, error
 	if err != nil {
 		return native.Result{}, err
 	}
-	messages := []*schema.Message{schema.SystemMessage(system + "\n" + profile.Instructions), schema.UserMessage(string(encode(frame)))}
+	messages := []*schema.Message{schema.SystemMessage(system + "\n" + instructions), schema.UserMessage(string(encode(frame)))}
 	key := workflow.Key{Profile: profile.ID, ProfileRevision: profile.Revision, ProfileBinding: role, Workspace: scope.Workspace, Tenant: scope.Tenant, Employee: scope.Employee, Scene: scope.Scene, Lane: role, Subject: scope.Requester}
 	req := native.Request{Key: key, Receipt: receipt, Messages: messages}
 	if len(targets) > 0 && targets[0] != nil {

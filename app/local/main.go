@@ -55,6 +55,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	flags := flag.NewFlagSet("el", flag.ContinueOnError)
 	flags.SetOutput(errOut)
 	profilePath := flags.String("profile", "", "immutable local-el-profile/1 JSON file (required)")
+	promptBundlePath := flags.String("prompt-bundle", "", "external compiled native-role prompt bundle JSON (optional; no template rendering)")
 	directory := flags.String("dir", "", "private SQLite/Markdown state directory (required)")
 	scriptPath := flags.String("script", "", "stateless role/rule model JSON, instead of an LLM")
 	timeout := flags.Duration("timeout", 2*time.Minute, "total bounded command duration")
@@ -81,6 +82,9 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if err := readJSON(*profilePath, &profile); err != nil {
 		return fmt.Errorf("profile: %w", err)
 	}
+	if err := loadPromptBundle(*promptBundlePath, &profile); err != nil {
+		return fmt.Errorf("prompt bundle: %w", err)
+	}
 	if err := profile.Validate(); err != nil {
 		return err
 	}
@@ -101,6 +105,11 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	defer func() { resultErr = errors.Join(resultErr, e.Close()) }()
 	enc := json.NewEncoder(out)
 	enc.SetEscapeHTML(false)
+	if provenance := promptProvenance(profile); provenance != nil {
+		if err = enc.Encode(map[string]any{"type": "prompt_bundle", "provenance": provenance}); err != nil {
+			return err
+		}
+	}
 	command := flags.Arg(0)
 	cf := flag.NewFlagSet(command, flag.ContinueOnError)
 	cf.SetOutput(errOut)
@@ -153,6 +162,10 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			deliveries, e3 := e.Deliveries(ctx, s)
 			failures, e4 := e.Failures(ctx, s)
 			if err = errors.Join(e1, e2, e3, e4); err != nil {
+				return err
+			}
+			tasks, err = displayTasks(tasks)
+			if err != nil {
 				return err
 			}
 			if err = enc.Encode(map[string]any{"type": "local_state", "transport": "local-replay/markdown", "directory": dir, "scene": s, "tasks": tasks, "pending": pending, "deliveries": deliveries, "failures": failures}); err != nil {

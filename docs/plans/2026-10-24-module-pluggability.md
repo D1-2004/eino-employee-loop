@@ -498,3 +498,56 @@ actual regressions. Diagram rendered/visually reviewed and current links checked
 See `../../evals/reports/2026-10-25-domain-authorization.md` for hashes and limits.
 GitHub publication and the same consumer CR pin/readback follow; actual Host
 wire/Session/Memory/IM acceptance is still pending, not inferred from local tests.
+
+
+## 2026-10-26: Host prompt alignment and GitHub/local acceptance
+
+Status: in progress; the user explicitly requires local acceptance and GitHub
+publication, with Buddy-pre prompt alignment BEFORE further local debugging.
+Public baseline/main is a1852163f582e62cf4dbeeb31544d1900ce6d7b1; another local
+checkout contains independent unpushed experiments and is not this baseline.
+GitHub writes use gh api/Git Data API with a fresh main read and no git push.
+
+A separate consumer's engineering checks and dedicated real IM canary passed,
+but its handwritten reference instruction was not the required prompt baseline.
+Its interrupted quality run retains44pass/4fail/2blocked/3unknown/19notrun out
+of72 and one original hard verdict; it is not accepted or used as SDK parity
+proof. Earlier failed evidence is preserved. No new quality run starts until
+the source and actual compiled prompt contract are frozen.
+
+Implementation slice: generic external compiled-role prompt bundle with verified
+content/provenance in Profile; native kernel role selection and existing builtin
+Owner RolePolicies, plus explicit app/local file loading. Preserve native Eino,
+role models/effort and all original Task/Outbox/state authority. No private Buddy
+source, compiled text, account or credential is published. Spec first:
+../specs/prompt-composition.md. Root owns spec/integration/GitHub; delegated
+implementation has explicit contract/kernel/entry/app-local ownership and must
+preserve concurrent work. Actual template source and effective preproduction
+content are distinct; use true content hashes and never a stale dirty checkout.
+
+Acceptance: real selected prompt requests, rejection and frozen restore checks;
+public full tests/vet and meaningful scoped race, local native execution; then
+frozen true-model local evaluation with >50 cases and >=95% pass/no hard identity
+or effect-integrity failures. Consumer integration and separately authorized
+preproduction deployment/business proof remain pending; this SDK slice does not
+authorize another application deployment or resource permission changes.
+
+
+Prompt composition mechanism implemented: generic bundle input, detached Profile
+freeze, exact native-role resolution, existing Owner RolePolicies and explicit CLI
+loading. Synthetic actual native requests and Owner/Task reopen prove selected
+fragments and local applied effects; legacy no-bundle prompt bytes are unchanged.
+Scoped contract/kernel/entry/app-local race and vet pass. Full checks and GitHub
+publication follow. Private source mapping and real-model quality are still pending,
+not silently accepted by these mechanism tests.
+
+
+Independent review caught a new composition defect before publication: complete
+Profile configuration in typed Task model views reintroduced all role fragments
+and could exceed the frame budget. Fixed via shared typed Task projection before
+budgeting and at Frame serialization/read_task boundaries; trusted SDK/private
+configuration stays intact. A174KiB unused fragment with six actual role requests,
+Owner/Task reopen, result expression/package and actual read_task now proves no
+fragment enters non-system messages; old frame bytes and human data are preserved.
+Affected package race, full tests and full vet pass after this fix. These are
+mechanism results, still not a true-model quality acceptance or online parity.

@@ -41,6 +41,7 @@ prove local writes; they do not prove DingTalk delivery or full online Buddy par
 - [Architecture and import migration](ARCHITECTURE.md)
 - [Local, eval and server assembly](docs/local-server-assembly.md)
 - [Run the local application](app/local/README.md)
+- [Load frozen role prompts](docs/specs/prompt-composition.md)
 - [Embed and assemble the framework](docs/module-composition.md)
 - [Behavior contracts](docs/specs/README.md)
 - [Host alignment and integration boundaries](docs/specs/host-alignment.md)

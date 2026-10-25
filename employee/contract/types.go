@@ -56,6 +56,7 @@ func (m ModuleSelection) Core() ModuleSelection {
 }
 
 type Profile struct {
+	PromptBundle                                                                        *PromptBundle           `json:",omitempty"`
 	ModelBindings                                                                       map[string]ModelBinding `json:",omitempty"`
 	HostTools                                                                           bool
 	Modules                                                                             ModuleSelection
@@ -76,6 +77,9 @@ func (p Profile) Key() string {
 	return Digest(raw)
 }
 func (p Profile) Validate() error {
+	if err := p.ValidatePrompts(); err != nil {
+		return err
+	}
 	for role, binding := range p.ModelBindings {
 		if !modelRole(role) {
 			return errors.New("contract: invalid model role")

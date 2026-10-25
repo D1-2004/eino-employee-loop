@@ -55,7 +55,10 @@ const omissionReserveBytes = 512
 func (b *Builder) bound(f Frame) (Frame, error) {
 	sources, refs := f.Sources, f.Refs
 	owners, projections := f.OwnerFiles, f.OwnerProjections
-	tasks := append([]work.Task(nil), f.Tasks...)
+	tasks, err := work.ModelTasks(f.Tasks)
+	if err != nil {
+		return f, err
+	}
 	f.Sources = nil
 	f.Refs = nil
 	f.OwnerFiles = nil

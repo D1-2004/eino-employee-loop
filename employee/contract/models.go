@@ -41,6 +41,15 @@ func modelRole(role string) bool {
 // Snapshot owns all mutable profile collections; a caller can safely reuse its
 // source buffers for the next revision after admission.
 func (p Profile) Snapshot() Profile {
+	if p.PromptBundle != nil {
+		bundle := *p.PromptBundle
+		bundle.Roles = make(map[string]string, len(p.PromptBundle.Roles))
+		for role, text := range p.PromptBundle.Roles {
+			bundle.Roles[role] = text
+		}
+		bundle.UnresolvedBindings = append([]string(nil), bundle.UnresolvedBindings...)
+		p.PromptBundle = &bundle
+	}
 	p.Scenes = append([]string(nil), p.Scenes...)
 	p.OwnerLoops = append([]string(nil), p.OwnerLoops...)
 	p.DeliveryLoops = append([]string(nil), p.DeliveryLoops...)
