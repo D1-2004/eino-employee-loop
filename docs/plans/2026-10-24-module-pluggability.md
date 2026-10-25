@@ -323,3 +323,39 @@ Runnable assembly results:
   are not completed by this SDK change.
 - Evidence and limits: evals/reports/2026-10-25-sdk-local-assembly.md. No remote
   environment was selected or deployed; production and actual IM remain untouched.
+
+## Review corrections and internal feedback (2026-10-25)
+
+Status: implemented and locally verified; publication and feedback handoff follow.
+User requests a code/functionality review and explicitly
+authorizes sending the CR and findings to the internal service maintainer.
+Review reproduced one SDK P2: Owner runtime advertised extension AgentAsTool
+but rejected its valid nonterminal model call before execution. Correct the
+Owner offered-tool validation while preserving terminal/source/authority fences;
+exercise actual child invocation, final commit and reopen deduplication.
+The internal eval wrapper also allowed binary/fixture flag overrides and ambient
+modfile/overlay/replace graph drift. Restrict wrapper flags and build overrides,
+verify reviewed SDK/Eino selection, and include the nested module in root checks.
+
+Acceptance: focused Owner/native extension and recovery checks, affected full
+checks/local Linux replay, new immutable public SDK version pinned by the internal
+CR, wrapper counterexamples rejected, remote source/CR readback. Then send one
+review-request message via the verified personal DingTalk profile to the unique
+maintainer and verify actual delivery. No merge, deployment or ongoing monitor.
+
+
+Review correction results:
+- Actual Entry probe reproduced the advertised Owner AgentAsTool never being
+  invoked. Owner now freezes all offered schemas via ToolsReady, accepts valid
+  nonterminal calls, and preserves original strict single terminal/evidence parse.
+- New actual child→commit→reopen test proves one child invocation and unchanged
+  documents/model counts after replay. Unknown tools, bad arguments, duplicate
+  IDs, mixed terminal, invalid citations, name collision and revoked sources are
+  blocked. Existing typed module/native extension contracts remain unchanged.
+- Full test/vet/race suites passed after the correction. The internal wrapper
+  separately restricts args, rejects ambient build flags/all module replacements,
+  fixes Eino version and includes the third nested module in root checks.
+- Sender is the verified default personal DingTalk/prod profile. Name resolution
+  found a human and a similarly named digital employee; existing maintainer
+  identity evidence plus exact full-name resolution selects the human. Only a
+  dry-run has occurred until the corrected immutable SDK is pinned by the CR.

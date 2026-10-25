@@ -578,13 +578,53 @@ func (w *Worker) generate(ctx context.Context, job observation) (Document, error
 		}
 		return w.parse(job, spec, &schema.Message{Role: schema.Assistant, ResponseMeta: &schema.ResponseMeta{FinishReason: "tool_calls"}, ToolCalls: []schema.ToolCall{{ID: compose.GetToolCallID(c), Type: "function", Function: schema.FunctionCall{Name: spec.Name, Arguments: raw}}}})
 	}}
+	// Extensions add only trusted, Host-assembled read-only agents. Freeze the
+	// final offered schemas before model I/O so their nonterminal calls can run
+	// without weakening the commit's stricter evidence contract.
+	offered := map[string]loop.Tool{spec.Name: spec}
+	validateResponse := func(response *schema.Message) error {
+		if response == nil || response.ResponseMeta == nil || response.ResponseMeta.FinishReason != "tool_calls" || len(response.ToolCalls) == 0 {
+			return errors.New("complete native owner tool calls required")
+		}
+		for _, call := range response.ToolCalls {
+			if call.Function.Name == spec.Name {
+				_, err := w.parse(job, spec, response)
+				return err
+			}
+		}
+		seen := map[string]bool{}
+		for _, call := range response.ToolCalls {
+			if call.ID == "" || call.Type != "function" || seen[call.ID] {
+				return errors.New("invalid native call identity")
+			}
+			seen[call.ID] = true
+			tool, ok := offered[call.Function.Name]
+			if !ok {
+				return errors.New("ownerloop: tool not offered")
+			}
+			if err := jsoncheck.Unique([]byte(call.Function.Arguments), 32); err != nil {
+				return err
+			}
+			var args map[string]any
+			if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
+				return err
+			}
+			if args == nil {
+				return errors.New("ownerloop: object arguments required")
+			}
+			if issues := loop.ValidateArguments(tool.Schema, args); len(issues) > 0 {
+				return errors.New(strings.Join(issues, "; "))
+			}
+		}
+		return nil
+	}
 	agentName := "owner_" + job.Role
 	factory := func(context.Context, native.Request) (*adk.ChatModelAgentConfig, error) {
 		return &adk.ChatModelAgentConfig{Name: agentName, Model: durable, MaxIterations: job.Budget, ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: []tool.BaseTool{nativeTool}, ExecuteSequentially: true}, ReturnDirectly: map[string]bool{spec.Name: true}}, ModelRetryConfig: &adk.ModelRetryConfig{MaxRetries: job.Budget - 1, BackoffFunc: func(context.Context, int) time.Duration { return 0 }, ShouldRetry: func(_ context.Context, retry *adk.RetryContext) *adk.RetryDecision {
 			if retry.Err != nil {
 				return &adk.RetryDecision{RewriteError: retry.Err}
 			}
-			if _, e := w.parse(job, spec, retry.OutputMessage); e != nil {
+			if e := validateResponse(retry.OutputMessage); e != nil {
 				return &adk.RetryDecision{Retry: true, ModifiedInputMessages: append(append([]*schema.Message(nil), retry.InputMessages...), schema.UserMessage("Host validation: "+e.Error()+". Follow the frozen native contract and quote only admitted originals.")), PersistModifiedInputMessages: true}
 			}
 			return &adk.RetryDecision{}
@@ -598,6 +638,34 @@ func (w *Worker) generate(ctx context.Context, job observation) (Document, error
 		if err != nil {
 			return Document{}, err
 		}
+	}
+	toolsReady := cfg.ToolsReady
+	cfg.ToolsReady = func(c context.Context, request native.Request, infos []*schema.ToolInfo) error {
+		if toolsReady != nil {
+			if err := toolsReady(c, request, infos); err != nil {
+				return err
+			}
+		}
+		frozen := make(map[string]loop.Tool, len(infos))
+		for _, info := range infos {
+			var params map[string]any
+			if info.ParamsOneOf != nil {
+				js, err := info.ParamsOneOf.ToJSONSchema()
+				if err != nil {
+					return err
+				}
+				raw, err := json.Marshal(js)
+				if err != nil {
+					return err
+				}
+				if err = json.Unmarshal(raw, &params); err != nil {
+					return err
+				}
+			}
+			frozen[info.Name] = loop.Tool{Name: info.Name, Description: info.Desc, Schema: params}
+		}
+		offered = frozen
+		return nil
 	}
 	runtime, err := native.New(cfg)
 	if err != nil {

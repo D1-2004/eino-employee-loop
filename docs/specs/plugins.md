@@ -21,6 +21,15 @@ using the observation's frozen `Request`. Entry resolves the selected registry
 factories on the actual native config; passing only global callbacks does not
 satisfy the plugin contract.
 
+Owner validates calls against the final tools offered by the native runtime,
+including registered read-only AgentAsTool children. A valid nonterminal call
+may run before the single `commit_owner_update` terminal call. Unknown tools,
+invalid arguments, duplicate call IDs and batches mixing the terminal commit
+with other calls are rejected before invocation. The terminal proposal retains
+its original source/citation validation and atomic commit; child output is not
+a replacement source or an additional business permission. Reopening completed
+Owner work does not invoke its child or commit again.
+
 Owner workers depend on a narrow source/audience Context interface and typed
 state/artifact ports. Hosts may add policies with trusted
 `owner.Options.RolePolicies`; each observation freezes the chosen policy
