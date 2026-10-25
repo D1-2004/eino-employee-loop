@@ -36,6 +36,9 @@ type Backend interface {
 	Close() error
 }
 type Options struct {
+	// AuthorizeScope checks current Host authority after the immutable Profile
+	// boundary. It cannot expand that boundary and is never persisted.
+	AuthorizeScope       func(context.Context, contract.Scope) error
 	DefaultExecutor      ExecutorFactory
 	DefaultDelivery      DeliveryFactory
 	PrepareTools         host.NativeTools
@@ -60,6 +63,7 @@ type Options struct {
 }
 type Entry struct {
 	backend      Backend
+	scopeCheck   func(context.Context, contract.Scope) error
 	capabilities map[Capability]bool
 	profile      Profile
 	mu           sync.Mutex
@@ -84,6 +88,9 @@ func Open(ctx context.Context, opts Options) (*Entry, error) {
 
 	if err := opts.Profile.Validate(); err != nil {
 		return nil, err
+	}
+	if opts.AuthorizeScope != nil && opts.Profile.Backend != "standalone" {
+		return nil, errors.New("entry: AuthorizeScope is supported only by the standalone backend; a complete backend owns its authority")
 	}
 	if opts.Directory == "" {
 		return nil, errors.New("entry: private directory required")
@@ -124,7 +131,11 @@ func Open(ctx context.Context, opts Options) (*Entry, error) {
 		return nil, err
 	}
 	life, cancel := context.WithCancel(context.Background())
-	return &Entry{backend: b, profile: opts.Profile, capabilities: caps, life: life, cancel: cancel, done: make(chan struct{})}, nil
+	e := &Entry{backend: b, profile: opts.Profile, capabilities: caps, life: life, cancel: cancel, done: make(chan struct{})}
+	if standalone, ok := b.(*standalone); ok {
+		e.scopeCheck = standalone.authorize
+	}
+	return e, nil
 }
 
 // operation joins the caller's cancellation with Entry shutdown. It registers

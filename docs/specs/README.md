@@ -6,6 +6,7 @@ and the [assembly guide](../module-composition.md) for Go usage.
 
 | Contract | Owner |
 | --- | --- |
+| [Domain model and Host assembly](domain-model.md) | Entities, services, durable records and current-scope authorization |
 | [Correctable tool refusals](tool-feedback.md) | Explicit no-effect rejection and native Eino correction |
 | [Task feedback](task-feedback.md) | Review validation, control acknowledgements and visible status |
 | [Context bounds](context-bounds.md) | Serialized Frame limits, source gaps and bounded summaries |

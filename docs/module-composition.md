@@ -191,3 +191,19 @@ contracts, checked against the pinned v0.9.21 source. No custom JSON workflow
 interpreter is introduced.
 
 The [advanced module diagram](architecture/module-composition.png) shows the lower-level replacement seams.
+
+
+## Current Host authority
+
+For a standalone composition, set `entry.Options.AuthorizeScope` to a
+concurrency-safe Host callback when access can change. It runs after the frozen
+Profile's static scope checks and can only narrow them. Frozen jobs and borrowed
+Host service clients recheck current access; read results are withheld after
+revocation, while a genuine committed tool receipt is retained with the error.
+The callback is not persisted and is not called as a startup network preflight.
+Omitting it preserves the offline local Profile contract.
+
+This callback is a scope gate. Providers still authorize their resources/actions
+and interpret their opaque bindings. A complete external backend owns its own
+policy; `AuthorizeScope` is explicitly rejected with that backend. See the
+[domain contract](specs/domain-model.md) for entity/Session/Memory boundaries.

@@ -21,6 +21,24 @@ not to the framework.
 
 ![Source and module architecture](docs/architecture/module-composition.png)
 
+## Domain entities and state ownership
+
+![Domain and state ownership](docs/architecture/domain-model.png)
+
+Agent configuration and business Session assembly belong to the Host; the local
+Profile freezes one Owner and a fixed set of Scenes. It is not a dynamic group
+Session service. Task is the core delegated-work aggregate; Goal/Run/Wait and
+feedback facts stay under that authority. Memory/Preference have semantic
+contracts even when their physical storage is external. Source modules describe
+services that act on these entities, not a list of additional domain entities.
+
+Durable admissions, Outbox receipts, checkpoints, journals and leases remain
+necessary for restartable execution. They do not become extra Task authorities.
+Standalone hosts can narrow current scope access with `Options.AuthorizeScope`;
+frozen configuration never grants permanently valid access. See the
+[domain and assembly contract](docs/specs/domain-model.md) for the current
+reference limits, external Memory integration and query-led storage design.
+
 ## Responsibility and source ownership
 
 | Component | Directory | Owns | Must not own |

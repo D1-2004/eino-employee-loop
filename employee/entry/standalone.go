@@ -274,6 +274,9 @@ func (s *standalone) authorize(ctx context.Context, scope work.Scope) error {
 	}
 	for _, scene := range p.Scenes {
 		if scope.Scene == scene {
+			if s.opts.AuthorizeScope != nil {
+				return s.opts.AuthorizeScope(ctx, scope)
+			}
 			return nil
 		}
 	}

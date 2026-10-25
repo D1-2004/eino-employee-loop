@@ -4,21 +4,32 @@ import (
 	"context"
 	"errors"
 
+	"github.com/D1-2004/eino-employee-loop/employee/contract"
 	host "github.com/D1-2004/eino-employee-loop/employee/ports/services"
 )
 
 // Service clients are borrowed, but calls made through this Entry belong to its
 // lifetime. Use the same cancellation/join boundary as Submit and RunOnce.
-func serviceRead[T any](e *Entry, ctx context.Context, fn func(context.Context) (T, error)) (T, error) {
+func serviceRead[T any](e *Entry, ctx context.Context, scope contract.Scope, fn func(context.Context) (T, error)) (T, error) {
 	var zero T
 	c, done, err := e.operation(ctx)
 	if err != nil {
 		return zero, err
 	}
 	defer done()
+	if e.scopeCheck != nil {
+		if err := e.scopeCheck(c, scope); err != nil {
+			return zero, err
+		}
+	}
 	result, err := fn(c)
 	if canceled := c.Err(); canceled != nil {
 		return zero, errors.Join(err, canceled)
+	}
+	if e.scopeCheck != nil {
+		if denied := e.scopeCheck(c, scope); denied != nil {
+			return zero, errors.Join(err, denied)
+		}
 	}
 	return result, err
 }
@@ -29,7 +40,7 @@ type configClient struct {
 }
 
 func (c configClient) GetConfig(ctx context.Context, call host.Call) (host.ConfigSnapshot, error) {
-	return serviceRead(c.entry, ctx, func(ctx context.Context) (host.ConfigSnapshot, error) { return c.provider.GetConfig(ctx, call) })
+	return serviceRead(c.entry, ctx, call.Scope, func(ctx context.Context) (host.ConfigSnapshot, error) { return c.provider.GetConfig(ctx, call) })
 }
 
 type messageClient struct {
@@ -38,7 +49,7 @@ type messageClient struct {
 }
 
 func (c messageClient) GetMessages(ctx context.Context, call host.Call, q host.MessageRequest) (host.Messages, error) {
-	return serviceRead(c.entry, ctx, func(ctx context.Context) (host.Messages, error) { return c.provider.GetMessages(ctx, call, q) })
+	return serviceRead(c.entry, ctx, call.Scope, func(ctx context.Context) (host.Messages, error) { return c.provider.GetMessages(ctx, call, q) })
 }
 
 type resourceClient struct {
@@ -47,7 +58,7 @@ type resourceClient struct {
 }
 
 func (c resourceClient) ReadResource(ctx context.Context, call host.Call, q host.ResourceRef) (host.Resource, error) {
-	return serviceRead(c.entry, ctx, func(ctx context.Context) (host.Resource, error) { return c.provider.ReadResource(ctx, call, q) })
+	return serviceRead(c.entry, ctx, call.Scope, func(ctx context.Context) (host.Resource, error) { return c.provider.ReadResource(ctx, call, q) })
 }
 
 type fileClient struct {
@@ -56,7 +67,7 @@ type fileClient struct {
 }
 
 func (c fileClient) ListFiles(ctx context.Context, call host.Call) (host.Files, error) {
-	return serviceRead(c.entry, ctx, func(ctx context.Context) (host.Files, error) { return c.provider.ListFiles(ctx, call) })
+	return serviceRead(c.entry, ctx, call.Scope, func(ctx context.Context) (host.Files, error) { return c.provider.ListFiles(ctx, call) })
 }
 
 type toolClient struct {
@@ -65,7 +76,7 @@ type toolClient struct {
 }
 
 func (c toolClient) DiscoverTools(ctx context.Context, call host.Call) ([]host.Tool, error) {
-	return serviceRead(c.entry, ctx, func(ctx context.Context) ([]host.Tool, error) { return c.provider.DiscoverTools(ctx, call) })
+	return serviceRead(c.entry, ctx, call.Scope, func(ctx context.Context) ([]host.Tool, error) { return c.provider.DiscoverTools(ctx, call) })
 }
 func (c toolClient) CallTool(ctx context.Context, call host.Call, q host.ToolCall) (host.ToolResult, error) {
 	work, done, err := c.entry.operation(ctx)
@@ -73,11 +84,21 @@ func (c toolClient) CallTool(ctx context.Context, call host.Call, q host.ToolCal
 		return host.ToolResult{}, err
 	}
 	defer done()
+	if c.entry.scopeCheck != nil {
+		if err := c.entry.scopeCheck(work, call.Scope); err != nil {
+			return host.ToolResult{}, err
+		}
+	}
 	result, err := c.provider.CallTool(work, call, q)
 	if canceled := work.Err(); canceled != nil {
 		// Keep a genuine committed receipt even when shutdown cancels its caller;
 		// no successful readonly output is released after cancellation.
 		return host.ToolResult{Receipt: result.Receipt}, errors.Join(err, canceled)
+	}
+	if c.entry.scopeCheck != nil {
+		if denied := c.entry.scopeCheck(work, call.Scope); denied != nil {
+			return host.ToolResult{Receipt: result.Receipt}, errors.Join(err, denied)
+		}
 	}
 	return result, err
 }

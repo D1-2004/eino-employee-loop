@@ -455,3 +455,46 @@ Full tests/vet/race and fresh Linux/arm64 offline non-root replay (111 assertion
 passed after the correction. Evidence and remaining issue criteria are in
 `../../evals/reports/2026-10-25-formal-issues.md`. Publication and immutable
 consumer pin readback follow; no merge/deployment/live IM in this slice.
+
+
+## Domain model and current Host authorization (2026-10-25)
+
+Status: design defined; implementation in progress. Baseline `ffc7e1a`.
+The new review separates business entities from source modules, a Host business
+Session from native Agent continuation, and authority from physical persistence.
+Keep app/employee/evals/docs, one Task aggregate and the native Eino runtime.
+
+Scope: document domain relationships/state ownership/query-led storage design;
+add a narrow optional current-scope authorization callback to the standalone
+assembly. Existing static Profile boundaries run first. Apply the current check
+at existing module operations and to borrowed Host service calls, including
+injected Providers. Read revocation suppresses bytes; committed effect receipts
+survive revocation/cancellation. Default local/eval remains credential-free.
+A complete external backend owns authorization; reject this standalone-only
+option there rather than silently ignoring it.
+
+Do not invent a Host Session registry, wire DTO, capability-merge algorithm,
+Memory protocol or Run/Turn migration. Those contracts are not frozen. The
+reference currently binds one Owner and fixed Scenes; document that explicitly.
+External Memory needs compatible Context and Owner implementations, not only a
+Context read override. Do not delete durable Outbox/journal/checkpoint/lease data.
+
+Acceptance: actual Entry admission, model-boundary revocation, reopened frozen
+work and Provider-boundary reads/effects; two Owners in the same scene retain
+isolation and cannot widen the static Profile. Scoped race/vet, full tests/vet
+and fresh Linux replay on the candidate. Documentation/diagram reviewed for
+entity/module/technical-state distinctions. No live Host/IM, migration or release.
+Publication uses Git Data API; update the existing isolated internal consumer CR
+without merging/deploying or sending another message. Root implements docs and
+integration; worker implements only the narrow authorization slice; review is
+independent. Final evidence and remaining Host acceptance recorded here.
+
+
+Domain/current-authority results: implemented; independent read-only review found
+no blocker. Full tests/vet and complete Entry race passed. Fresh Linux/arm64
+non-root offline replay passed111 assertions. Static boundaries, native dispatch
+revocation, reopened frozen work, injected reads and committed receipts have
+actual regressions. Diagram rendered/visually reviewed and current links checked.
+See `../../evals/reports/2026-10-25-domain-authorization.md` for hashes and limits.
+GitHub publication and the same consumer CR pin/readback follow; actual Host
+wire/Session/Memory/IM acceptance is still pending, not inferred from local tests.

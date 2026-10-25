@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1080" width="1200" height="1080">
+<style>text {font-family:"Helvetica Neue",Helvetica,Arial,"PingFang SC","Microsoft YaHei",sans-serif;}</style>
+<defs>
+<marker id="control" viewBox="0 0 10 7" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#ea580c"/></marker>
+<marker id="business" viewBox="0 0 10 7" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#2563eb"/></marker>
+<marker id="memory" viewBox="0 0 10 7" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#059669"/></marker>
+</defs>
+<rect width="1200" height="1080" fill="#ffffff"/>
+<text x="60" y="52" font-size="30" fill="#111827" font-weight="600" text-anchor="start">Employee Loop｜领域、服务与状态</text>
+<text x="60" y="85" font-size="17" fill="#6b7280" font-weight="400" text-anchor="start">接入合同与默认本地装配；线上 Session、能力合并及 Run / Turn 仍需具体映射</text>
+<rect x="60" y="120" width="1080" height="130" rx="12" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+<text x="85" y="154" font-size="21" fill="#111827" font-weight="600" text-anchor="start">宿主拥有：Agent 配置 + 业务 Session</text>
+<text x="85" y="187" font-size="18" fill="#111827" font-weight="400" text-anchor="start">配置模板 / 个人配置；产品 / 租户 / 场域 / 操作者</text>
+<text x="85" y="219" font-size="17" fill="#6b7280" font-weight="400" text-anchor="start">Session 决定能力装配与事件路由；与底层 Agent 会话分别建模</text>
+<path d="M 600 250 V 345" fill="none" stroke="#ea580c" stroke-width="2" marker-end="url(#control)"/>
+<rect x="504.0" y="283.5" width="192" height="28" rx="4" fill="#ffffff" opacity="0.98"/>
+<text x="600" y="303.5" font-size="16" fill="#ea580c" font-weight="500" text-anchor="middle">可信装配 · 当前授权</text>
+<rect x="60" y="345" width="1080" height="155" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="7 5"/>
+<text x="85" y="376" font-size="20" fill="#111827" font-weight="600" text-anchor="start">功能与应用服务｜源码职责，非额外领域实体</text>
+<rect x="85" y="396" width="235" height="80" rx="12" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="202.5" y="425" font-size="19" fill="#111827" font-weight="600" text-anchor="middle">Chat</text>
+<text x="202.5" y="454" font-size="14" fill="#6b7280" font-weight="400" text-anchor="middle">前台交互 / 已授权命令</text>
+<rect x="350" y="396" width="235" height="80" rx="12" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="467.5" y="425" font-size="19" fill="#111827" font-weight="600" text-anchor="middle">TaskManager</text>
+<text x="467.5" y="454" font-size="14" fill="#6b7280" font-weight="400" text-anchor="middle">唯一任务写权 / Review</text>
+<rect x="615" y="396" width="235" height="80" rx="12" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="732.5" y="425" font-size="19" fill="#111827" font-weight="600" text-anchor="middle">ContextBuilder</text>
+<text x="732.5" y="454" font-size="14" fill="#6b7280" font-weight="400" text-anchor="middle">授权视图 / 来源复核</text>
+<rect x="880" y="396" width="235" height="80" rx="12" fill="#f8fafc" stroke="#d1d5db" stroke-width="1.5"/>
+<text x="997.5" y="425" font-size="19" fill="#111827" font-weight="600" text-anchor="middle">Delivery</text>
+<text x="997.5" y="454" font-size="14" fill="#6b7280" font-weight="400" text-anchor="middle">表达 / Outbox / 回执</text>
+<path d="M 467 476 V 550 H 300 V 600" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#business)"/>
+<rect x="308" y="534" width="190" height="30" rx="4" fill="#ffffff" opacity="0.98"/>
+<text x="403" y="556" font-size="16" fill="#2563eb" font-weight="500" text-anchor="middle">Task 状态与事实</text>
+<path d="M 732 476 V 550 H 900 V 600" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#memory)"/>
+<rect x="752" y="534" width="130" height="30" rx="4" fill="#ffffff" opacity="0.98"/>
+<text x="817" y="556" font-size="16" fill="#059669" font-weight="500" text-anchor="middle">授权语义读取</text>
+<rect x="60" y="600" width="480" height="150" rx="12" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+<text x="85" y="638" font-size="22" fill="#111827" font-weight="600" text-anchor="start">Task｜核心业务聚合</text>
+<text x="85" y="673" font-size="17" fill="#111827" font-weight="400" text-anchor="start">Goal revisions · Runs · Waits · Sources · Feedback</text>
+<text x="85" y="707" font-size="17" fill="#6b7280" font-weight="400" text-anchor="start">一个任务权威；完成、执行退出与送达各自取证</text>
+<rect x="660" y="600" width="480" height="150" rx="12" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.5"/>
+<text x="685" y="638" font-size="22" fill="#111827" font-weight="600" text-anchor="start">Memory / Preference｜语义概念</text>
+<text x="685" y="673" font-size="17" fill="#111827" font-weight="400" text-anchor="start">默认本地 Owner；外部 Context + Owner Provider</text>
+<text x="685" y="707" font-size="17" fill="#6b7280" font-weight="400" text-anchor="start">来源 / 纠正 / 遗忘 / 当前访问权须有独立合同</text>
+<rect x="60" y="805" width="1080" height="155" rx="12" fill="#faf5ff" stroke="#e9d5ff" stroke-width="1.5"/>
+<text x="85" y="840" font-size="21" fill="#111827" font-weight="600" text-anchor="start">运行机制与可靠性记录</text>
+<text x="85" y="875" font-size="18" fill="#111827" font-weight="400" text-anchor="start">原生 Eino：Runner / Extensions / checkpoint；业务 Session 与恢复标识显式关联</text>
+<text x="85" y="909" font-size="18" fill="#111827" font-weight="400" text-anchor="start">持久受理 / Outbox / model-tool journal / CAS / lease；存储由 Provider 承担</text>
+<text x="85" y="940" font-size="16" fill="#6b7280" font-weight="400" text-anchor="start">服务实例可无状态；可靠执行事实仍须持久化。模块数、实体数、物理表数不要求相等。</text>
+<path d="M 70 997 H 105" stroke="#ea580c" stroke-width="2" marker-end="url(#control)"/>
+<text x="118" y="1003" font-size="16" fill="#6b7280" font-weight="400" text-anchor="start">装配与授权</text>
+<path d="M 320 997 H 355" stroke="#2563eb" stroke-width="2" marker-end="url(#business)"/>
+<text x="368" y="1003" font-size="16" fill="#6b7280" font-weight="400" text-anchor="start">业务状态</text>
+<path d="M 550 997 H 585" stroke="#059669" stroke-width="2" marker-end="url(#memory)"/>
+<text x="598" y="1003" font-size="16" fill="#6b7280" font-weight="400" text-anchor="start">语义读取</text>
+<text x="60" y="1050" font-size="18" fill="#111827" font-weight="500" text-anchor="start">默认本地：SQLite + Markdown · app/local + app/eval · 原生 Eino · 无远端凭据也可重放</text>
+</svg>

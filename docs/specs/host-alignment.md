@@ -5,6 +5,12 @@ claim wire compatibility with a particular Host SDK or deployed service.
 Physical package names are implementation components, not additional authorities.
 The local application is a runnable reference assembly.
 
+The [domain model contract](domain-model.md) separates entities from these code
+responsibilities. The standalone reference is one Owner with fixed Scenes;
+Host business Sessions require trusted assembly, not a native checkpoint alias.
+`Options.AuthorizeScope` adds current Host scope checks within the static Profile.
+It does not implement dynamic actors, capability merging or action authorization.
+
 ## Business responsibilities
 
 | Responsibility | Current implementation | Boundary |
