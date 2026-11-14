@@ -128,7 +128,7 @@ hosttest.Model(t, adapter, provider)
 要运行的检查：
 
 - 模块内：`go test -race ./...`。
-- 每次升级 Eino 或本模块后，运行 [host.zh-CN.md §6](host.zh-CN.md#6-让模型可持久) 的对齐（parity）测试，加 `-v`，确认有 `--- PASS: TestParityWithV021`：没有这个测试的版本会打印 "no tests to run"，退出码仍是 0。
+- 每次升级 Eino 或本模块后，运行 [host.zh-CN.md §6](host.zh-CN.md#6-让模型可持久) 的对齐（parity）测试，加 `-v`，确认有 `--- PASS: TestParityWithV021`：没有这个测试的版本会打印 "no tests to run"，退出码仍是 0。缺少终态时的文本保留变化不在旧基线比较内，另运行 `TestTerminalTextRepair` 和 `TestTerminalRequiredForcedChoiceAndLocale` 检查真实输入。
 - 两个引擎并存时：用同一份脚本驱动两者，把请求字节、Host 调用和结果冻结进 golden 文件，并把剩余差异列进一个测试，列表过期时测试失败。
 
 ## 4. 驱动
@@ -218,3 +218,7 @@ A/B 做法：给每个引擎单独的会话，或在用例之间重置历史，�
 ## 7. 可观测性
 
 trace 名称沿用参考运行器（[local.zh-CN.md](local.zh-CN.md#langfuse)）；它还会发出 `agent_id`、`employee_job_kind`、`employee_source_message_id`，失败时还有 `employee_failure`。只有一个引擎的 Host 可以像 `local` 一样从 `OnModelCall` 和 `OnToolCall` 发 trace。会切换引擎的 Host 应从可持久模型和 Host 包装层发出，这样两个引擎产生相同形状的 trace（包括流式参数），A/B 比较只按 metadata 过滤。在参考运行器里，以被接受的 final text 结束的唤醒没有工具观测：看 `employee_decision`，不看工具列表。
+
+## 变更历史
+
+- 2026-11-15：说明历史 parity 比较的范围及真实终态文本修复测试。原因：保留私有响应会有意改变请求字节，原生终态交付要求不变。

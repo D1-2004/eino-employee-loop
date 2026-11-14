@@ -79,7 +79,9 @@ err := c.Register(spec)
 
 ## 6. 让模型可持久
 
-包装 Eino 模型，使每次请求/响应都被记录（`window_model_turns`），重新领取时对相同请求重放记录的响应，而不是再问一次模型。提供方参数拒绝与预留耗尽通过 `Config.Permanent` 报告。模型收到的是循环自己的对话记录消息，v0.2 与 v0.3 发出的请求逐字节相同（`employee/kernel/decision/testdata/parity.golden.gz`），所以滚动发布期间一个版本开始的唤醒可以由另一个版本重新领取。循环下面的 Eino 版本由 Host 的依赖解析决定，所以每次升级 eino 或 eino-employee-loop，都要在 Host 模块里运行 `go test -run TestParityWithV021 github.com/D1-2004/eino-employee-loop/employee/kernel/decision`。
+包装 Eino 模型，使每次请求/响应都被记录（`window_model_turns`），重新领取时对相同请求重放记录的响应，而不是再问一次模型。提供方参数拒绝与预留耗尽通过 `Config.Permanent` 报告。模型收到的是循环自己的对话记录消息。完整非空正文因缺少原生终态而进入 repair 时，当前响应及 reasoning 字段会保留在原 repair 提示之前；这是私有上下文，不是有效进展或交付，错误与物理调用预算继续生效。非法工具批次、截断响应仍不保留。
+
+这与丢弃该响应的旧版本请求字节不同，Host 未明确版本策略前，不应跨此版本恢复被冻结的模型 journal。`employee/kernel/decision/testdata/parity.golden.gz` 保持旧基线；对齐测试只在比较日志时投影掉这些保留的文本，其他行为仍逐字比较，另用专项测试断言真实请求保留响应。它不再证明跨此变化的逐字节重放兼容性。循环下面的 Eino 版本由 Host 的依赖解析决定，所以每次升级 eino 或 eino-employee-loop，都要在 Host 模块里运行 `go test -run TestParityWithV021 github.com/D1-2004/eino-employee-loop/employee/kernel/decision`。
 
 Host 传给 `loop.New` 的模型必须：
 
@@ -140,3 +142,7 @@ Multica 把本循环作为可选引擎，与内置内核并列。两者运行 Ho
 | 送达 | 钉钉回复发件箱 |
 | 每轮工具策略、批次规则、修复文案 | 每个逐次钩子都调用内置内核所用的 `employeehost.Turn`；模块的静态批次规则关闭 |
 | 流式首条反馈 | Host 模型上的装饰器；循环只看完整响应 |
+
+## 变更历史
+
+- 2026-11-15：缺少原生终态的完整私有文本在 repair 前保留，ADK 使用独立消息副本，不改变接纳和错误预算。原因：下一轮模型需要看到应通过原生终态表达的当前答案。保留历史 parity golden，明确请求差异，不宣称跨版本 journal 兼容。
