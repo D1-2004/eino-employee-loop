@@ -190,7 +190,9 @@ Checks to run:
 - After every Eino or module bump, the parity test from
   [host.md §6](host.md#6-make-the-model-durable), with `-v`: look for
   `--- PASS: TestParityWithV021`, since a version without the test prints "no
-  tests to run" and still exits 0.
+  tests to run" and still exits 0. The missing-terminal text retention change
+  is excluded from that historical comparison; run `TestTerminalTextRepair`
+  and `TestTerminalRequiredForcedChoiceAndLocale` for its actual input behavior.
 - With two engines: drive both from one script, freeze their request bytes,
   Host calls and outcomes in a golden file, and list the remaining differences
   in a test that fails when the list goes stale.
@@ -339,3 +341,9 @@ shape (streaming parameters included) and an A/B comparison filters by
 metadata only. A wake that ends on accepted final text has no tool
 observation in the reference runner: read `employee_decision`, not the tool
 list.
+
+## Change history
+
+- 2026-11-15: Document the scoped historical parity comparison and actual
+  terminal-text repair tests. Reason: retained private responses intentionally
+  change provider request bytes without changing terminal delivery requirements.

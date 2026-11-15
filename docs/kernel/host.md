@@ -142,9 +142,16 @@ Wrap the Eino model so every request/response is journaled
 (`window_model_turns`) and a re-claim replays the recorded response for an
 identical request instead of asking the provider again. Report provider
 parameter rejections and exhausted reservations through `Config.Permanent`.
-The model receives the loop's own transcript messages, and v0.2 and v0.3 send
-byte-identical requests (`employee/kernel/decision/testdata/parity.golden.gz`), so a wake begun by
-one version can be re-claimed by the other during a rolling deploy. The Host's
+The model receives the loop's own transcript messages. A complete nonempty
+plain response rejected only because a native terminal is required is retained
+before the existing repair reminder, including its reasoning fields. It is
+private context, not accepted progress or delivery. Error and physical-call
+budgets still apply. Invalid tool batches and incomplete responses stay excluded.
+This changes request bytes from versions that dropped that response: do not
+resume such frozen journals under the new version without an explicit Host
+version policy. The unchanged v0.2.1 golden now compares all other behavior,
+projecting out only those retained messages; dedicated tests check retention.
+It no longer proves byte-identical replay across this change. The Host's
 build list picks the Eino version under the loop, so on every eino or
 eino-employee-loop bump run, from the Host module,
 `go test -run TestParityWithV021 github.com/D1-2004/eino-employee-loop/employee/kernel/decision`.
@@ -254,3 +261,11 @@ switching engines changes only the decision loop:
 | Delivery | the DingTalk response outbox |
 | Turn policy, batch rules, repair text | every per-call hook calls the `employeehost.Turn` the built-in kernel uses; the module's static batch rules are off |
 | Streamed first feedback | a decorator on the Host's model; the loop sees complete responses |
+
+## Change history
+
+- 2026-11-15: Retain complete private text before missing-terminal repair, with
+  detached ADK input and unchanged acceptance/error accounting. Reason: the
+  next model request needs the answer it must express through a native terminal.
+  Preserve the historical parity golden and document the intentional request
+  difference instead of claiming cross-version journal compatibility.

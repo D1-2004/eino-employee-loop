@@ -152,7 +152,9 @@ func TestPermanentErrorStopsAtOnce(t *testing.T) {
 }
 
 func TestTerminalRequiredForcedChoiceAndLocale(t *testing.T) {
-	m := lt.New(lt.Text("private thought"), lt.Tools(lt.Call{ID: "c1", Name: "stay_quiet", Args: map[string]any{}}))
+	plain := lt.Text("  private answer\n")
+	plain.Message.ReasoningContent = "synthetic private reasoning"
+	m := lt.New(plain, lt.Tools(lt.Call{ID: "c1", Name: "stay_quiet", Args: map[string]any{}}))
 	out, err := run(t, m, &fakeHost{}, func(c *loop.Config) {
 		c.RequireTerminalTool, c.RequireNativeToolCall, c.Locale = true, true, "zh-CN"
 	})
@@ -161,6 +163,9 @@ func TestTerminalRequiredForcedChoiceAndLocale(t *testing.T) {
 	}
 	if got := m.Options[0].ToolChoice; got == nil || *got != schema.ToolChoiceForced {
 		t.Fatalf("tool choice forced, got %v", got)
+	}
+	if len(m.Requests) != 2 || len(m.Requests[1]) != len(wake().Messages)+2 || !reflect.DeepEqual(m.Requests[1][len(wake().Messages)], plain.Message) {
+		t.Fatal("actual ADK retry lost the complete private assistant response")
 	}
 	repair := m.Requests[1][len(m.Requests[1])-1].Content
 	if !strings.Contains(repair, "终态") || !strings.Contains(repair, "reply, stay_quiet") {
@@ -175,6 +180,22 @@ func TestRepairTextIsInjectable(t *testing.T) {
 	})
 	if err != nil || m.Requests[1][len(m.Requests[1])-1].Content != "HOST REPAIR" {
 		t.Fatalf("host repair text: %v %q", err, m.Requests[1][len(m.Requests[1])-1].Content)
+	}
+}
+
+func TestTerminalTextRepairWithoutReminderStopsAtBudget(t *testing.T) {
+	m := lt.New(lt.Text("first private answer"), lt.Text("second private answer"), lt.Text("must not run"))
+	h := &fakeHost{}
+	out, err := run(t, m, h, func(c *loop.Config) {
+		c.RequireTerminalTool = true
+		c.RepairText = func(int, []loop.ToolOutcome, error) string { return "" }
+		c.Budget = loop.Budget{MaxModelResponses: 3, MaxConsecutiveErrors: 2, MaxPhysicalAttempts: 3}
+	})
+	if !errors.Is(err, loop.ErrConsecutiveModelErrors) || len(m.Requests) != 2 || out.BudgetUsage.ModelResponses != 0 || out.BudgetUsage.ConsecutiveErrors != 2 || len(h.calls) != 0 {
+		t.Fatal("private-text retries changed the error budget or executed tools")
+	}
+	if len(m.Requests[1]) != len(wake().Messages)+1 || m.Requests[1][len(wake().Messages)].Content != "first private answer" {
+		t.Fatal("an empty custom repair lost the prior response in actual ADK input")
 	}
 }
 

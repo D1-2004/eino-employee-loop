@@ -11,8 +11,11 @@ package decision_test
 //
 // The log holds the exact JSON of every provider request (messages with
 // Extra, the bound tools and every model option), every Host and Config
-// callback in order, and the full outcome. A Host that journals requests
-// may resume a wake begun by another binary, so they must stay identical.
+// callback in order, and the full outcome. Since terminal-text repair began
+// retaining complete private answers, the logger projects only those messages
+// out when comparing with the unchanged v0.2.1 baseline. Their actual presence
+// is checked by TestTerminalRequiredForcedChoiceAndLocale and the repair tests.
+// This comparison no longer proves byte-identical replay across that change.
 
 import (
 	"bufio"
@@ -110,6 +113,22 @@ type plog struct {
 	// names labels message pointers by first sight, so the log shows which
 	// messages are the same object.
 	names map[*schema.Message]string
+	private map[*schema.Message]bool
+}
+
+// history excludes only complete text rejected for a missing native terminal.
+// All calls, results, reminders, counters and callback order remain compared.
+func (l *plog) history(msgs []*schema.Message) []*schema.Message {
+	if msgs == nil {
+		return nil
+	}
+	out := make([]*schema.Message, 0, len(msgs))
+	for _, msg := range msgs {
+		if !l.private[msg] {
+			out = append(out, msg)
+		}
+	}
+	return out
 }
 
 func (l *plog) add(format string, a ...any) {
@@ -134,6 +153,7 @@ func (l *plog) label(m *schema.Message) string {
 }
 
 func (l *plog) labels(msgs []*schema.Message) string {
+	msgs = l.history(msgs)
 	out := make([]string, len(msgs))
 	for i, m := range msgs {
 		out[i] = l.label(m)
@@ -178,7 +198,7 @@ func (m *parityModel) WithTools(tools []*schema.ToolInfo) (model.ToolCallingChat
 }
 
 func (m *parityModel) Generate(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.Message, error) {
-	*m.sent = js(in)
+	*m.sent = js(m.log.history(in))
 	m.log.add("GEN msgs=[%s] %s\n  messages=%s\n  tools=%s\n  options=%s", m.log.labels(in), ctxText(ctx), *m.sent, js(m.tools), js(model.GetCommonOptions(&model.Options{}, opts...)))
 	if m.ctxAware && ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -519,8 +539,10 @@ func paritySc(seed int64) string {
 		}
 	}
 	sent := new(string)
+	var response *schema.Message
 	cfg.OnModelCall = func(ctx context.Context, mc loop.ModelCall) {
-		req := js(mc.Request)
+		response = mc.Response
+		req := js(l.history(mc.Request))
 		if req == *sent {
 			req = "as-sent"
 		}
@@ -532,7 +554,15 @@ func paritySc(seed int64) string {
 	cfg.OnBatchRejected = func(calls []loop.ToolCall, err error) {
 		l.add("HOOK rejected calls=%s err=%s", js(calls), errText(err))
 	}
-	cfg.OnModelFailure = func(err error) { l.add("HOOK failure err=%s", errText(err)) }
+	cfg.OnModelFailure = func(err error) {
+		if errors.Is(err, loop.ErrTerminalRequired) && response != nil && len(response.ToolCalls) == 0 && strings.TrimSpace(response.Content) != "" {
+			if l.private == nil {
+				l.private = map[*schema.Message]bool{}
+			}
+			l.private[response] = true
+		}
+		l.add("HOOK failure err=%s", errText(err))
+	}
 	var host loop.Host
 	hostKind := pick(r, "host", "final", "final", "nil")
 	switch hostKind {
@@ -569,6 +599,6 @@ func paritySc(seed int64) string {
 	l.add("DECISION %s calls=%d budget=%s usage=%s", js(out.Decision), out.ModelCalls, js(out.BudgetUsage), js(out.Usage))
 	l.add("RECEIPTS %s", js(out.Receipts))
 	l.add("OUTCOMES %s", js(out.ToolOutcomes))
-	l.add("TRANSCRIPT [%s] %s", l.labels(out.Transcript), js(out.Transcript))
+	l.add("TRANSCRIPT [%s] %s", l.labels(out.Transcript), js(l.history(out.Transcript)))
 	return l.buf.String()
 }

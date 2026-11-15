@@ -426,8 +426,8 @@ func (r *run) decide(_ context.Context, rc *adk.RetryContext) *adk.RetryDecision
 }
 
 // repair records a rejected response or provider error and asks again; the
-// next attempt checks the budget. The rejected output never enters the
-// conversation.
+// next attempt checks the budget. The caller may retain complete private
+// text; malformed calls and incomplete responses stay out of the conversation.
 func (r *run) repair(rc *adk.RetryContext, err error) *adk.RetryDecision {
 	decision := &adk.RetryDecision{Retry: true}
 	if msg := r.fail(err); msg != nil {
@@ -467,7 +467,20 @@ func (r *run) text(rc *adk.RetryContext, resp *schema.Message) *adk.RetryDecisio
 	}
 	final, ok := r.host.(FinalTextHost)
 	if !r.cfg.AcceptFinalText || !ok || text == "" || !r.finalTextAllowed() {
-		return r.repair(rc, ErrTerminalRequired)
+		if text != "" {
+			// Keep the complete private answer for native-terminal repair without
+			// counting it as accepted progress or sharing ADK's message copies.
+			r.msgs = append(r.msgs, resp)
+			rc.InputMessages = append(slices.Clip(rc.InputMessages), detached([]*schema.Message{resp})...)
+		}
+		decision := r.repair(rc, ErrTerminalRequired)
+		if text != "" && decision.ModifiedInputMessages == nil {
+			// An intentionally empty RepairText still needs the retained answer
+			// persisted in ADK before the next attempt checks the transcript.
+			decision.ModifiedInputMessages = rc.InputMessages
+			decision.PersistModifiedInputMessages = true
+		}
+		return decision
 	}
 	textBytes := len(text)
 	if r.cfg.RawFinalTextLimit {
